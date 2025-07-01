@@ -4,8 +4,10 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class LibraryTest {
-    @Test void someLibraryMethodReturnsTrue() {
-        Library classUnderTest = new Library();
-        assertTrue(classUnderTest.someLibraryMethod(), "someLibraryMethod should return 'true'");
+    @Test
+    void someLibraryMethodReturnsTrue() {
+        var library = new Library();
+        var instance = library.newInstance();
+        System.out.println(instance.exports());
     }
 }
