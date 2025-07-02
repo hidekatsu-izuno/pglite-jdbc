@@ -89,30 +89,78 @@ public class PGliteWasmEngine {
     
     private void initializeDatabase() {
         try {
-            // For PGlite embedded database, try null connection first
-            // Some embedded PostgreSQL implementations work with null connections
-            connectionPtr = 0;
+            // For PGlite, we need to follow the proper initialization sequence
+            // Based on PGlite source code: initdb -> backend -> ready for queries
             
-            // Test if null connection works by trying a simple query
-            if (!testConnection(connectionPtr)) {
-                System.out.println("Null connection failed, trying other approaches...");
-                
-                // Try other initialization approaches
-                connectionPtr = initializeEmbeddedConnection();
-                
-                if (connectionPtr == 0 || !testConnection(connectionPtr)) {
-                    System.out.println("Failed to establish working connection, using null connection");
-                    connectionPtr = 0; // Fall back to null connection
-                }
+            System.out.println("Starting PGlite initialization sequence...");
+            
+            // Step 1: Initialize the database using _pgl_initdb()
+            if (initializePGliteDatabase()) {
+                System.out.println("✓ PGlite database initialized successfully");
+            } else {
+                System.out.println("✗ PGlite database initialization failed");
             }
             
-            System.out.println("PGlite database initialized with connection ptr: " + connectionPtr);
+            // Step 2: Start the backend using _pgl_backend()
+            if (startPGliteBackend()) {
+                System.out.println("✓ PGlite backend started successfully");
+                // For PGlite, we don't need a traditional connection pointer
+                // The backend is ready to accept queries directly
+                connectionPtr = 1; // Non-zero to indicate ready state
+            } else {
+                System.out.println("✗ PGlite backend startup failed");
+                connectionPtr = 0;
+            }
+            
+            System.out.println("PGlite initialization completed with status: " + (connectionPtr != 0 ? "READY" : "FAILED"));
             
         } catch (Exception e) {
-            System.err.println("Warning: Could not initialize database connection: " + e.getMessage());
-            connectionPtr = 0; // Use null connection as fallback
+            System.err.println("Error during PGlite initialization: " + e.getMessage());
+            e.printStackTrace();
+            connectionPtr = 0;
         }
     }
+    
+    private boolean initializePGliteDatabase() {
+        try {
+            // Look for the PGlite database initialization function
+            var initdbFunc = instance.export("_pgl_initdb");
+            if (initdbFunc != null) {
+                System.out.println("Found _pgl_initdb function, calling...");
+                // Call _pgl_initdb() to initialize the database
+                initdbFunc.apply();
+                System.out.println("_pgl_initdb completed successfully");
+                return true;
+            } else {
+                System.out.println("_pgl_initdb function not found in WASM exports");
+                return false;
+            }
+        } catch (Exception e) {
+            System.out.println("Error calling _pgl_initdb: " + e.getMessage());
+            return false;
+        }
+    }
+    
+    private boolean startPGliteBackend() {
+        try {
+            // Look for the PGlite backend startup function
+            var backendFunc = instance.export("_pgl_backend");
+            if (backendFunc != null) {
+                System.out.println("Found _pgl_backend function, calling...");
+                // Call _pgl_backend() to start the backend
+                backendFunc.apply();
+                System.out.println("_pgl_backend completed successfully");
+                return true;
+            } else {
+                System.out.println("_pgl_backend function not found in WASM exports");
+                return false;
+            }
+        } catch (Exception e) {
+            System.out.println("Error calling _pgl_backend: " + e.getMessage());
+            return false;
+        }
+    }
+    
     
     private boolean testConnection(int connPtr) {
         try {
@@ -147,46 +195,6 @@ public class PGliteWasmEngine {
         }
     }
     
-    private int initializeEmbeddedConnection() {
-        // Try various embedded database initialization approaches
-        
-        // Method 1: Try empty connection string (common for embedded databases)
-        String[] connectionStrings = {
-            "",                    // Empty string
-            ":memory:",           // SQLite-style memory database
-            "dbname=postgres",    // Default PostgreSQL database
-            "host=localhost"      // Local connection
-        };
-        
-        for (String connStr : connectionStrings) {
-            try {
-                int connStrPtr = writeString(connStr);
-                
-                // Even though PQconnectdb is not exported, try to call it anyway
-                // It might be available under a different name or internally
-                try {
-                    var connectFunc = instance.export("PQconnectdb");
-                    if (connectFunc != null) {
-                        long[] result = connectFunc.apply(connStrPtr);
-                        int conn = (int) result[0];
-                        freeString(connStrPtr);
-                        if (conn != 0) {
-                            System.out.println("Successfully connected with: " + connStr);
-                            return conn;
-                        }
-                    }
-                } catch (Exception e) {
-                    // Expected - PQconnectdb not available
-                }
-                
-                freeString(connStrPtr);
-            } catch (Exception e) {
-                // Try next connection string
-            }
-        }
-        
-        return 0; // No connection established
-    }
     
     private void addMinimalHostFunctions(Store store) {
         // exit
@@ -1156,13 +1164,7 @@ public class PGliteWasmEngine {
         getInstance(); // Ensure instance is initialized
         checkCancelled(); // Check if query was cancelled
         
-        try {
-            return executeWasmQuery(sql);
-        } catch (SQLException e) {
-            // If WASM execution fails, provide basic responses for common test queries
-            // This is a temporary measure until proper PostgreSQL initialization is implemented
-            return handleBasicQueries(sql, e);
-        }
+        return executeWasmQuery(sql);
     }
     
     private QueryResult executeWasmQuery(String sql) throws SQLException {
@@ -1178,19 +1180,15 @@ public class PGliteWasmEngine {
             throw new SQLException("PQexec function not available in WASM");
         }
         
-        // Use the initialized database connection
-        int connPtr = connectionPtr; 
-        
         // Write SQL to WASM memory
         int sqlPtr = writeString(sql);
         
         try {
-            // Execute query using PQexec(conn, sql)
-            long[] result = pqExecFunc.apply(connPtr, sqlPtr);
-            int resultPtr = (int) result[0];
+            // Try different connection approaches for embedded database
+            int resultPtr = tryExecuteQuery(pqExecFunc, sqlPtr);
             
             if (resultPtr == 0) {
-                throw new SQLException("PQexec returned null result");
+                throw new SQLException("PQexec returned null result - embedded database may not be initialized");
             }
             
             // Check result status
@@ -1203,7 +1201,7 @@ public class PGliteWasmEngine {
                     var pqErrorMessageFunc = instance.export("PQerrorMessage");
                     if (pqErrorMessageFunc != null) {
                         try {
-                            int errorPtr = (int) pqErrorMessageFunc.apply(connPtr)[0];
+                            int errorPtr = (int) pqErrorMessageFunc.apply(connectionPtr)[0];
                             if (errorPtr != 0) {
                                 errorMsg = readString(errorPtr);
                             }
@@ -1298,47 +1296,42 @@ public class PGliteWasmEngine {
         return value;
     }
     
-    private QueryResult handleBasicQueries(String sql, SQLException originalException) throws SQLException {
-        String trimmedSql = sql.trim().toLowerCase();
+    private int tryExecuteQuery(Object pqExecFunc, int sqlPtr) {
+        // For PGlite, after proper initialization, we should be able to execute queries
+        // PGlite uses single-user mode, so we don't need a traditional connection
         
-        // Handle basic test queries that are commonly used in tests
-        if (trimmedSql.equals("select 1")) {
-            java.util.List<String> columnNames = java.util.Arrays.asList("?column?");
-            java.util.List<String> columnTypes = java.util.Arrays.asList("integer");
-            java.util.List<java.util.List<Object>> rows = new java.util.ArrayList<>();
-            rows.add(java.util.Arrays.asList((Object) 1));
-            return new QueryResult(columnNames, columnTypes, rows);
-        } else if (trimmedSql.equals("select 2")) {
-            java.util.List<String> columnNames = java.util.Arrays.asList("?column?");
-            java.util.List<String> columnTypes = java.util.Arrays.asList("integer");
-            java.util.List<java.util.List<Object>> rows = new java.util.ArrayList<>();
-            rows.add(java.util.Arrays.asList((Object) 2));
-            return new QueryResult(columnNames, columnTypes, rows);
-        } else if (trimmedSql.startsWith("select version")) {
-            java.util.List<String> columnNames = java.util.Arrays.asList("version");
-            java.util.List<String> columnTypes = java.util.Arrays.asList("text");
-            java.util.List<java.util.List<Object>> rows = new java.util.ArrayList<>();
-            rows.add(java.util.Arrays.asList((Object) "PGlite 0.1.0 (PostgreSQL 16.0 compatible)"));
-            return new QueryResult(columnNames, columnTypes, rows);
-        } else if (trimmedSql.startsWith("select * from test")) {
-            // Return empty result set for test table queries
-            return QueryResult.empty();
+        try {
+            // Try the standard PQexec(conn, sql) call with our connection indicator
+            long[] result = ((com.dylibso.chicory.runtime.ExportFunction) pqExecFunc).apply(connectionPtr, sqlPtr);
+            int resultPtr = (int) result[0];
+            if (resultPtr != 0) {
+                return resultPtr;
+            }
+        } catch (Exception e) {
+            System.out.println("Standard PQexec call failed: " + e.getMessage());
         }
         
-        // For all other queries, re-throw the original exception
-        throw originalException;
+        // If the backend is initialized but the standard call fails,
+        // try with null connection (PGlite might work this way)
+        try {
+            long[] result = ((com.dylibso.chicory.runtime.ExportFunction) pqExecFunc).apply(0, sqlPtr);
+            int resultPtr = (int) result[0];
+            if (resultPtr != 0) {
+                return resultPtr;
+            }
+        } catch (Exception e) {
+            System.out.println("Null connection PQexec call failed: " + e.getMessage());
+        }
+        
+        System.out.println("All PQexec approaches failed - database may not be properly initialized");
+        return 0; // All approaches failed
     }
     
     public int executeUpdate(String sql) throws SQLException {
         getInstance(); // Ensure instance is initialized
         checkCancelled(); // Check if query was cancelled
         
-        try {
-            return executeWasmUpdate(sql);
-        } catch (SQLException e) {
-            // If WASM execution fails, provide basic responses for common test statements
-            return handleBasicUpdates(sql, e);
-        }
+        return executeWasmUpdate(sql);
     }
     
     private int executeWasmUpdate(String sql) throws SQLException {
@@ -1352,19 +1345,15 @@ public class PGliteWasmEngine {
             throw new SQLException("PQexec function not available in WASM");
         }
         
-        // Use the initialized database connection
-        int connPtr = connectionPtr; 
-        
         // Write SQL to WASM memory
         int sqlPtr = writeString(sql);
         
         try {
-            // Execute update using PQexec(conn, sql)
-            long[] result = pqExecFunc.apply(connPtr, sqlPtr);
-            int resultPtr = (int) result[0];
+            // Try different connection approaches for embedded database
+            int resultPtr = tryExecuteQuery(pqExecFunc, sqlPtr);
             
             if (resultPtr == 0) {
-                throw new SQLException("PQexec returned null result");
+                throw new SQLException("PQexec returned null result - embedded database may not be initialized");
             }
             
             // Check result status
@@ -1405,23 +1394,6 @@ public class PGliteWasmEngine {
         }
     }
     
-    private int handleBasicUpdates(String sql, SQLException originalException) throws SQLException {
-        String trimmedSql = sql.trim().toLowerCase();
-        
-        // Handle basic test update statements
-        if (trimmedSql.startsWith("create table")) {
-            return 0; // DDL statements return 0
-        } else if (trimmedSql.startsWith("insert")) {
-            return 1; // Simulate 1 row inserted
-        } else if (trimmedSql.startsWith("update") || trimmedSql.startsWith("delete")) {
-            return 0; // Simulate 0 rows affected (table might be empty)
-        } else if (trimmedSql.equals("commit") || trimmedSql.equals("rollback") || trimmedSql.startsWith("begin")) {
-            return 0; // Transaction statements return 0
-        }
-        
-        // For all other statements, re-throw the original exception
-        throw originalException;
-    }
     
     private volatile boolean queryCancelled = false;
     

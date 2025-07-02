@@ -25,7 +25,8 @@ public class WasmInspector {
                 "PQfname", "PQgetvalue", "PQfinish", "PQconnectdb", "PQerrorMessage",
                 "pg_exec_query", "pg_get_result", "_main",
                 // PGlite specific functions
-                "pglite_init", "pglite_exec", "pglite_connect", 
+                "_pgl_initdb", "_pgl_backend", "_interactive_write", "_interactive_one",
+                "_pgl_shutdown", "pglite_init", "pglite_exec", "pglite_connect", 
                 "postgres_init", "init_db", "init_postgres"
             };
             

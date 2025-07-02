@@ -36,7 +36,7 @@ class PGliteJdbcTest {
             assertNotNull(stmt);
             
             // Test result set from SELECT 2
-            ResultSet rs = stmt.executeQuery("SELECT 2");
+            ResultSet rs = stmt.executeQuery("SELECT 1 + 1");
             assertNotNull(rs);
             assertTrue(rs.next()); // Should have one row
             assertEquals(2, rs.getInt(1)); // Should return 2
