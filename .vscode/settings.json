@@ -1,3 +1,6 @@
 {
-    "java.configuration.updateBuildConfiguration": "automatic"
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "github.copilot.chat.commitMessageGeneration.instructions": [
+        { "text": "Message must be English" }
+    ]
 }

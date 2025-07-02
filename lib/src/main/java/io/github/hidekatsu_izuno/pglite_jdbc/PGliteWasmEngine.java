@@ -10,7 +10,19 @@ import com.dylibso.chicory.runtime.Instance;
 import com.dylibso.chicory.runtime.Store;
 import com.dylibso.chicory.runtime.HostFunction;
 import com.dylibso.chicory.runtime.Memory;
+import com.dylibso.chicory.runtime.ByteArrayMemory;
+import com.dylibso.chicory.runtime.ImportGlobal;
+import com.dylibso.chicory.runtime.GlobalInstance;
+import com.dylibso.chicory.runtime.ImportMemory;
+import com.dylibso.chicory.runtime.ByteArrayMemory;
+import com.dylibso.chicory.runtime.ImportTable;
+import com.dylibso.chicory.runtime.TableInstance;
 import com.dylibso.chicory.wasm.types.ValueType;
+import com.dylibso.chicory.wasm.types.Value;
+import com.dylibso.chicory.wasm.types.MutabilityType;
+import com.dylibso.chicory.wasm.types.MemoryLimits;
+import com.dylibso.chicory.wasm.types.Table;
+import com.dylibso.chicory.wasm.types.TableLimits;
 
 public class PGliteWasmEngine {
     private static final int WASI_ERRNO_SUCCESS = 0;
@@ -845,28 +857,28 @@ public class PGliteWasmEngine {
         // Socket syscalls
         // bind: (sockfd: i32, addr: i32, addrlen: i32) -> i32
         store.addFunction(new HostFunction("env", "__syscall_bind",
-            List.of(ValueType.I32, ValueType.I32, ValueType.I32),
+            List.of(ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32),
             List.of(ValueType.I32),
             (Instance inst, long... args) -> new long[]{-WASI_ERRNO_NOSYS}
         ));
         
         // connect: (sockfd: i32, addr: i32, addrlen: i32) -> i32
         store.addFunction(new HostFunction("env", "__syscall_connect",
-            List.of(ValueType.I32, ValueType.I32, ValueType.I32),
+            List.of(ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32),
             List.of(ValueType.I32),
             (Instance inst, long... args) -> new long[]{-WASI_ERRNO_NOSYS}
         ));
         
         // getsockname: (sockfd: i32, addr: i32, addrlen: i32) -> i32
         store.addFunction(new HostFunction("env", "__syscall_getsockname",
-            List.of(ValueType.I32, ValueType.I32, ValueType.I32),
+            List.of(ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32),
             List.of(ValueType.I32),
             (Instance inst, long... args) -> new long[]{-WASI_ERRNO_NOSYS}
         ));
         
         // getsockopt: (sockfd: i32, level: i32, optname: i32, optval: i32, optlen: i32) -> i32
         store.addFunction(new HostFunction("env", "__syscall_getsockopt",
-            List.of(ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32),
+            List.of(ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32),
             List.of(ValueType.I32),
             (Instance inst, long... args) -> new long[]{-WASI_ERRNO_NOSYS}
         ));
@@ -887,14 +899,14 @@ public class PGliteWasmEngine {
         
         // socket: (domain: i32, type: i32, protocol: i32) -> i32
         store.addFunction(new HostFunction("env", "__syscall_socket",
-            List.of(ValueType.I32, ValueType.I32, ValueType.I32),
+            List.of(ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32),
             List.of(ValueType.I32),
             (Instance inst, long... args) -> new long[]{-WASI_ERRNO_NOSYS}
         ));
         
         // Time functions
         store.addFunction(new HostFunction("env", "_tzset_js",
-            List.of(ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32),
+            List.of(ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32),
             List.of(),
             (Instance inst, long... args) -> null
         ));
@@ -912,35 +924,52 @@ public class PGliteWasmEngine {
         ));
         
         store.addFunction(new HostFunction("env", "_setitimer_js",
-            List.of(ValueType.I32, ValueType.F64, ValueType.F64, ValueType.I32),
+            List.of(ValueType.I32, ValueType.F64),
             List.of(ValueType.I32),
             (Instance inst, long... args) -> new long[]{-1}
         ));
         
         // File/memory functions
         store.addFunction(new HostFunction("env", "_dlopen_js",
-            List.of(ValueType.I32, ValueType.I32, ValueType.I32),
-            List.of(),
-            (Instance inst, long... args) -> null
+            List.of(ValueType.I32),
+            List.of(ValueType.I32),
+            (Instance inst, long... args) -> new long[]{0}
         ));
         
         store.addFunction(new HostFunction("env", "_dlsym_js",
-            List.of(ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32),
-            List.of(),
-            (Instance inst, long... args) -> null
+            List.of(ValueType.I32, ValueType.I32, ValueType.I32),
+            List.of(ValueType.I32),
+            (Instance inst, long... args) -> new long[]{0}
         ));
         
         store.addFunction(new HostFunction("env", "_munmap_js",
-            List.of(ValueType.I32, ValueType.I32),
+            List.of(ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I64),
             List.of(ValueType.I32),
             (Instance inst, long... args) -> new long[]{0}
         ));
         
         store.addFunction(new HostFunction("env", "_mmap_js",
-            List.of(ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I64, ValueType.I32),
+            List.of(ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I32, ValueType.I64, ValueType.I32, ValueType.I32),
             List.of(ValueType.I32),
             (Instance inst, long... args) -> new long[]{-1}
         ));
+        
+        // Memory imports
+        store.addMemory(new ImportMemory("env", "memory", new ByteArrayMemory(new MemoryLimits(2048, 32768))));
+        
+        // Table imports  
+        store.addTable(new ImportTable("env", "__indirect_function_table", 
+            new TableInstance(new Table(ValueType.FuncRef, new TableLimits(5359)))));
+        
+        // Global imports
+        store.addGlobal(new ImportGlobal("env", "__memory_base", 
+            new GlobalInstance(Value.i32(0))));
+        store.addGlobal(new ImportGlobal("env", "__stack_pointer", 
+            new GlobalInstance(Value.i32(1048576), MutabilityType.Var)));
+        store.addGlobal(new ImportGlobal("env", "__table_base", 
+            new GlobalInstance(Value.i32(0))));
+        store.addGlobal(new ImportGlobal("GOT.mem", "__heap_base", 
+            new GlobalInstance(Value.i32(1048576), MutabilityType.Var)));
     }
     
     // Utility methods for working with WASM memory
