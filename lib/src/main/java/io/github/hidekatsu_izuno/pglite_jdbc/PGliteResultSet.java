@@ -7,25 +7,53 @@ import java.net.URL;
 import java.sql.*;
 import java.util.Calendar;
 import java.util.Map;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.HashMap;
 
 public class PGliteResultSet implements ResultSet {
     
     private final Statement statement;
     private boolean closed = false;
     private boolean wasNull = false;
-    private int currentRow = 0;
+    private int currentRow = -1; // Before first row
     
-    // For now, this is an empty result set
-    // TODO: Implement actual result data storage and navigation
+    // Result data storage
+    private List<String> columnNames;
+    private List<String> columnTypes;
+    private List<List<Object>> rows;
+    private Map<String, Integer> columnNameToIndex;
     
     public PGliteResultSet(Statement statement) {
         this.statement = statement;
+        this.columnNames = new ArrayList<>();
+        this.columnTypes = new ArrayList<>();
+        this.rows = new ArrayList<>();
+        this.columnNameToIndex = new HashMap<>();
+    }
+    
+    public PGliteResultSet(Statement statement, List<String> columnNames, List<String> columnTypes, List<List<Object>> rows) {
+        this.statement = statement;
+        this.columnNames = new ArrayList<>(columnNames);
+        this.columnTypes = new ArrayList<>(columnTypes);
+        this.rows = new ArrayList<>(rows);
+        this.columnNameToIndex = new HashMap<>();
+        
+        // Build column name to index mapping
+        for (int i = 0; i < columnNames.size(); i++) {
+            columnNameToIndex.put(columnNames.get(i).toLowerCase(), i + 1);
+        }
+        
+        this.currentRow = -1; // Before first row
     }
     
     @Override
     public boolean next() throws SQLException {
         checkClosed();
-        // Empty result set for now
+        if (currentRow + 1 < rows.size()) {
+            currentRow++;
+            return true;
+        }
         return false;
     }
     
@@ -44,104 +72,254 @@ public class PGliteResultSet implements ResultSet {
     public String getString(int columnIndex) throws SQLException {
         checkClosed();
         checkValidColumn(columnIndex);
-        wasNull = true;
-        return null;
+        checkValidRow();
+        
+        Object value = rows.get(currentRow).get(columnIndex - 1);
+        wasNull = (value == null);
+        return value == null ? null : value.toString();
     }
     
     @Override
     public boolean getBoolean(int columnIndex) throws SQLException {
         checkClosed();
         checkValidColumn(columnIndex);
-        wasNull = true;
-        return false;
+        checkValidRow();
+        
+        Object value = rows.get(currentRow).get(columnIndex - 1);
+        wasNull = (value == null);
+        if (wasNull) return false;
+        
+        if (value instanceof Boolean) {
+            return (Boolean) value;
+        }
+        String str = value.toString().toLowerCase();
+        return "true".equals(str) || "t".equals(str) || "1".equals(str);
     }
     
     @Override
     public byte getByte(int columnIndex) throws SQLException {
         checkClosed();
         checkValidColumn(columnIndex);
-        wasNull = true;
-        return 0;
+        checkValidRow();
+        
+        Object value = rows.get(currentRow).get(columnIndex - 1);
+        wasNull = (value == null);
+        if (wasNull) return 0;
+        
+        if (value instanceof Number) {
+            return ((Number) value).byteValue();
+        }
+        try {
+            return Byte.parseByte(value.toString());
+        } catch (NumberFormatException e) {
+            throw new SQLException("Cannot convert to byte: " + value, e);
+        }
     }
     
     @Override
     public short getShort(int columnIndex) throws SQLException {
         checkClosed();
         checkValidColumn(columnIndex);
-        wasNull = true;
-        return 0;
+        checkValidRow();
+        
+        Object value = rows.get(currentRow).get(columnIndex - 1);
+        wasNull = (value == null);
+        if (wasNull) return 0;
+        
+        if (value instanceof Number) {
+            return ((Number) value).shortValue();
+        }
+        try {
+            return Short.parseShort(value.toString());
+        } catch (NumberFormatException e) {
+            throw new SQLException("Cannot convert to short: " + value, e);
+        }
     }
     
     @Override
     public int getInt(int columnIndex) throws SQLException {
         checkClosed();
         checkValidColumn(columnIndex);
-        wasNull = true;
-        return 0;
+        checkValidRow();
+        
+        Object value = rows.get(currentRow).get(columnIndex - 1);
+        wasNull = (value == null);
+        if (wasNull) return 0;
+        
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
+        }
+        try {
+            return Integer.parseInt(value.toString());
+        } catch (NumberFormatException e) {
+            throw new SQLException("Cannot convert to int: " + value, e);
+        }
     }
     
     @Override
     public long getLong(int columnIndex) throws SQLException {
         checkClosed();
         checkValidColumn(columnIndex);
-        wasNull = true;
-        return 0;
+        checkValidRow();
+        
+        Object value = rows.get(currentRow).get(columnIndex - 1);
+        wasNull = (value == null);
+        if (wasNull) return 0;
+        
+        if (value instanceof Number) {
+            return ((Number) value).longValue();
+        }
+        try {
+            return Long.parseLong(value.toString());
+        } catch (NumberFormatException e) {
+            throw new SQLException("Cannot convert to long: " + value, e);
+        }
     }
     
     @Override
     public float getFloat(int columnIndex) throws SQLException {
         checkClosed();
         checkValidColumn(columnIndex);
-        wasNull = true;
-        return 0;
+        checkValidRow();
+        
+        Object value = rows.get(currentRow).get(columnIndex - 1);
+        wasNull = (value == null);
+        if (wasNull) return 0;
+        
+        if (value instanceof Number) {
+            return ((Number) value).floatValue();
+        }
+        try {
+            return Float.parseFloat(value.toString());
+        } catch (NumberFormatException e) {
+            throw new SQLException("Cannot convert to float: " + value, e);
+        }
     }
     
     @Override
     public double getDouble(int columnIndex) throws SQLException {
         checkClosed();
         checkValidColumn(columnIndex);
-        wasNull = true;
-        return 0;
+        checkValidRow();
+        
+        Object value = rows.get(currentRow).get(columnIndex - 1);
+        wasNull = (value == null);
+        if (wasNull) return 0;
+        
+        if (value instanceof Number) {
+            return ((Number) value).doubleValue();
+        }
+        try {
+            return Double.parseDouble(value.toString());
+        } catch (NumberFormatException e) {
+            throw new SQLException("Cannot convert to double: " + value, e);
+        }
     }
     
     @Override
     public BigDecimal getBigDecimal(int columnIndex, int scale) throws SQLException {
         checkClosed();
         checkValidColumn(columnIndex);
-        wasNull = true;
-        return null;
+        checkValidRow();
+        
+        Object value = rows.get(currentRow).get(columnIndex - 1);
+        wasNull = (value == null);
+        if (wasNull) return null;
+        
+        if (value instanceof BigDecimal) {
+            return ((BigDecimal) value).setScale(scale, java.math.RoundingMode.HALF_UP);
+        }
+        try {
+            BigDecimal bd = new BigDecimal(value.toString());
+            return bd.setScale(scale, java.math.RoundingMode.HALF_UP);
+        } catch (NumberFormatException e) {
+            throw new SQLException("Cannot convert to BigDecimal: " + value, e);
+        }
     }
     
     @Override
     public byte[] getBytes(int columnIndex) throws SQLException {
         checkClosed();
         checkValidColumn(columnIndex);
-        wasNull = true;
-        return null;
+        checkValidRow();
+        
+        Object value = rows.get(currentRow).get(columnIndex - 1);
+        wasNull = (value == null);
+        if (wasNull) return null;
+        
+        if (value instanceof byte[]) {
+            return (byte[]) value;
+        }
+        return value.toString().getBytes();
     }
     
     @Override
     public Date getDate(int columnIndex) throws SQLException {
         checkClosed();
         checkValidColumn(columnIndex);
-        wasNull = true;
-        return null;
+        checkValidRow();
+        
+        Object value = rows.get(currentRow).get(columnIndex - 1);
+        wasNull = (value == null);
+        if (wasNull) return null;
+        
+        if (value instanceof Date) {
+            return (Date) value;
+        }
+        if (value instanceof java.util.Date) {
+            return new Date(((java.util.Date) value).getTime());
+        }
+        try {
+            return Date.valueOf(value.toString());
+        } catch (IllegalArgumentException e) {
+            throw new SQLException("Cannot convert to Date: " + value, e);
+        }
     }
     
     @Override
     public Time getTime(int columnIndex) throws SQLException {
         checkClosed();
         checkValidColumn(columnIndex);
-        wasNull = true;
-        return null;
+        checkValidRow();
+        
+        Object value = rows.get(currentRow).get(columnIndex - 1);
+        wasNull = (value == null);
+        if (wasNull) return null;
+        
+        if (value instanceof Time) {
+            return (Time) value;
+        }
+        if (value instanceof java.util.Date) {
+            return new Time(((java.util.Date) value).getTime());
+        }
+        try {
+            return Time.valueOf(value.toString());
+        } catch (IllegalArgumentException e) {
+            throw new SQLException("Cannot convert to Time: " + value, e);
+        }
     }
     
     @Override
     public Timestamp getTimestamp(int columnIndex) throws SQLException {
         checkClosed();
         checkValidColumn(columnIndex);
-        wasNull = true;
-        return null;
+        checkValidRow();
+        
+        Object value = rows.get(currentRow).get(columnIndex - 1);
+        wasNull = (value == null);
+        if (wasNull) return null;
+        
+        if (value instanceof Timestamp) {
+            return (Timestamp) value;
+        }
+        if (value instanceof java.util.Date) {
+            return new Timestamp(((java.util.Date) value).getTime());
+        }
+        try {
+            return Timestamp.valueOf(value.toString());
+        } catch (IllegalArgumentException e) {
+            throw new SQLException("Cannot convert to Timestamp: " + value, e);
+        }
     }
     
     @Override
@@ -259,15 +437,18 @@ public class PGliteResultSet implements ResultSet {
     @Override
     public ResultSetMetaData getMetaData() throws SQLException {
         checkClosed();
-        return new PGliteResultSetMetaData();
+        return new PGliteResultSetMetaData(columnNames, columnTypes);
     }
     
     @Override
     public Object getObject(int columnIndex) throws SQLException {
         checkClosed();
         checkValidColumn(columnIndex);
-        wasNull = true;
-        return null;
+        checkValidRow();
+        
+        Object value = rows.get(currentRow).get(columnIndex - 1);
+        wasNull = (value == null);
+        return value;
     }
     
     @Override
@@ -278,8 +459,11 @@ public class PGliteResultSet implements ResultSet {
     @Override
     public int findColumn(String columnLabel) throws SQLException {
         checkClosed();
-        // For empty result set, no columns exist
-        throw new SQLException("Column not found: " + columnLabel);
+        Integer index = columnNameToIndex.get(columnLabel.toLowerCase());
+        if (index == null) {
+            throw new SQLException("Column not found: " + columnLabel);
+        }
+        return index;
     }
     
     @Override
@@ -305,73 +489,111 @@ public class PGliteResultSet implements ResultSet {
     @Override
     public boolean isBeforeFirst() throws SQLException {
         checkClosed();
-        return currentRow == 0;
+        return currentRow == -1 && !rows.isEmpty();
     }
     
     @Override
     public boolean isAfterLast() throws SQLException {
         checkClosed();
-        return currentRow > 0; // Empty result set
+        return currentRow >= rows.size() && !rows.isEmpty();
     }
     
     @Override
     public boolean isFirst() throws SQLException {
         checkClosed();
-        return false; // Empty result set
+        return currentRow == 0 && !rows.isEmpty();
     }
     
     @Override
     public boolean isLast() throws SQLException {
         checkClosed();
-        return false; // Empty result set
+        return currentRow == rows.size() - 1 && !rows.isEmpty();
     }
     
     @Override
     public void beforeFirst() throws SQLException {
         checkClosed();
-        currentRow = 0;
+        currentRow = -1;
     }
     
     @Override
     public void afterLast() throws SQLException {
         checkClosed();
-        currentRow = 1; // Past the end of empty result set
+        currentRow = rows.size();
     }
     
     @Override
     public boolean first() throws SQLException {
         checkClosed();
-        return false; // Empty result set
+        if (rows.isEmpty()) {
+            return false;
+        }
+        currentRow = 0;
+        return true;
     }
     
     @Override
     public boolean last() throws SQLException {
         checkClosed();
-        return false; // Empty result set
+        if (rows.isEmpty()) {
+            return false;
+        }
+        currentRow = rows.size() - 1;
+        return true;
     }
     
     @Override
     public int getRow() throws SQLException {
         checkClosed();
-        return 0; // Empty result set
+        if (currentRow < 0 || currentRow >= rows.size()) {
+            return 0;
+        }
+        return currentRow + 1; // 1-based row number
     }
     
     @Override
     public boolean absolute(int row) throws SQLException {
         checkClosed();
-        return false; // Empty result set
+        if (row == 0) {
+            beforeFirst();
+            return false;
+        }
+        
+        if (row > 0) {
+            if (row <= rows.size()) {
+                currentRow = row - 1; // Convert to 0-based
+                return true;
+            } else {
+                afterLast();
+                return false;
+            }
+        } else {
+            // Negative row number - count from end
+            int targetRow = rows.size() + row;
+            if (targetRow >= 0) {
+                currentRow = targetRow;
+                return true;
+            } else {
+                beforeFirst();
+                return false;
+            }
+        }
     }
     
     @Override
-    public boolean relative(int rows) throws SQLException {
+    public boolean relative(int rowOffset) throws SQLException {
         checkClosed();
-        return false; // Empty result set
+        return absolute(getRow() + rowOffset);
     }
     
     @Override
     public boolean previous() throws SQLException {
         checkClosed();
-        return false; // Empty result set
+        if (currentRow > 0) {
+            currentRow--;
+            return true;
+        }
+        return false;
     }
     
     @Override
@@ -1072,7 +1294,14 @@ public class PGliteResultSet implements ResultSet {
     }
     
     private void checkValidColumn(int columnIndex) throws SQLException {
-        // For empty result set, no columns are valid
-        throw new SQLException("Column index out of range: " + columnIndex);
+        if (columnIndex < 1 || columnIndex > columnNames.size()) {
+            throw new SQLException("Column index out of range: " + columnIndex);
+        }
+    }
+    
+    private void checkValidRow() throws SQLException {
+        if (currentRow < 0 || currentRow >= rows.size()) {
+            throw new SQLException("No current row");
+        }
     }
 }

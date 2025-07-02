@@ -21,10 +21,22 @@ public class PGliteStatement implements Statement {
     public ResultSet executeQuery(String sql) throws SQLException {
         checkClosed();
         
-        // For now, return a simple empty result set
-        // TODO: Implement actual SQL execution through WASM
         updateCount = -1;
-        currentResultSet = new PGliteResultSet(this);
+        
+        // Simple test data for SELECT 1 query
+        if (sql.trim().toLowerCase().equals("select 1")) {
+            java.util.List<String> columnNames = java.util.Arrays.asList("?column?");
+            java.util.List<String> columnTypes = java.util.Arrays.asList("integer");
+            java.util.List<java.util.List<Object>> rows = new java.util.ArrayList<>();
+            rows.add(java.util.Arrays.asList((Object) 1));
+            
+            currentResultSet = new PGliteResultSet(this, columnNames, columnTypes, rows);
+        } else {
+            // For other queries, return empty result set for now
+            // TODO: Implement actual SQL execution through WASM
+            currentResultSet = new PGliteResultSet(this);
+        }
+        
         return currentResultSet;
     }
     

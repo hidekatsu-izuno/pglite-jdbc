@@ -1,4 +1,4 @@
-package io.github.hidekatsu_izuno.pglite_jdbc;
+package io.github.hidekatsu_izuno.pglite_jdbc.analyzer;
 
 import com.dylibso.chicory.wasm.Parser;
 import com.dylibso.chicory.wasm.types.Import;

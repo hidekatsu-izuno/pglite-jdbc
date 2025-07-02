@@ -1,4 +1,4 @@
-package io.github.hidekatsu_izuno.pglite_jdbc;
+package io.github.hidekatsu_izuno.pglite_jdbc.analyzer;
 
 import com.dylibso.chicory.wasm.Parser;
 import com.dylibso.chicory.wasm.types.ExternalType;
@@ -6,16 +6,17 @@ import com.dylibso.chicory.wasm.types.FunctionImport;
 import com.dylibso.chicory.wasm.types.FunctionType;
 import java.io.IOException;
 
-public class MunmapSignatureAnalyzer {
+public class FunctionSignatureAnalyzer {
     public static void main(String[] args) throws IOException {
-        try (var in = MunmapSignatureAnalyzer.class.getResourceAsStream("/postgres.wasm")) {
+        try (var in = FunctionSignatureAnalyzer.class.getResourceAsStream("/postgres.wasm")) {
             var module = Parser.parse(in);
-            System.out.println("=== Analyzing _munmap_js Function Signature ===");
+            System.out.println("=== Function Signature Analysis ===");
             
             for (int i = 0; i < module.importSection().importCount(); i++) {
                 var imp = module.importSection().getImport(i);
                 
-                if (imp.name().equals("_munmap_js")) {
+                // Look specifically for fcntl64
+                if (imp.name().equals("__syscall_fcntl64")) {
                     System.out.println(String.format("\n*** FOUND: %s.%s ***", 
                         imp.module(), imp.name()));
                     
@@ -31,11 +32,11 @@ public class MunmapSignatureAnalyzer {
                             
                             // Show what we're currently providing
                             System.out.println("\nCURRENT PROVIDED SIGNATURE:");
-                            System.out.println("  Parameters: [I32, I32]");
+                            System.out.println("  Parameters: [I32, I32, I64]");
                             System.out.println("  Returns: [I32]");
                             
                             // Check if they match
-                            boolean paramsMatch = expectedType.params().toString().equals("[I32, I32]");
+                            boolean paramsMatch = expectedType.params().toString().equals("[I32, I32, I64]");
                             boolean returnsMatch = expectedType.returns().toString().equals("[I32]");
                             
                             System.out.println("\nMATCH STATUS:");
@@ -45,16 +46,15 @@ public class MunmapSignatureAnalyzer {
                             
                             if (!paramsMatch || !returnsMatch) {
                                 System.out.println("\n*** SIGNATURE MISMATCH DETECTED ***");
-                                System.out.println("Expected returns: " + expectedType.returns());
-                                System.out.println("If returns is '[]', the function should return void!");
+                                System.out.println("This explains why the WASM module is rejecting the function!");
                             }
                         }
                     }
-                    return;
+                    return; // Found what we're looking for
                 }
             }
             
-            System.out.println("_munmap_js not found in imports!");
+            System.out.println("__syscall_fcntl64 not found in imports!");
         }
     }
 }
