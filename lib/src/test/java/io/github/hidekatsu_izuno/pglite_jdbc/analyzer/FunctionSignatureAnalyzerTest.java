@@ -1,6 +1,5 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.analyzer;
 
-import io.github.hidekatsu_izuno.pglite_jdbc.analyzer.FunctionSignatureAnalyzer;
 import org.junit.jupiter.api.Test;
 import java.io.IOException;
 

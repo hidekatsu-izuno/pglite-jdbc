@@ -10,6 +10,7 @@ import java.util.Calendar;
 public class PGlitePreparedStatement extends PGliteStatement implements PreparedStatement {
     
     private final String sql;
+    private final java.util.Map<Integer, Object> parameters = new java.util.HashMap<>();
     
     public PGlitePreparedStatement(PGliteConnection connection, PGliteWasmEngine wasmEngine, String sql) {
         super(connection, wasmEngine);
@@ -18,104 +19,144 @@ public class PGlitePreparedStatement extends PGliteStatement implements Prepared
     
     @Override
     public ResultSet executeQuery() throws SQLException {
-        return executeQuery(sql);
+        return executeQuery(buildParameterizedSQL());
     }
     
     @Override
     public int executeUpdate() throws SQLException {
-        return executeUpdate(sql);
+        return executeUpdate(buildParameterizedSQL());
     }
     
     @Override
     public boolean execute() throws SQLException {
-        return execute(sql);
+        return execute(buildParameterizedSQL());
     }
     
-    // Parameter setting methods - all stubbed for now
-    // TODO: Implement actual parameter binding
+    // Parameter setting methods
+    private String buildParameterizedSQL() throws SQLException {
+        String result = sql;
+        // Simple parameter substitution - replace ? with parameter values
+        for (java.util.Map.Entry<Integer, Object> entry : parameters.entrySet()) {
+            int paramIndex = entry.getKey();
+            Object value = entry.getValue();
+            String replacement = formatParameter(value);
+            
+            // Find the paramIndex-th occurrence of ?
+            int questionIndex = findNthQuestionMark(result, paramIndex);
+            if (questionIndex >= 0) {
+                result = result.substring(0, questionIndex) + replacement + result.substring(questionIndex + 1);
+            }
+        }
+        return result;
+    }
+    
+    private int findNthQuestionMark(String sql, int n) {
+        int count = 0;
+        for (int i = 0; i < sql.length(); i++) {
+            if (sql.charAt(i) == '?') {
+                count++;
+                if (count == n) {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
+    
+    private String formatParameter(Object value) {
+        if (value == null) {
+            return "NULL";
+        } else if (value instanceof String) {
+            return "'" + ((String) value).replace("'", "''") + "'";
+        } else if (value instanceof Number || value instanceof Boolean) {
+            return value.toString();
+        } else {
+            return "'" + value.toString().replace("'", "''") + "'";
+        }
+    }
     
     @Override
     public void setNull(int parameterIndex, int sqlType) throws SQLException {
         checkClosed();
-        // TODO: Store parameter value
+        parameters.put(parameterIndex, null);
     }
     
     @Override
     public void setBoolean(int parameterIndex, boolean x) throws SQLException {
         checkClosed();
-        // TODO: Store parameter value
+        parameters.put(parameterIndex, x);
     }
     
     @Override
     public void setByte(int parameterIndex, byte x) throws SQLException {
         checkClosed();
-        // TODO: Store parameter value
+        parameters.put(parameterIndex, x);
     }
     
     @Override
     public void setShort(int parameterIndex, short x) throws SQLException {
         checkClosed();
-        // TODO: Store parameter value
+        parameters.put(parameterIndex, x);
     }
     
     @Override
     public void setInt(int parameterIndex, int x) throws SQLException {
         checkClosed();
-        // TODO: Store parameter value
+        parameters.put(parameterIndex, x);
     }
     
     @Override
     public void setLong(int parameterIndex, long x) throws SQLException {
         checkClosed();
-        // TODO: Store parameter value
+        parameters.put(parameterIndex, x);
     }
     
     @Override
     public void setFloat(int parameterIndex, float x) throws SQLException {
         checkClosed();
-        // TODO: Store parameter value
+        parameters.put(parameterIndex, x);
     }
     
     @Override
     public void setDouble(int parameterIndex, double x) throws SQLException {
         checkClosed();
-        // TODO: Store parameter value
+        parameters.put(parameterIndex, x);
     }
     
     @Override
     public void setBigDecimal(int parameterIndex, BigDecimal x) throws SQLException {
         checkClosed();
-        // TODO: Store parameter value
+        parameters.put(parameterIndex, x);
     }
     
     @Override
     public void setString(int parameterIndex, String x) throws SQLException {
         checkClosed();
-        // TODO: Store parameter value
+        parameters.put(parameterIndex, x);
     }
     
     @Override
     public void setBytes(int parameterIndex, byte[] x) throws SQLException {
         checkClosed();
-        // TODO: Store parameter value
+        parameters.put(parameterIndex, x);
     }
     
     @Override
     public void setDate(int parameterIndex, Date x) throws SQLException {
         checkClosed();
-        // TODO: Store parameter value
+        parameters.put(parameterIndex, x);
     }
     
     @Override
     public void setTime(int parameterIndex, Time x) throws SQLException {
         checkClosed();
-        // TODO: Store parameter value
+        parameters.put(parameterIndex, x);
     }
     
     @Override
     public void setTimestamp(int parameterIndex, Timestamp x) throws SQLException {
         checkClosed();
-        // TODO: Store parameter value
+        parameters.put(parameterIndex, x);
     }
     
     @Override
@@ -136,19 +177,19 @@ public class PGlitePreparedStatement extends PGliteStatement implements Prepared
     @Override
     public void clearParameters() throws SQLException {
         checkClosed();
-        // TODO: Clear stored parameters
+        parameters.clear();
     }
     
     @Override
     public void setObject(int parameterIndex, Object x, int targetSqlType) throws SQLException {
         checkClosed();
-        // TODO: Store parameter value with type conversion
+        parameters.put(parameterIndex, x);
     }
     
     @Override
     public void setObject(int parameterIndex, Object x) throws SQLException {
         checkClosed();
-        // TODO: Store parameter value
+        parameters.put(parameterIndex, x);
     }
     
     @Override

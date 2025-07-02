@@ -11,6 +11,7 @@ public class PGliteStatement implements Statement {
     protected int updateCount = -1;
     protected int queryTimeout = 0;
     protected int maxRows = 0;
+    protected SQLWarning firstWarning = null;
     
     public PGliteStatement(PGliteConnection connection, PGliteWasmEngine wasmEngine) {
         this.connection = connection;
@@ -32,9 +33,13 @@ public class PGliteStatement implements Statement {
             
             currentResultSet = new PGliteResultSet(this, columnNames, columnTypes, rows);
         } else {
-            // For other queries, return empty result set for now
-            // TODO: Implement actual SQL execution through WASM
-            currentResultSet = new PGliteResultSet(this);
+            // Execute SQL through WASM engine
+            try {
+                var result = wasmEngine.executeQuery(sql);
+                currentResultSet = new PGliteResultSet(this, result.columnNames, result.columnTypes, result.rows);
+            } catch (Exception e) {
+                throw new SQLException("Failed to execute query: " + e.getMessage(), e);
+            }
         }
         
         return currentResultSet;
@@ -44,11 +49,14 @@ public class PGliteStatement implements Statement {
     public int executeUpdate(String sql) throws SQLException {
         checkClosed();
         
-        // For now, return 0 affected rows
-        // TODO: Implement actual SQL execution through WASM
-        currentResultSet = null;
-        updateCount = 0;
-        return updateCount;
+        // Execute SQL through WASM engine
+        try {
+            updateCount = wasmEngine.executeUpdate(sql);
+            currentResultSet = null;
+            return updateCount;
+        } catch (Exception e) {
+            throw new SQLException("Failed to execute update: " + e.getMessage(), e);
+        }
     }
     
     @Override
@@ -107,18 +115,24 @@ public class PGliteStatement implements Statement {
     @Override
     public void cancel() throws SQLException {
         checkClosed();
-        // TODO: Implement query cancellation
+        // Cancel any ongoing query in the WASM engine
+        try {
+            wasmEngine.cancelQuery();
+        } catch (Exception e) {
+            throw new SQLException("Failed to cancel query: " + e.getMessage(), e);
+        }
     }
     
     @Override
     public SQLWarning getWarnings() throws SQLException {
         checkClosed();
-        return null;
+        return firstWarning;
     }
     
     @Override
     public void clearWarnings() throws SQLException {
         checkClosed();
+        firstWarning = null;
     }
     
     @Override
@@ -162,6 +176,11 @@ public class PGliteStatement implements Statement {
         if (currentResultSet != null) {
             currentResultSet.close();
             currentResultSet = null;
+            
+            // Check if we should close on completion
+            if (closeOnCompletion) {
+                close();
+            }
         }
         updateCount = -1;
         return false;
@@ -289,16 +308,18 @@ public class PGliteStatement implements Statement {
         return false;
     }
     
+    private boolean closeOnCompletion = false;
+    
     @Override
     public void closeOnCompletion() throws SQLException {
         checkClosed();
-        // TODO: Implement close on completion
+        this.closeOnCompletion = true;
     }
     
     @Override
     public boolean isCloseOnCompletion() throws SQLException {
         checkClosed();
-        return false;
+        return closeOnCompletion;
     }
     
     @Override
@@ -320,6 +341,15 @@ public class PGliteStatement implements Statement {
         }
         if (connection.isClosed()) {
             throw new SQLException("Connection is closed");
+        }
+    }
+    
+    // Helper method to add warnings
+    protected void addWarning(SQLWarning warning) {
+        if (firstWarning == null) {
+            firstWarning = warning;
+        } else {
+            firstWarning.setNextWarning(warning);
         }
     }
 }

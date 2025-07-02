@@ -1,7 +1,6 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.analyzer;
 
 import com.dylibso.chicory.wasm.Parser;
-import com.dylibso.chicory.wasm.types.Import;
 import java.io.IOException;
 
 public class WasmImportAnalyzer {

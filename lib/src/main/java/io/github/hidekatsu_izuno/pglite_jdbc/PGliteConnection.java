@@ -11,7 +11,9 @@ public class PGliteConnection implements Connection {
     private final String databasePath;
     private boolean closed = false;
     private boolean autoCommit = true;
+    private boolean readOnly = false;
     private int transactionIsolation = Connection.TRANSACTION_READ_COMMITTED;
+    private SQLWarning firstWarning = null;
     
     public PGliteConnection(String databasePath, Properties info) throws SQLException {
         this.databasePath = databasePath;
@@ -65,7 +67,12 @@ public class PGliteConnection implements Connection {
         if (autoCommit) {
             throw new SQLException("Cannot commit when in auto-commit mode");
         }
-        // TODO: Implement actual commit logic with WASM
+        try {
+            // Execute COMMIT through WASM engine
+            wasmEngine.executeUpdate("COMMIT");
+        } catch (Exception e) {
+            throw new SQLException("Failed to commit transaction", e);
+        }
     }
     
     @Override
@@ -74,14 +81,30 @@ public class PGliteConnection implements Connection {
         if (autoCommit) {
             throw new SQLException("Cannot rollback when in auto-commit mode");
         }
-        // TODO: Implement actual rollback logic with WASM
+        try {
+            // Execute ROLLBACK through WASM engine
+            wasmEngine.executeUpdate("ROLLBACK");
+        } catch (Exception e) {
+            throw new SQLException("Failed to rollback transaction", e);
+        }
     }
     
     @Override
     public void close() throws SQLException {
         if (!closed) {
             closed = true;
-            // TODO: Cleanup WASM resources
+            // Cleanup WASM resources
+            try {
+                // Close any open transactions
+                if (!autoCommit) {
+                    rollback();
+                }
+                // Note: WASM engine cleanup would happen here
+                // The WASM instance will be garbage collected when this connection is disposed
+            } catch (Exception e) {
+                // Log but don't throw - close should be idempotent
+                System.err.println("Warning: Error during connection cleanup: " + e.getMessage());
+            }
         }
     }
     
@@ -99,13 +122,15 @@ public class PGliteConnection implements Connection {
     @Override
     public void setReadOnly(boolean readOnly) throws SQLException {
         checkClosed();
-        // TODO: Implement read-only mode
+        this.readOnly = readOnly;
+        // In a full implementation, this would configure the WASM engine
+        // to reject write operations when in read-only mode
     }
     
     @Override
     public boolean isReadOnly() throws SQLException {
         checkClosed();
-        return false;
+        return readOnly;
     }
     
     @Override
@@ -117,7 +142,8 @@ public class PGliteConnection implements Connection {
     @Override
     public String getCatalog() throws SQLException {
         checkClosed();
-        return null;
+        // PGlite uses a single database, return the database name
+        return "postgres";
     }
     
     @Override
@@ -135,12 +161,13 @@ public class PGliteConnection implements Connection {
     @Override
     public SQLWarning getWarnings() throws SQLException {
         checkClosed();
-        return null;
+        return firstWarning;
     }
     
     @Override
     public void clearWarnings() throws SQLException {
         checkClosed();
+        firstWarning = null;
     }
     
     @Override
@@ -327,6 +354,15 @@ public class PGliteConnection implements Connection {
     private void checkClosed() throws SQLException {
         if (closed) {
             throw new SQLException("Connection is closed");
+        }
+    }
+    
+    // Helper method to add warnings
+    void addWarning(SQLWarning warning) {
+        if (firstWarning == null) {
+            firstWarning = warning;
+        } else {
+            firstWarning.setNextWarning(warning);
         }
     }
     

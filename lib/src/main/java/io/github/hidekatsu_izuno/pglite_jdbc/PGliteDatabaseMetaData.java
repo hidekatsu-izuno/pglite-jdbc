@@ -142,27 +142,32 @@ public class PGliteDatabaseMetaData implements DatabaseMetaData {
     
     @Override
     public String getSQLKeywords() throws SQLException {
-        return ""; // TODO: Return PostgreSQL-specific keywords
+        // PostgreSQL-specific keywords not in SQL standard
+        return "ILIKE,SIMILAR,REGEXP,BIGSERIAL,SERIAL,SMALLSERIAL,BYTEA,INET,CIDR,MACADDR,UUID,JSON,JSONB,ARRAY,HSTORE,LTREE,TSVECTOR,TSQUERY,MONEY,INTERVAL,BOOLEAN,TEXT";
     }
     
     @Override
     public String getNumericFunctions() throws SQLException {
-        return ""; // TODO: Return supported numeric functions
+        // Common numeric functions supported by PostgreSQL
+        return "ABS,ACOS,ASIN,ATAN,ATAN2,CEILING,COS,COT,DEGREES,EXP,FLOOR,LOG,LOG10,MOD,PI,POWER,RADIANS,ROUND,SIGN,SIN,SQRT,TAN,TRUNCATE,RANDOM,GREATEST,LEAST";
     }
     
     @Override
     public String getStringFunctions() throws SQLException {
-        return ""; // TODO: Return supported string functions
+        // Common string functions supported by PostgreSQL
+        return "ASCII,CHAR_LENGTH,CHARACTER_LENGTH,CONCAT,INITCAP,LOWER,LPAD,LTRIM,OCTET_LENGTH,POSITION,REPEAT,REPLACE,REVERSE,RPAD,RTRIM,SPLIT_PART,SUBSTR,SUBSTRING,TRANSLATE,TRIM,UPPER,LEFT,RIGHT,LENGTH";
     }
     
     @Override
     public String getSystemFunctions() throws SQLException {
-        return ""; // TODO: Return supported system functions
+        // Common system functions supported by PostgreSQL
+        return "COALESCE,CURRENT_DATABASE,CURRENT_SCHEMA,CURRENT_USER,NULLIF,SESSION_USER,USER,VERSION,CAST,CONVERT";
     }
     
     @Override
     public String getTimeDateFunctions() throws SQLException {
-        return ""; // TODO: Return supported time/date functions
+        // Common time/date functions supported by PostgreSQL
+        return "CURRENT_DATE,CURRENT_TIME,CURRENT_TIMESTAMP,DATE_PART,DATE_TRUNC,EXTRACT,LOCALTIME,LOCALTIMESTAMP,NOW,AGE,JUSTIFY_DAYS,JUSTIFY_HOURS,JUSTIFY_INTERVAL,MAKE_DATE,MAKE_TIME,MAKE_TIMESTAMP";
     }
     
     @Override
