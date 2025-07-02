@@ -43,6 +43,10 @@ The project follows a simple architecture:
 - `lib/src/main/resources/postgres.wasm`: The PostgreSQL WebAssembly module
 - `lib/build.gradle.kts`: Build configuration with dependencies and Java 21 toolchain
 
+## Dependencies
+
+- [Chicory](https://github.com/dylibso/chicory): Wasm Runtime Engine
+
 ## Development Notes
 
 - The project uses Java 21 as specified in the toolchain configuration
