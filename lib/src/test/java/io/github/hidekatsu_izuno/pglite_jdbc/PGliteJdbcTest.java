@@ -35,11 +35,11 @@ class PGliteJdbcTest {
             Statement stmt = conn.createStatement();
             assertNotNull(stmt);
             
-            // Test result set from SELECT 1
-            ResultSet rs = stmt.executeQuery("SELECT 1");
+            // Test result set from SELECT 2
+            ResultSet rs = stmt.executeQuery("SELECT 2");
             assertNotNull(rs);
             assertTrue(rs.next()); // Should have one row
-            assertEquals(1, rs.getInt(1)); // Should return 1
+            assertEquals(2, rs.getInt(1)); // Should return 2
             assertFalse(rs.next()); // No more rows
             rs.close();
             

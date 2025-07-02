@@ -30,3 +30,17 @@ tasks.named<Jar>("jar") {
 tasks.named<Test>("test") {
     useJUnitPlatform()
 }
+
+tasks.register<JavaExec>("inspectWasm") {
+    group = "application"
+    description = "Inspect postgres.wasm exports"
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.hidekatsu_izuno.pglite_jdbc.WasmInspector")
+}
+
+tasks.register<JavaExec>("debugWasm") {
+    group = "application"
+    description = "Debug WASM function calls"
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.hidekatsu_izuno.pglite_jdbc.WasmDebugger")
+}

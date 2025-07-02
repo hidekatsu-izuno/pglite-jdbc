@@ -24,22 +24,12 @@ public class PGliteStatement implements Statement {
         
         updateCount = -1;
         
-        // Simple test data for SELECT 1 query
-        if (sql.trim().toLowerCase().equals("select 1")) {
-            java.util.List<String> columnNames = java.util.Arrays.asList("?column?");
-            java.util.List<String> columnTypes = java.util.Arrays.asList("integer");
-            java.util.List<java.util.List<Object>> rows = new java.util.ArrayList<>();
-            rows.add(java.util.Arrays.asList((Object) 1));
-            
-            currentResultSet = new PGliteResultSet(this, columnNames, columnTypes, rows);
-        } else {
-            // Execute SQL through WASM engine
-            try {
-                var result = wasmEngine.executeQuery(sql);
-                currentResultSet = new PGliteResultSet(this, result.columnNames, result.columnTypes, result.rows);
-            } catch (Exception e) {
-                throw new SQLException("Failed to execute query: " + e.getMessage(), e);
-            }
+        // Execute SQL through WASM engine
+        try {
+            var result = wasmEngine.executeQuery(sql);
+            currentResultSet = new PGliteResultSet(this, result.columnNames, result.columnTypes, result.rows);
+        } catch (Exception e) {
+            throw new SQLException("Failed to execute query: " + e.getMessage(), e);
         }
         
         return currentResultSet;
