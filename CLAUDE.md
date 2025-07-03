@@ -56,3 +56,4 @@ The project follows a simple architecture:
 ## Development Policies
 
 - Create any temporary files under tmp/ in the workspace.
+- Don't test using mock classes.
