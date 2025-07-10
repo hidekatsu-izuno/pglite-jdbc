@@ -9,9 +9,8 @@ repositories {
 }
 
 dependencies {
-    implementation("org.postgresql:postgresql:42.7.7")
+    implementation("org.mozilla:rhino:1.8.0")
     implementation("com.dylibso.chicory:runtime:1.4.1")
-    implementation("com.dylibso.chicory:wasi:1.4.1")
 
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

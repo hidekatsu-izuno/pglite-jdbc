@@ -5,6 +5,7 @@ pglite-jdbc is a library that enables calling pglite (https://github.com/electri
 ## Dependencies
 
 - chicory: WASM runtime.
+- rhino: JavaScript runtime.
 
 ## License
 
