@@ -9,8 +9,8 @@ repositories {
 }
 
 dependencies {
-    implementation("org.mozilla:rhino:1.8.0")
-    implementation("com.dylibso.chicory:runtime:1.4.1")
+    implementation("org.mozilla:rhino:1.9.0")
+    implementation("com.dylibso.chicory:runtime:1.6.1")
 
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
@@ -28,18 +28,4 @@ tasks.named<Jar>("jar") {
 
 tasks.named<Test>("test") {
     useJUnitPlatform()
-}
-
-tasks.register<JavaExec>("inspectWasm") {
-    group = "application"
-    description = "Inspect postgres.wasm exports"
-    classpath = sourceSets.main.get().runtimeClasspath
-    mainClass.set("io.github.hidekatsu_izuno.pglite_jdbc.WasmInspector")
-}
-
-tasks.register<JavaExec>("debugWasm") {
-    group = "application"
-    description = "Debug WASM function calls"
-    classpath = sourceSets.main.get().runtimeClasspath
-    mainClass.set("io.github.hidekatsu_izuno.pglite_jdbc.WasmDebugger")
 }
