@@ -5,6 +5,7 @@
 
 <project_layout>
 - lib/src/main/java: Java source code
+- lib/src/main/java/io/github/hidekatsu_izuno/pglite_jdbc: base package
 - lib/test/main/java: JUnit5 test code
 </project_layout>
 

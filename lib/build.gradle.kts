@@ -9,8 +9,8 @@ repositories {
 }
 
 dependencies {
-    implementation("org.mozilla:rhino:1.9.0")
     implementation("com.dylibso.chicory:runtime:1.6.1")
+    implementation("com.dylibso.chicory:wasm:1.6.1")
 
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
