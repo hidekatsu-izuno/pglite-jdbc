@@ -1,6 +1,6 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages;
 
-public class DatabaseError extends RuntimeException implements NoticeOrError {
+public class DatabaseError extends RuntimeException implements BackendMessage, NoticeOrError {
     public final int length;
     public final String name;
     public String severity;
@@ -24,5 +24,15 @@ public class DatabaseError extends RuntimeException implements NoticeOrError {
         super(message);
         this.length = length;
         this.name = name;
+    }
+
+    @Override
+    public String getName() {
+        return this.name;
+    }
+
+    @Override
+    public int getLength() {
+        return this.length;
     }
 }

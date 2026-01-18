@@ -37,6 +37,18 @@ public class DataView {
         return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
     }
 
+    public int getUint32(int byteOffset, boolean littleEndian) {
+        checkRange(byteOffset, 4);
+        var b0 = this.buffer.bytes[byteOffset] & 0xFF;
+        var b1 = this.buffer.bytes[byteOffset + 1] & 0xFF;
+        var b2 = this.buffer.bytes[byteOffset + 2] & 0xFF;
+        var b3 = this.buffer.bytes[byteOffset + 3] & 0xFF;
+        if (littleEndian) {
+            return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
+        }
+        return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
+    }
+
     public void setInt16(int byteOffset, short value, boolean littleEndian) {
         checkRange(byteOffset, 2);
         if (littleEndian) {
