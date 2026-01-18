@@ -18,6 +18,7 @@
 - Use io.github.hidekatsu_izuno.pglite_jdbc as the root package.
 - Java file name must be a upper camel case based on the ts/js file name.
 - Use java.util.concurrent.Semaphore instead of 'async-mutex'.
+- Preserve TypeScript control flow and expressions as closely as possible in Java; avoid rewrites unless required by language constraints.
 </conversion_hints>
 
 <workflow>
