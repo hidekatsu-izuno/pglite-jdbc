@@ -6,7 +6,6 @@
 
 <project_layout>
 - lib/src/main/java: Java source code
-- lib/src/main/java/io/github/hidekatsu_izuno/pglite_jdbc: base package
 - lib/test/main/java: JUnit5 test code
 </project_layout>
 
@@ -15,7 +14,8 @@
 </commands>
 
 <conversion_hints>
-- use java.util.concurrent.Semaphore instead of 'async-mutex'
+- Use io.github.hidekatsu_izuno.pglite_jdbc as the root package.
+- Use java.util.concurrent.Semaphore instead of 'async-mutex'.
 </conversion_hints>
 
 <workflow>
