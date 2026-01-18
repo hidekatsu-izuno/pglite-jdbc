@@ -1,4 +1,4 @@
-package io.github.hidekatsu_izuno.pglite_jdbc;
+package io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.ArrayBuffer;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.DataView;

@@ -26,6 +26,10 @@ public class ArrayBuffer {
         return new ArrayBuffer(slice, false);
     }
 
+    public byte[] getBytes() {
+        return this.bytes;
+    }
+
     ArrayBuffer(byte[] bytes, boolean copy) {
         this.bytes = copy ? Arrays.copyOf(bytes, bytes.length) : bytes;
         this.byteLength = this.bytes.length;

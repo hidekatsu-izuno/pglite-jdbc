@@ -63,8 +63,52 @@ public class Uint8Array implements TypedArray {
         this.buffer.bytes[this.byteOffset + index] = (byte) (value & 0xFF);
     }
 
+    public void set(Uint8Array source) {
+        this.set(source, 0);
+    }
+
+    public void set(Uint8Array source, int offset) {
+        if (offset < 0 || offset > this.length) {
+            throw new IndexOutOfBoundsException("offset out of range");
+        }
+        if (source.length + offset > this.length) {
+            throw new IndexOutOfBoundsException("source length out of range");
+        }
+        if (source.length > 0) {
+            System.arraycopy(
+                source.buffer.bytes,
+                source.byteOffset,
+                this.buffer.bytes,
+                this.byteOffset + offset,
+                source.length
+            );
+        }
+    }
+
+    public void set(byte[] source) {
+        this.set(source, 0);
+    }
+
+    public void set(byte[] source, int offset) {
+        if (offset < 0 || offset > this.length) {
+            throw new IndexOutOfBoundsException("offset out of range");
+        }
+        if (source.length + offset > this.length) {
+            throw new IndexOutOfBoundsException("source length out of range");
+        }
+        if (source.length > 0) {
+            System.arraycopy(
+                source,
+                0,
+                this.buffer.bytes,
+                this.byteOffset + offset,
+                source.length
+            );
+        }
+    }
+
     public byte[] toByteArray() {
-        byte[] copy = new byte[this.length];
+        var copy = new byte[this.length];
         if (this.length > 0) {
             System.arraycopy(this.buffer.bytes, this.byteOffset, copy, 0, this.length);
         }
