@@ -10,7 +10,7 @@
 </project_layout>
 
 <commands>
-- ./gradlew build: Build and run tests
+- gradle build: Build and run tests
 </commands>
 
 <conversion_hints>
