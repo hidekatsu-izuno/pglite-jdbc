@@ -1,11 +1,12 @@
-package io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol;
+package io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.buffer_writer;
 
+import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.StringUtils;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.ArrayBuffer;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.DataView;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.TextEncoder;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
 
-public class BufferWriter {
+public class Writer {
     private DataView bufferView;
     private int offset = 5;
     private final boolean littleEndian = false;
@@ -13,11 +14,11 @@ public class BufferWriter {
     private final TextEncoder encoder = new TextEncoder();
     private final int size;
 
-    public BufferWriter() {
+    public Writer() {
         this(256);
     }
 
-    public BufferWriter(int size) {
+    public Writer(int size) {
         this.size = size;
         this.bufferView = this.allocateBuffer(size);
     }
@@ -38,21 +39,21 @@ public class BufferWriter {
         }
     }
 
-    public BufferWriter addInt32(int num) {
+    public Writer addInt32(int num) {
         this.ensure(4);
         this.bufferView.setInt32(this.offset, num, this.littleEndian);
         this.offset += 4;
         return this;
     }
 
-    public BufferWriter addInt16(int num) {
+    public Writer addInt16(int num) {
         this.ensure(2);
         this.bufferView.setInt16(this.offset, (short) num, this.littleEndian);
         this.offset += 2;
         return this;
     }
 
-    public BufferWriter addCString(String string) {
+    public Writer addCString(String string) {
         if (string != null && !string.isEmpty()) {
             // TODO(msfstef): might be faster to extract `addString` code and
             // ensure length + 1 once rather than length and then +1?
@@ -65,11 +66,11 @@ public class BufferWriter {
         return this;
     }
 
-    public BufferWriter addString() {
+    public Writer addString() {
         return this.addString("");
     }
 
-    public BufferWriter addString(String string) {
+    public Writer addString(String string) {
         var length = StringUtils.byteLengthUtf8(string);
         this.ensure(length);
         this.encoder.encodeInto(
@@ -80,7 +81,7 @@ public class BufferWriter {
         return this;
     }
 
-    public BufferWriter add(ArrayBuffer otherBuffer) {
+    public Writer add(ArrayBuffer otherBuffer) {
         this.ensure(otherBuffer.byteLength);
         new Uint8Array(this.bufferView.buffer).set(new Uint8Array(otherBuffer), this.offset);
         this.offset += otherBuffer.byteLength;
