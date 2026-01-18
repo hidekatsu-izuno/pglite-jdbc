@@ -1,6 +1,7 @@
 <tech_stack>
 - Java 21
-- Chicory 1.4.1
+- Chicory 1.4.1: WASM engine
+- commons-compress: alternative for tinytar
 </tech_stack>
 
 <project_layout>
@@ -12,6 +13,10 @@
 <commands>
 - ./gradlew build: Build and run tests
 </commands>
+
+<conversion_hints>
+- use java.util.concurrent.Semaphore instead of 'async-mutex'
+</conversion_hints>
 
 <workflow>
 - Output temporary code to ./tmp. And Do not delete files that are not in ./tmp.
