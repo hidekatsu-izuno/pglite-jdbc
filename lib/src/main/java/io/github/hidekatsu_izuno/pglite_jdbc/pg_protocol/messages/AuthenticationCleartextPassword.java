@@ -1,10 +1,10 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages;
 
-public class AuthenticationOk implements AuthenticationMessage {
-    public final String name = "authenticationOk";
+public class AuthenticationCleartextPassword implements AuthenticationMessage {
+    public final String name = "authenticationCleartextPassword";
     public final int length;
 
-    public AuthenticationOk(int length) {
+    public AuthenticationCleartextPassword(int length) {
         this.length = length;
     }
 

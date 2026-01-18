@@ -1,11 +1,13 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages;
 
-public class AuthenticationOk implements AuthenticationMessage {
-    public final String name = "authenticationOk";
+public class AuthenticationSASLFinal implements AuthenticationMessage {
+    public final String name = "authenticationSASLFinal";
     public final int length;
+    public final String data;
 
-    public AuthenticationOk(int length) {
+    public AuthenticationSASLFinal(int length, String data) {
         this.length = length;
+        this.data = data;
     }
 
     @Override

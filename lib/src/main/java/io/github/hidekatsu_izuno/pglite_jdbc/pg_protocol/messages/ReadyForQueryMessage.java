@@ -1,11 +1,13 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages;
 
-public class AuthenticationOk implements AuthenticationMessage {
-    public final String name = "authenticationOk";
+public class ReadyForQueryMessage implements BackendMessage {
+    public final String name = "readyForQuery";
     public final int length;
+    public final String status;
 
-    public AuthenticationOk(int length) {
+    public ReadyForQueryMessage(int length, String status) {
         this.length = length;
+        this.status = status;
     }
 
     @Override

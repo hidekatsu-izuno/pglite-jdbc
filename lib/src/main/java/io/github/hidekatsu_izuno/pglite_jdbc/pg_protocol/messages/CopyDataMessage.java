@@ -1,11 +1,15 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages;
 
-public class AuthenticationOk implements AuthenticationMessage {
-    public final String name = "authenticationOk";
-    public final int length;
+import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
 
-    public AuthenticationOk(int length) {
+public class CopyDataMessage implements BackendMessage {
+    public final String name = "copyData";
+    public final int length;
+    public final Uint8Array chunk;
+
+    public CopyDataMessage(int length, Uint8Array chunk) {
         this.length = length;
+        this.chunk = chunk;
     }
 
     @Override
