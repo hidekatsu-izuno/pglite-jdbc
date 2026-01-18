@@ -6,7 +6,7 @@ import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.TextEncoder;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
 
 public final class buffer_writer {
-    public class Writer {
+    public static class Writer {
         private DataView bufferView;
         private int offset = 5;
         private final boolean littleEndian = false;
