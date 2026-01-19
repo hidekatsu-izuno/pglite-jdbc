@@ -85,7 +85,7 @@ public final class serializer {
         return writer.addCString(text).flush(code.query.value);
     }
 
-    private static final class ParseOpts {
+    public static final class ParseOpts {
         public String name;
         public int[] types;
         public String text;
