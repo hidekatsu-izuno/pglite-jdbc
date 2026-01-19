@@ -93,25 +93,21 @@ public final class buffer_writer {
                 this.bufferView.setUint8(this.headerPosition, code);
                 // length is everything in this packet minus the code
                 var length = this.offset - (this.headerPosition + 1);
-                this.bufferView.setInt32(this.headerPosition + 1, length, this.littleEndian);
+                this.bufferView.setInt32(
+                    this.headerPosition + 1, 
+                    length, 
+                    this.littleEndian
+                );
             }
             return this.bufferView.buffer.slice(code != null ? 0 : 5, this.offset);
         }
 
-        public Uint8Array flush() {
-            var result = this.join(null);
-            this.offset = 5;
-            this.bufferView = this.allocateBuffer(this.size);
-            return new Uint8Array(result);
-        }
-
-        public Uint8Array flush(byte code) {
+        public Uint8Array flush(Byte code) {
             var result = this.join(code);
             this.offset = 5;
             this.bufferView = this.allocateBuffer(this.size);
             return new Uint8Array(result);
         }
-
     }
 
     private buffer_writer() {

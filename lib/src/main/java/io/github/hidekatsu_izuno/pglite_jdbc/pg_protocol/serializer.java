@@ -45,12 +45,12 @@ public final class serializer {
 
         writer.addCString("client_encoding").addCString("UTF8");
 
-        var bodyBuffer = writer.addCString("").flush();
+        var bodyBuffer = writer.addCString("").flush(null);
         // this message is sent without a code
 
         var length = bodyBuffer.byteLength + 4;
 
-        return new Writer().addInt32(length).add(bodyBuffer.buffer).flush();
+        return new Writer().addInt32(length).add(bodyBuffer.buffer).flush(null);
     }
 
     private static Uint8Array requestSsl() {
@@ -204,7 +204,7 @@ public final class serializer {
         writeValues(values, config != null ? config.valueMapper : null);
 
         writer.addInt16(len);
-        writer.add(paramWriter.flush().buffer);
+        writer.add(paramWriter.flush(null).buffer);
 
         // format code
         writer.addInt16(binary ? ParamType.BINARY.value : ParamType.STRING.value);
