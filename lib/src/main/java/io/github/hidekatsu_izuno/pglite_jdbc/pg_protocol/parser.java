@@ -21,7 +21,6 @@ import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages.ParameterDescr
 import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages.ParameterStatusMessage;
 import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages.ReadyForQueryMessage;
 import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages.RowDescriptionMessage;
-import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.types.BufferParameter;
 import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.types.Mode;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.ArrayBuffer;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.DataView;
@@ -79,18 +78,18 @@ public final class parser {
         private int bufferOffset = 0;
         private BufferReader reader = new BufferReader(0);
 
-        public void parse(BufferParameter buffer, MessageCallback callback) {
-            this.mergeBuffer(
-                buffer instanceof TypedArray
-                    ? ((TypedArray) buffer)
-                        .getBuffer()
-                        .slice(
-                            ((TypedArray) buffer).getByteOffset(),
-                            ((TypedArray) buffer).getByteOffset() +
-                                ((TypedArray) buffer).getByteLength()
-                        )
-                    : (ArrayBuffer) buffer
-            );
+        public void parse(TypedArray buffer, MessageCallback callback) {
+            parse(((TypedArray) buffer)
+                .getBuffer()
+                .slice(
+                    ((TypedArray) buffer).getByteOffset(),
+                    ((TypedArray) buffer).getByteOffset() +
+                        ((TypedArray) buffer).getByteLength()
+                ), callback);
+        }
+
+        public void parse(ArrayBuffer buffer, MessageCallback callback) {
+            this.mergeBuffer(buffer);
             var bufferFullLength = this.bufferOffset + this.bufferRemainingLength;
             var offset = this.bufferOffset;
             while (offset + HEADER_LENGTH <= bufferFullLength) {

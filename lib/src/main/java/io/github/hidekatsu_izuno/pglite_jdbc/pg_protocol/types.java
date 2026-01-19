@@ -6,10 +6,6 @@ public final class types {
         binary,
     }
 
-    public static interface BufferParameter {
-    }
-
     private types() {
-
     }
 }

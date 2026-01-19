@@ -1,8 +1,6 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.polyfills;
 
-import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.types.BufferParameter;
-
-public interface TypedArray extends BufferParameter {
+public interface TypedArray {
     ArrayBuffer getBuffer();
     int getByteOffset();
     int getByteLength();

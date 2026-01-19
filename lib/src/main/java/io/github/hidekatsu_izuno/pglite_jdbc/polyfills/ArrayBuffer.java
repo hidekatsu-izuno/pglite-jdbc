@@ -1,10 +1,8 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.polyfills;
 
-import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.types.BufferParameter;
-
 import java.util.Arrays;
 
-public class ArrayBuffer implements BufferParameter {
+public class ArrayBuffer {
     public final int byteLength;
     final byte[] bytes;
 
