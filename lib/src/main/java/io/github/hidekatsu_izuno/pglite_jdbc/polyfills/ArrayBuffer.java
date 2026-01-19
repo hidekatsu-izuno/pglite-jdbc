@@ -16,6 +16,16 @@ public class ArrayBuffer implements BufferParameter {
         this.bytes = new byte[byteLength];
     }
 
+    ArrayBuffer(byte[] bytes) {
+        this.bytes = bytes;
+        this.byteLength = bytes.length;
+    }
+    
+    ArrayBuffer(byte[] bytes, boolean copy) {
+        this.bytes = copy ? Arrays.copyOf(bytes, bytes.length) : bytes;
+        this.byteLength = this.bytes.length;
+    }
+
     public ArrayBuffer slice(int begin, int end) {
         int length = this.byteLength;
         int start = begin < 0 ? Math.max(length + begin, 0) : Math.min(begin, length);
@@ -30,10 +40,5 @@ public class ArrayBuffer implements BufferParameter {
 
     public byte[] getBytes() {
         return this.bytes;
-    }
-
-    ArrayBuffer(byte[] bytes, boolean copy) {
-        this.bytes = copy ? Arrays.copyOf(bytes, bytes.length) : bytes;
-        this.byteLength = this.bytes.length;
     }
 }

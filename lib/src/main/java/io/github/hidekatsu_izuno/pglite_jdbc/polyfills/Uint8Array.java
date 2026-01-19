@@ -10,6 +10,10 @@ public class Uint8Array implements TypedArray {
         this(new ArrayBuffer(length));
     }
 
+    public Uint8Array(byte[] array) {
+        this(new ArrayBuffer(array));
+    }
+
     public Uint8Array(ArrayBuffer array) {
         this(array, 0, array.byteLength);
     }
