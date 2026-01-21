@@ -178,7 +178,7 @@ public final class interface_ {
         extends Map<String, Object> {
     }
 
-    public static final class Results {
+    public static class Results {
         public List<Object> rows;
         public Integer affectedRows;
         public List<Field> fields;

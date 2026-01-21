@@ -2,6 +2,7 @@ package io.github.hidekatsu_izuno.pglite_jdbc.pglite.live;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Results;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Transaction;
+import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -154,8 +155,7 @@ public final class interface_ {
         public T value;
     }
 
-    public static final class Change<T> {
-        public Object value;
+    public static final class Change<T> extends HashMap<String, Object> {
     }
 
     @FunctionalInterface

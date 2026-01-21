@@ -1,10 +1,6 @@
-import fs from "node:fs";
-import nodePath from "node:path";
-import url from "node:url";
-import ws from "node:ws";
-import cp from "node:child_process";
+var _scriptName = import.meta.url;
 
-export default async function (moduleArg = {}) {
+export default async function Module(moduleArg = {}) {
 	var moduleRtn;
 
 	var Module = moduleArg;
@@ -17,21 +13,62 @@ export default async function (moduleArg = {}) {
 	Module["expectedDataFileDownloads"]++;
 	(() => {
 		function loadPackage(metadata) {
-			var PACKAGE_PATH = "";
 			var PACKAGE_NAME = "pglite.data";
 			var REMOTE_PACKAGE_BASE = "pglite.data";
 			var REMOTE_PACKAGE_NAME = Module["locateFile"] ? Module["locateFile"](REMOTE_PACKAGE_BASE, "") : REMOTE_PACKAGE_BASE;
 			var REMOTE_PACKAGE_SIZE = metadata["remote_package_size"];
 
 			function fetchRemotePackage(packageName, packageSize, callback, errback) {
-				fs.readFile(packageName, (err, contents) => {
-					if (err) {
-						errback(err)
-					} else {
-						callback(contents.buffer)
+				Module["dataFileDownloads"] ??= {};
+				fetch(packageName).catch(cause => Promise.reject(new Error(`Network Error: ${packageName}`, {
+					cause
+				}))).then(response => {
+					if (!response.ok) {
+						return Promise.reject(new Error(`${response.status}: ${response.url}`))
 					}
-				});
-				return
+					if (!response.body && response.arrayBuffer) {
+						return response.arrayBuffer().then(callback)
+					}
+					const reader = response.body.getReader();
+					const iterate = () => reader.read().then(handleChunk).catch(cause => Promise.reject(new Error(`Unexpected error while handling : ${response.url} ${cause}`, {
+						cause
+					})));
+					const chunks = [];
+					const headers = response.headers;
+					const total = Number(headers.get("Content-Length") ?? packageSize);
+					let loaded = 0;
+					const handleChunk = ({
+						done,
+						value
+					}) => {
+						if (!done) {
+							chunks.push(value);
+							loaded += value.length;
+							Module["dataFileDownloads"][packageName] = {
+								loaded,
+								total
+							};
+							let totalLoaded = 0;
+							let totalSize = 0;
+							for (const download of Object.values(Module["dataFileDownloads"])) {
+								totalLoaded += download.loaded;
+								totalSize += download.total
+							}
+							Module["setStatus"]?.(`Downloading data... (${totalLoaded}/${totalSize})`);
+							return iterate()
+						} else {
+							const packageData = new Uint8Array(chunks.map(c => c.length).reduce((a, b) => a + b, 0));
+							let offset = 0;
+							for (const chunk of chunks) {
+								packageData.set(chunk, offset);
+								offset += chunk.length
+							}
+							callback(packageData.buffer)
+						}
+					};
+					Module["setStatus"]?.("Downloading data...");
+					return iterate()
+				})
 			}
 
 			function handleError(error) {
@@ -2924,29 +2961,25 @@ export default async function (moduleArg = {}) {
 		return scriptDirectory + path
 	}
 	var readAsync, readBinary;
-	if (!
-		import.meta.url.startsWith("data:")) {
-		scriptDirectory = nodePath.dirname(url.fileURLToPath(
-			import.meta.url)) + "/"
-	}
-	readBinary = filename => {
-		filename = isFileURI(filename) ? new URL(filename) : filename;
-		var ret = fs.readFileSync(filename);
-		return ret
-	};
-	readAsync = async (filename, binary = true) => {
-		filename = isFileURI(filename) ? new URL(filename) : filename;
-		var ret = fs.readFileSync(filename, binary ? undefined : "utf8");
-		return ret
-	};
-	if (!Module["thisProgram"] && process.argv.length > 1) {
-		thisProgram = process.argv[1].replace(/\\/g, "/")
-	}
-	arguments_ = process.argv.slice(2);
-	quit_ = (status, toThrow) => {
-		process.exitCode = status;
-		throw toThrow
-	}
+			scriptDirectory = document.currentScript.src
+		if (_scriptName) {
+			scriptDirectory = _scriptName
+		}
+		if (scriptDirectory.startsWith("blob:")) {
+			scriptDirectory = ""
+		} else {
+			scriptDirectory = scriptDirectory.substr(0, scriptDirectory.replace(/[?#].*/, "").lastIndexOf("/") + 1)
+		} {
+			readAsync = async url => {
+				var response = await fetch(url, {
+					credentials: "same-origin"
+				});
+				if (response.ok) {
+					return response.arrayBuffer()
+				}
+				throw new Error(response.status + " : " + response.url)
+			}
+		}
 	var out = Module["print"] || console.log.bind(console);
 	var err = Module["printErr"] || console.error.bind(console);
 	Object.assign(Module, moduleOverrides);
@@ -2956,10 +2989,6 @@ export default async function (moduleArg = {}) {
 	var dynamicLibraries = Module["dynamicLibraries"] || [];
 	var wasmBinary = Module["wasmBinary"];
 
-	function intArrayFromBase64(s) {
-		var buf = Buffer.from(s, "base64");
-		return new Uint8Array(buf.buffer, buf.byteOffset, buf.length)
-	}
 	var wasmMemory;
 	var ABORT = false;
 	var EXITSTATUS;
@@ -3127,6 +3156,18 @@ export default async function (moduleArg = {}) {
 		}
 	}
 	async function instantiateAsync(binary, binaryFile, imports) {
+		if (!binary && typeof WebAssembly.instantiateStreaming == "function" && !isDataURI(binaryFile) && typeof fetch == "function") {
+			try {
+				var response = fetch(binaryFile, {
+					credentials: "same-origin"
+				});
+				var instantiationResult = await WebAssembly.instantiateStreaming(response, imports);
+				return instantiationResult
+			} catch (reason) {
+				err(`wasm streaming compile failed: ${reason}`);
+				err("falling back to ArrayBuffer instantiation")
+			}
+		}
 		return instantiateArrayBuffer(binaryFile, imports)
 	}
 
@@ -4074,6 +4115,7 @@ export default async function (moduleArg = {}) {
 	};
 	var initRandomFill = () => {
 		return view => crypto.getRandomValues(view)
+		abort("initRandomDevice")
 	};
 	var randomFill = view => (randomFill = initRandomFill())(view);
 	var PATH_FS = {
@@ -4189,18 +4231,9 @@ export default async function (moduleArg = {}) {
 	var FS_stdin_getChar = () => {
 		if (!FS_stdin_getChar_buffer.length) {
 			var result = null;
-			var BUFSIZE = 256;
-			var buf = Buffer.alloc(BUFSIZE);
-			var bytesRead = 0;
-			var fd = process.stdin.fd;
-			try {
-				bytesRead = fs.readSync(fd, buf, 0, BUFSIZE)
-			} catch (e) {
-				if (e.toString().includes("EOF")) bytesRead = 0;
-				else throw e
-			}
-			if (bytesRead > 0) {
-				result = buf.slice(0, bytesRead).toString("utf-8")
+			result = window.prompt("Input: ");
+			if (result !== null) {
+				result += "\n"
 			}
 			if (!result) {
 				return null
@@ -4700,7 +4733,10 @@ export default async function (moduleArg = {}) {
 	var IDBFS = {
 		dbs: {},
 		indexedDB: () => {
-			return null
+			if (typeof indexedDB != "undefined") return indexedDB;
+			var ret = null;
+			if (typeof window == "object") ret = window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB || window.msIndexedDB;
+			return ret
 		},
 		DB_VERSION: 21,
 		DB_STORE_NAME: "FILE_DATA",
@@ -6713,147 +6749,7 @@ export default async function (moduleArg = {}) {
 			}
 		},
 		createLazyFile(parent, name, url, canRead, canWrite) {
-			class LazyUint8Array {
-				lengthKnown = false;
-				chunks = [];
-				get(idx) {
-					if (idx > this.length - 1 || idx < 0) {
-						return undefined
-					}
-					var chunkOffset = idx % this.chunkSize;
-					var chunkNum = idx / this.chunkSize | 0;
-					return this.getter(chunkNum)[chunkOffset]
-				}
-				setDataGetter(getter) {
-					this.getter = getter
-				}
-				cacheLength() {
-					var xhr = new XMLHttpRequest;
-					xhr.open("HEAD", url, false);
-					xhr.send(null);
-					if (!(xhr.status >= 200 && xhr.status < 300 || xhr.status === 304)) throw new Error("Couldn't load " + url + ". Status: " + xhr.status);
-					var datalength = Number(xhr.getResponseHeader("Content-length"));
-					var header;
-					var hasByteServing = (header = xhr.getResponseHeader("Accept-Ranges")) && header === "bytes";
-					var usesGzip = (header = xhr.getResponseHeader("Content-Encoding")) && header === "gzip";
-					var chunkSize = 1024 * 1024;
-					if (!hasByteServing) chunkSize = datalength;
-					var doXHR = (from, to) => {
-						if (from > to) throw new Error("invalid range (" + from + ", " + to + ") or no bytes requested!");
-						if (to > datalength - 1) throw new Error("only " + datalength + " bytes available! programmer error!");
-						var xhr = new XMLHttpRequest;
-						xhr.open("GET", url, false);
-						if (datalength !== chunkSize) xhr.setRequestHeader("Range", "bytes=" + from + "-" + to);
-						xhr.responseType = "arraybuffer";
-						if (xhr.overrideMimeType) {
-							xhr.overrideMimeType("text/plain; charset=x-user-defined")
-						}
-						xhr.send(null);
-						if (!(xhr.status >= 200 && xhr.status < 300 || xhr.status === 304)) throw new Error("Couldn't load " + url + ". Status: " + xhr.status);
-						if (xhr.response !== undefined) {
-							return new Uint8Array(xhr.response || [])
-						}
-						return intArrayFromString(xhr.responseText || "", true)
-					};
-					var lazyArray = this;
-					lazyArray.setDataGetter(chunkNum => {
-						var start = chunkNum * chunkSize;
-						var end = (chunkNum + 1) * chunkSize - 1;
-						end = Math.min(end, datalength - 1);
-						if (typeof lazyArray.chunks[chunkNum] == "undefined") {
-							lazyArray.chunks[chunkNum] = doXHR(start, end)
-						}
-						if (typeof lazyArray.chunks[chunkNum] == "undefined") throw new Error("doXHR failed!");
-						return lazyArray.chunks[chunkNum]
-					});
-					if (usesGzip || !datalength) {
-						chunkSize = datalength = 1;
-						datalength = this.getter(0).length;
-						chunkSize = datalength;
-						out("LazyFiles on gzip forces download of the whole file when length is accessed")
-					}
-					this._length = datalength;
-					this._chunkSize = chunkSize;
-					this.lengthKnown = true
-				}
-				get length() {
-					if (!this.lengthKnown) {
-						this.cacheLength()
-					}
-					return this._length
-				}
-				get chunkSize() {
-					if (!this.lengthKnown) {
-						this.cacheLength()
-					}
-					return this._chunkSize
-				}
-			}
-			if (typeof XMLHttpRequest != "undefined") {
-				throw "Cannot do synchronous binary XHRs outside webworkers in modern browsers. Use --embed-file or --preload-file in emcc";
-			} else {
-				var properties = {
-					isDevice: false,
-					url
-				}
-			}
-			var node = FS.createFile(parent, name, properties, canRead, canWrite);
-			if (properties.contents) {
-				node.contents = properties.contents
-			} else if (properties.url) {
-				node.contents = null;
-				node.url = properties.url
-			}
-			Object.defineProperties(node, {
-				usedBytes: {
-					get: function () {
-						return this.contents.length
-					}
-				}
-			});
-			var stream_ops = {};
-			var keys = Object.keys(node.stream_ops);
-			keys.forEach(key => {
-				var fn = node.stream_ops[key];
-				stream_ops[key] = (...args) => {
-					FS.forceLoadFile(node);
-					return fn(...args)
-				}
-			});
-
-			function writeChunks(stream, buffer, offset, length, position) {
-				var contents = stream.node.contents;
-				if (position >= contents.length) return 0;
-				var size = Math.min(contents.length - position, length);
-				if (contents.slice) {
-					for (var i = 0; i < size; i++) {
-						buffer[offset + i] = contents[position + i]
-					}
-				} else {
-					for (var i = 0; i < size; i++) {
-						buffer[offset + i] = contents.get(position + i)
-					}
-				}
-				return size
-			}
-			stream_ops.read = (stream, buffer, offset, length, position) => {
-				FS.forceLoadFile(node);
-				return writeChunks(stream, buffer, offset, length, position)
-			};
-			stream_ops.mmap = (stream, length, position, prot, flags) => {
-				FS.forceLoadFile(node);
-				var ptr = mmapAlloc(length);
-				if (!ptr) {
-					throw new FS.ErrnoError(48)
-				}
-				writeChunks(stream, HEAP8, ptr, length, position);
-				return {
-					ptr,
-					allocated: true
-				}
-			};
-			node.stream_ops = stream_ops;
-			return node
+			throw "Cannot do synchronous binary XHRs outside webworkers in modern browsers. Use --embed-file or --preload-file in emcc";
 		}
 	};
 	var SYSCALLS = {
@@ -7111,7 +7007,8 @@ export default async function (moduleArg = {}) {
 							subProtocols = subProtocols.replace(/^ +| +$/g, "").split(/ *, */);
 							opts = subProtocols
 						}
-						var WebSocketConstructor = ws
+						var WebSocketConstructor;
+						WebSocketConstructor = WebSocket
 						ws = new WebSocketConstructor(url, opts);
 						ws.binaryType = "arraybuffer"
 					} catch (e) {
@@ -7183,20 +7080,18 @@ export default async function (moduleArg = {}) {
 					});
 					SOCKFS.emit("message", sock.stream.fd)
 				}
-				peer.socket.on("open", handleOpen);
-				peer.socket.on("message", function (data, isBinary) {
-					if (!isBinary) {
-						return
-					}
-					handleMessage(new Uint8Array(data).buffer)
-				});
-				peer.socket.on("close", function () {
+				
+				peer.socket.onopen = handleOpen;
+				peer.socket.onclose = function () {
 					SOCKFS.emit("close", sock.stream.fd)
-				});
-				peer.socket.on("error", function (error) {
+				};
+				peer.socket.onmessage = function peer_socket_onmessage(event) {
+					handleMessage(event.data)
+				};
+				peer.socket.onerror = function (error) {
 					sock.error = 14;
 					SOCKFS.emit("error", [sock.stream.fd, sock.error, "ECONNREFUSED: Connection refused"])
-				})
+				}
 			},
 			poll(sock) {
 				if (sock.type === 1 && sock.server) {
@@ -7288,37 +7183,7 @@ export default async function (moduleArg = {}) {
 				sock.connecting = true
 			},
 			listen(sock, backlog) {
-				if (sock.server) {
-					throw new FS.ErrnoError(28)
-				}
-				var WebSocketServer = ws.Server;
-				var host = sock.saddr;
-				sock.server = new WebSocketServer({
-					host,
-					port: sock.sport
-				});
-				SOCKFS.emit("listen", sock.stream.fd);
-				sock.server.on("connection", function (ws) {
-					if (sock.type === 1) {
-						var newsock = SOCKFS.createSocket(sock.family, sock.type, sock.protocol);
-						var peer = SOCKFS.websocket_sock_ops.createPeer(newsock, ws);
-						newsock.daddr = peer.addr;
-						newsock.dport = peer.port;
-						sock.pending.push(newsock);
-						SOCKFS.emit("connection", newsock.stream.fd)
-					} else {
-						SOCKFS.websocket_sock_ops.createPeer(sock, ws);
-						SOCKFS.emit("connection", sock.stream.fd)
-					}
-				});
-				sock.server.on("close", function () {
-					SOCKFS.emit("close", sock.stream.fd);
-					sock.server = null
-				});
-				sock.server.on("error", function (error) {
-					sock.error = 23;
-					SOCKFS.emit("error", [sock.stream.fd, sock.error, "EHOSTUNREACH: Host is unreachable"])
-				})
+				throw new FS.ErrnoError(138)
 			},
 			accept(listensock) {
 				if (!listensock.server || !listensock.pending.length) {
@@ -8485,36 +8350,8 @@ export default async function (moduleArg = {}) {
 	};
 	__emscripten_runtime_keepalive_clear.sig = "v";
 	var __emscripten_system = command => {
-		if (!command) return 1;
-		var cmdstr = UTF8ToString(command);
-		if (!cmdstr.length) return 0;
-		var ret = cp.spawnSync(cmdstr, [], {
-			shell: true,
-			stdio: "inherit"
-		});
-		var _W_EXITCODE = (ret, sig) => ret << 8 | sig;
-		if (ret.status === null) {
-			var signalToNumber = sig => {
-				switch (sig) {
-					case "SIGHUP":
-						return 1;
-					case "SIGQUIT":
-						return 3;
-					case "SIGFPE":
-						return 8;
-					case "SIGKILL":
-						return 9;
-					case "SIGALRM":
-						return 14;
-					case "SIGTERM":
-						return 15;
-					default:
-						return 2
-				}
-			};
-			return _W_EXITCODE(0, signalToNumber(ret.signal))
-		}
-		return _W_EXITCODE(ret.status, 0)
+		if (!command) return 0;
+		return -52
 	};
 	__emscripten_system.sig = "ip";
 	var __emscripten_throw_longjmp = () => {
@@ -9166,7 +9003,6 @@ export default async function (moduleArg = {}) {
 	Module["FS_createDevice"] = FS.createDevice;
 	MEMFS.doesNotExistError = new FS.ErrnoError(44);
 	MEMFS.doesNotExistError.stack = "<generic error, no stack>";
-	NODEFS.staticInit()
 	var wasmImports = {
 		__assert_fail: ___assert_fail,
 		__call_sighandler: ___call_sighandler,
@@ -11263,4 +11099,5 @@ export default async function (moduleArg = {}) {
 	moduleRtn = readyPromise;
 
 	return moduleRtn;
-};
+}
+

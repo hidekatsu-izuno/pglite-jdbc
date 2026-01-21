@@ -14,14 +14,16 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 public final class index {
     private static final int MAX_RETRIES = 5;
 
     private static CompletableFuture<ExtensionSetupResult<interface_.LiveNamespace>> setup(
-        PGliteInterface pg,
-        Object _emscriptenOpts
+        PGliteInterface<?> pg,
+        Object _emscriptenOpts,
+        Boolean clientOnly
     ) {
         // The notify triggers are only ever added and never removed
         // Keep track of which triggers have been added to avoid adding them multiple times
@@ -124,7 +126,7 @@ public final class index {
     }
 
     private static <T> CompletableFuture<interface_.LiveQuery<T>> queryInternal(
-        PGliteInterface pg,
+        PGliteInterface<?> pg,
         Set<String> tableNotifyTriggersAdded,
         String query,
         Object[] params,
@@ -143,7 +145,7 @@ public final class index {
     }
 
     private static <T> CompletableFuture<interface_.LiveQuery<T>> queryInternal(
-        PGliteInterface pg,
+        PGliteInterface<?> pg,
         Set<String> tableNotifyTriggersAdded,
         String query,
         Object[] params,
@@ -176,11 +178,11 @@ public final class index {
         var id = utils.uuid().replace("-", "");
         var dead = new boolean[] { false };
 
-        var resultsHolder = new interface_.LiveQueryResults<T>[1];
+        var resultsHolder = new AtomicReference<interface_.LiveQueryResults<T>>();
 
         var unsubList = new ArrayList<Function<Transaction, CompletableFuture<Void>>>();
 
-        var refreshRef = new utils.AsyncFunction<Void>[1];
+        var refreshRef = new AtomicReference<utils.AsyncFunction<Void>>();
 
         var init = (Runnable) () -> {
             pg.transaction(
@@ -258,7 +260,7 @@ public final class index {
                                                             liveResults.offset = offsetRef[0];
                                                             liveResults.limit = limitRef[0];
                                                             liveResults.totalCount = totalCountRef[0];
-                                                            resultsHolder[0] = liveResults;
+                                                            resultsHolder.set(liveResults);
                                                             return liveResults;
                                                         }
                                                     );
@@ -286,7 +288,7 @@ public final class index {
                                                     liveResults.fields = queryResult.fields;
                                                     liveResults.affectedRows = queryResult.affectedRows;
                                                     liveResults.blob = queryResult.blob;
-                                                    resultsHolder[0] = liveResults;
+                                                    resultsHolder.set(liveResults);
                                                     return liveResults;
                                                 }
                                             )
@@ -297,9 +299,9 @@ public final class index {
                                         tx,
                                         "live_query_" + id + "_view"
                                     ).thenCompose(
-                                        tables -> {
+                                        tableList -> {
                                             var subs = new ArrayList<CompletableFuture<Function<Transaction, CompletableFuture<Void>>>>();
-                                            for (var table : tables) {
+                                            for (var table : tableList) {
                                                 subs.add(
                                                     tx.listen(
                                                         "\"table_change__"
@@ -308,7 +310,7 @@ public final class index {
                                                             + table.table_oid
                                                             + "\"",
                                                         payload -> {
-                                                            refreshRef[0].apply(new interface_.RefreshOptions());
+                                                            refreshRef.get().apply(new interface_.RefreshOptions());
                                                         }
                                                     )
                                                 );
@@ -367,7 +369,7 @@ public final class index {
                 );
             }
         );
-        refreshRef[0] = refresh;
+        refreshRef.set(refresh);
 
         init.run();
 
@@ -410,7 +412,7 @@ public final class index {
                                     + id
                                     + "_get;\n            ",
                                 null
-                            )
+                            ).thenApply(ignoredExec -> null)
                         );
                     }
                 );
@@ -435,11 +437,11 @@ public final class index {
         }
 
         // Run the callback with the initial results
-        runResultCallbacks(callbacks, resultsHolder[0]);
+        runResultCallbacks(callbacks, resultsHolder.get());
 
         // Return the initial results
         var liveQuery = new interface_.LiveQuery<T>();
-        liveQuery.initialResults = resultsHolder[0];
+        liveQuery.initialResults = resultsHolder.get();
         liveQuery.subscribe = subscribe;
         liveQuery.unsubscribe = unsubscribe;
         liveQuery.refresh = opts -> refresh.apply(opts);
@@ -447,7 +449,7 @@ public final class index {
     }
 
     private static <T> CompletableFuture<interface_.LiveChanges<T>> changesInternal(
-        PGliteInterface pg,
+        PGliteInterface<?> pg,
         Set<String> tableNotifyTriggersAdded,
         String query,
         Object[] params,
@@ -571,7 +573,7 @@ public final class index {
                                                         + key
                                                         + "\n                  WHERE NOT (curr IS NOT DISTINCT FROM prev)\n                )\n              SELECT * FROM data_diff;\n            ",
                                                     null
-                                                )
+                                                ).thenApply(ignoredExec -> null)
                                             );
                                         }
                                         return CompletableFuture.allOf(
@@ -627,7 +629,7 @@ public final class index {
             var reset = new boolean[] { false };
             return pg.transaction(
                 tx -> {
-                    var changeFuture = CompletableFuture.completedFuture(null);
+                    var changeFuture = CompletableFuture.<Void>completedFuture(null);
                     for (var i = 0; i < 5; i++) {
                         var idx = i;
                         changeFuture = changeFuture.thenCompose(
@@ -655,7 +657,7 @@ public final class index {
                                     queryResult -> {
                                         changesHolder[0] = queryResult;
                                         stateSwitch[0] = stateSwitch[0] == 1 ? 2 : 1;
-                                        return null;
+                                        return (Void) null;
                                     }
                                 ).thenCompose(
                                     ignoredResult -> tx.exec(
@@ -665,7 +667,7 @@ public final class index {
                                             + stateSwitch[0]
                                             + ";\n              ",
                                         null
-                                    )
+                                    ).thenApply(ignoredExec -> null)
                                 ).exceptionally(
                                     error -> {
                                         var msg = error instanceof CompletionException
@@ -678,11 +680,11 @@ public final class index {
                                             // This can happen if using the multi-tab worker
                                             reset[0] = true;
                                             init.run();
-                                            return null;
+                                            return (Void) null;
                                         }
                                         throw new CompletionException(error);
                                     }
-                                );
+                                ).thenApply(ignoredCleanup -> null);
                             }
                         );
                         if (changesHolder[0] != null) {
@@ -753,7 +755,7 @@ public final class index {
                                     + id
                                     + "_diff2;\n            ",
                                 null
-                            )
+                            ).thenApply(ignoredExec -> null)
                         );
                     }
                 );
@@ -856,7 +858,7 @@ public final class index {
                             var existing = rowsMap.get(obj.get(key));
                             var newObj = existing != null
                                 ? new HashMap<String, Object>(existing)
-                                : new HashMap<>();
+                                : new HashMap<String, Object>();
                             if (changedColumns != null) {
                                 for (var columnName : changedColumns) {
                                     newObj.put(columnName, obj.get(columnName));
@@ -956,7 +958,7 @@ public final class index {
         live.setup = index::setup;
     }
 
-    public interface PGliteWithLive extends PGliteInterface {
+    public interface PGliteWithLive extends PGliteInterface<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Extensions> {
         interface_.LiveNamespace live();
     }
 
@@ -1071,7 +1073,7 @@ public final class index {
     }
 
     private static CompletableFuture<String> formatQuery(
-        PGliteInterface pg,
+        PGliteInterface<?> pg,
         String query,
         Object[] params,
         Transaction tx
@@ -1153,11 +1155,11 @@ public final class index {
     }
 
     private static <T> CompletableFuture<Void> runQueryRefresh(
-        PGliteInterface pg,
+        PGliteInterface<?> pg,
         String id,
         boolean isWindowed,
         List<interface_.LiveQueryCallback<T>> callbacks,
-        interface_.LiveQueryResults<T>[] resultsHolder,
+        AtomicReference<interface_.LiveQueryResults<T>> resultsHolder,
         Integer offset,
         Integer limit,
         Integer[] totalCountRef,
@@ -1165,91 +1167,94 @@ public final class index {
     ) {
         return CompletableFuture.runAsync(
             () -> {
-                var run = (Runnable) () -> {
-                    if (callbacks.size() == 0) {
-                        return;
-                    }
-                    try {
+                var runRef = new AtomicReference<Runnable>();
+                runRef.set(
+                    () -> {
+                        if (callbacks.size() == 0) {
+                            return;
+                        }
+                        try {
+                            if (isWindowed) {
+                                // For a windowed query we defer the refresh of the total count until
+                                // after we have returned the results with the old total count. This
+                                // is due to a count(*) being a fairly slow query and we want to update
+                                // the rows on screen as quickly as possible.
+                                var queryResult = pg.query(
+                                    "EXECUTE live_query_"
+                                        + id
+                                        + "_get("
+                                        + limit
+                                        + ", "
+                                        + offset
+                                        + ");",
+                                    null,
+                                    null
+                                ).join();
+                                var liveResults = new interface_.LiveQueryResults<T>();
+                                liveResults.rows = queryResult.rows;
+                                liveResults.fields = queryResult.fields;
+                                liveResults.affectedRows = queryResult.affectedRows;
+                                liveResults.blob = queryResult.blob;
+                                liveResults.offset = offset;
+                                liveResults.limit = limit;
+                                liveResults.totalCount = totalCountRef[0];
+                                resultsHolder.set(liveResults);
+                            } else {
+                                var queryResult = pg.query(
+                                    "EXECUTE live_query_"
+                                        + id
+                                        + "_get;",
+                                    null,
+                                    null
+                                ).join();
+                                var liveResults = new interface_.LiveQueryResults<T>();
+                                liveResults.rows = queryResult.rows;
+                                liveResults.fields = queryResult.fields;
+                                liveResults.affectedRows = queryResult.affectedRows;
+                                liveResults.blob = queryResult.blob;
+                                resultsHolder.set(liveResults);
+                            }
+                        } catch (RuntimeException e) {
+                            var msg = e.getMessage();
+                            if (
+                                msg != null
+                                && msg.startsWith("prepared statement \"live_query_" + id)
+                                && msg.endsWith("does not exist")
+                            ) {
+                                // If the prepared statement does not exist, reset and try again
+                                // This can happen if using the multi-tab worker
+                                init.run();
+                            } else {
+                                throw e;
+                            }
+                        }
+
+                        runResultCallbacks(callbacks, resultsHolder.get());
+
+                        // Update the total count
+                        // If the total count has changed, refresh the query
                         if (isWindowed) {
-                            // For a windowed query we defer the refresh of the total count until
-                            // after we have returned the results with the old total count. This
-                            // is due to a count(*) being a fairly slow query and we want to update
-                            // the rows on screen as quickly as possible.
-                            var queryResult = pg.query(
-                                "EXECUTE live_query_"
-                                    + id
-                                    + "_get("
-                                    + limit
-                                    + ", "
-                                    + offset
-                                    + ");",
-                                null,
-                                null
-                            ).join();
-                            var liveResults = new interface_.LiveQueryResults<T>();
-                            liveResults.rows = queryResult.rows;
-                            liveResults.fields = queryResult.fields;
-                            liveResults.affectedRows = queryResult.affectedRows;
-                            liveResults.blob = queryResult.blob;
-                            liveResults.offset = offset;
-                            liveResults.limit = limit;
-                            liveResults.totalCount = totalCountRef[0];
-                            resultsHolder[0] = liveResults;
-                        } else {
-                            var queryResult = pg.query(
-                                "EXECUTE live_query_"
-                                    + id
-                                    + "_get;",
-                                null,
-                                null
-                            ).join();
-                            var liveResults = new interface_.LiveQueryResults<T>();
-                            liveResults.rows = queryResult.rows;
-                            liveResults.fields = queryResult.fields;
-                            liveResults.affectedRows = queryResult.affectedRows;
-                            liveResults.blob = queryResult.blob;
-                            resultsHolder[0] = liveResults;
-                        }
-                    } catch (RuntimeException e) {
-                        var msg = e.getMessage();
-                        if (
-                            msg != null
-                            && msg.startsWith("prepared statement \"live_query_" + id)
-                            && msg.endsWith("does not exist")
-                        ) {
-                            // If the prepared statement does not exist, reset and try again
-                            // This can happen if using the multi-tab worker
-                            init.run();
-                        } else {
-                            throw e;
+                            var newTotalCount = extractCount(
+                                pg.query(
+                                    "EXECUTE live_query_"
+                                        + id
+                                        + "_get_total_count;",
+                                    null,
+                                    null
+                                ).join()
+                            );
+                            if (
+                                newTotalCount != null
+                                && (totalCountRef[0] == null || !newTotalCount.equals(totalCountRef[0]))
+                            ) {
+                                // The total count has changed, refresh the query
+                                totalCountRef[0] = newTotalCount;
+                                runRef.get().run();
+                            }
                         }
                     }
-
-                    runResultCallbacks(callbacks, resultsHolder[0]);
-
-                    // Update the total count
-                    // If the total count has changed, refresh the query
-                    if (isWindowed) {
-                        var newTotalCount = extractCount(
-                            pg.query(
-                                "EXECUTE live_query_"
-                                    + id
-                                    + "_get_total_count;",
-                                null,
-                                null
-                            ).join()
-                        );
-                        if (
-                            newTotalCount != null
-                            && (totalCountRef[0] == null || !newTotalCount.equals(totalCountRef[0]))
-                        ) {
-                            // The total count has changed, refresh the query
-                            totalCountRef[0] = newTotalCount;
-                            run.run();
-                        }
-                    }
-                };
-                run.run();
+                );
+                runRef.get().run();
             }
         );
     }
@@ -1301,9 +1306,9 @@ public final class index {
     }
 
     private static final class FormatQueryAdapter implements utils.PGliteInterface {
-        private final PGliteInterface pg;
+        private final PGliteInterface<?> pg;
 
-        private FormatQueryAdapter(PGliteInterface pg) {
+        private FormatQueryAdapter(PGliteInterface<?> pg) {
             this.pg = pg;
         }
 
