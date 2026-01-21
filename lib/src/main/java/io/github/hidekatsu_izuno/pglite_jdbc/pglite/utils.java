@@ -30,6 +30,17 @@ public final class utils {
 
     private static CompletableFuture<byte[]> wasmDownloadPromise;
 
+    public static CompletableFuture<Void> startWasmDownload() {
+        if (IN_NODE || wasmDownloadPromise != null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        var modulePath = wasmModulePath();
+        wasmDownloadPromise = CompletableFuture.supplyAsync(() -> readFile(modulePath));
+        return wasmDownloadPromise.thenApply(ignored -> null);
+    }
+
+    // This is a global cache of the PGlite Wasm module to avoid having to re-download or
+    // compile it on subsequent calls.
     private static WasmModule cachedWasmModule;
 
     private static final int TEXT = 25;
@@ -44,15 +55,6 @@ public final class utils {
             this.instance = instance;
             this.module = module;
         }
-    }
-
-    public static CompletableFuture<Void> startWasmDownload() {
-        if (IN_NODE || wasmDownloadPromise != null) {
-            return CompletableFuture.completedFuture(null);
-        }
-        var modulePath = wasmModulePath();
-        wasmDownloadPromise = CompletableFuture.supplyAsync(() -> readFile(modulePath));
-        return wasmDownloadPromise.thenApply(ignored -> null);
     }
 
     public static CompletableFuture<WasmInstantiation> instantiateWasm(
@@ -115,6 +117,7 @@ public final class utils {
     }
 
     public static String uuid() {
+        // best case, `crypto.randomUUID` is available
         var bytes = new byte[16];
         try {
             var secureRandom = new SecureRandom();
@@ -124,8 +127,10 @@ public final class utils {
             fallback.nextBytes(bytes);
         }
 
-        bytes[6] = (byte) ((bytes[6] & 0x0f) | 0x40);
-        bytes[8] = (byte) ((bytes[8] & 0x3f) | 0x80);
+        // `crypto.getRandomValues` is available even in non-secure contexts
+        // fallback to Math.random, if the Crypto API is completely missing
+        bytes[6] = (byte) ((bytes[6] & 0x0f) | 0x40); // Set the 4 most significant bits to 0100
+        bytes[8] = (byte) ((bytes[8] & 0x3f) | 0x80); // Set the 2 most significant bits to 10
 
         var hexValues = new String[bytes.length];
         for (var i = 0; i < bytes.length; i++) {
@@ -155,6 +160,17 @@ public final class utils {
             + hexValues[15];
     }
 
+    /**
+     * Formats a query with parameters
+     * Expects that any tables/relations referenced in the query exist in the database
+     * due to requiring them to be present to describe the parameters types.
+     * `tx` is optional, and to be used when formatQuery is called during a transaction.
+     * @param pg - The PGlite instance
+     * @param query - The query to format
+     * @param params - The parameters to format the query with
+     * @param tx - The transaction to use, defaults to the PGlite instance
+     * @returns The formatted query
+     */
     public static CompletableFuture<String> formatQuery(
         PGliteInterface pg,
         String query,
@@ -162,6 +178,7 @@ public final class utils {
         Transaction tx
     ) {
         if (params == null || params.length == 0) {
+            // no params so no formatting needed
             return CompletableFuture.completedFuture(query);
         }
 
@@ -176,6 +193,7 @@ public final class utils {
         var describeOpts = new serializer.PortalOpts();
         describeOpts.type = "S";
 
+        // Get the types of the parameters
         var parseDescribeFuture = pg.execProtocol(
             serialize.parse(parseOpts),
             options
@@ -214,6 +232,7 @@ public final class utils {
         return syncFuture.thenCompose(
             ignored -> {
                 var dataTypeIDs = parseDescribeStatementResults(messages);
+                // replace $1, $2, etc with  %1L, %2L, etc
                 var subbedQuery = substituteParameters(query);
 
                 var paramTypes = new int[dataTypeIDs.length + 1];
@@ -250,6 +269,15 @@ public final class utils {
         );
     }
 
+    /**
+     * Debounce a function to ensure that only one instance of the function is running at
+     * a time.
+     * - If the function is called while an instance is already running, the new
+     * call is scheduled to run after the current instance completes.
+     * - If there is already a scheduled call, it is replaced with the new call.
+     * @param fn - The function to debounce
+     * @returns A debounced version of the function
+     */
     public static <R> AsyncFunction<R> debounceMutex(AsyncFunction<R> fn) {
         class NextCall {
             private final Object[] args;
@@ -329,11 +357,18 @@ public final class utils {
         };
     }
 
+    /**
+     * Postgresql handles quoted names as CaseSensitive and unquoted as lower case.
+     * If input is quoted, returns an unquoted string (same casing)
+     * If input is unquoted, returns a lower-case string
+     */
     public static String toPostgresName(String input) {
         var output = "";
         if (input.startsWith("\"") && input.endsWith("\"")) {
+            // Postgres sensitive case
             output = input.substring(1, input.length() - 1);
         } else {
+            // Postgres case insensitive - all to lower
             output = input.toLowerCase();
         }
         return output;
