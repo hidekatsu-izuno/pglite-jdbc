@@ -1,7 +1,7 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pglite;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages.DatabaseError;
-import io.github.hidekatsu_izuno.pglite_jdbc.pglite.utils.QueryOptions;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.QueryOptions;
 
 public final class errors {
     public static class PGliteError extends DatabaseError {
