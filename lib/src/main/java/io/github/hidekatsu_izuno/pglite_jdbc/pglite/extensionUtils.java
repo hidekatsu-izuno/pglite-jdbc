@@ -6,6 +6,7 @@ import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Blob;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -77,11 +78,11 @@ public final class extensionUtils {
         }
     }
 
-    public static ExtensionBlob loadExtensionBundle(
-        String bundlePath
-    ) {
-        // Async load the extension bundle tar file
-        // could be from a URL or a file
+    public static ExtensionBlob loadExtensionBundle(String bundlePath) {
+        return new ByteArrayBlob(utils.readFile(bundlePath));
+    }
+
+    public static ExtensionBlob loadExtensionBundle(URL bundlePath) {
         return new ByteArrayBlob(utils.readFile(bundlePath));
     }
 

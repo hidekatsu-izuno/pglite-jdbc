@@ -65,20 +65,12 @@ public final class index {
             public <T> CompletableFuture<LiveQuery<T>> query(
                 LiveQueryOptions<T> options
             ) {
-                var signal = (AbortSignal) null;
-                var params = (Object[]) null;
-                var callback = (LiveQueryCallback<T>) null;
-                var offset = (Integer) null;
-                var limit = (Integer) null;
-                var query = options.query;
-                if (options != null) {
-                    signal = options.signal;
-                    params = options.params;
-                    callback = options.callback;
-                    offset = options.offset;
-                    limit = options.limit;
-                    query = options.query;
-                }
+                var signal = options != null ? options.signal : null;
+                var params = options != null ? options.params : null;
+                var callback = options != null ? options.callback : null;
+                var offset = options != null ? options.offset : null;
+                var limit = options != null ? options.limit : null;
+                var query = options != null ? options.query : null;
 
                 // Offset and limit must be provided together
                 if ((offset == null) != (limit == null)) {
@@ -466,18 +458,11 @@ public final class index {
             public <T> CompletableFuture<LiveChanges<T>> changes(
                 LiveChangesOptions<T> options
             ) {
-                var signal = (AbortSignal) null;
-                var params = (Object[]) null;
-                var key = (String) null;
-                var callback = (LiveChangesCallback<T>) null;
-                var query = options.query;
-                if (options != null) {
-                    signal = options.signal;
-                    params = options.params;
-                    key = options.key;
-                    callback = options.callback;
-                    query = options.query;
-                }
+                var signal = options != null ? options.signal : null;
+                var params = options != null ? options.params : null;
+                var key = options != null ? options.key : null;
+                var callback = options != null ? options.callback : null;
+                var query = options != null ? options.query : null;
                 if (key == null) {
                     throw new RuntimeException("key is required for changes queries");
                 }
@@ -864,18 +849,11 @@ public final class index {
             public <T> CompletableFuture<LiveQuery<T>> incrementalQuery(
                 LiveIncrementalQueryOptions<T> options
             ) {
-                var signal = (AbortSignal) null;
-                var params = (Object[]) null;
-                var key = (String) null;
-                var callback = (LiveQueryCallback<T>) null;
-                var query = options.query;
-                if (options != null) {
-                    signal = options.signal;
-                    params = options.params;
-                    key = options.key;
-                    callback = options.callback;
-                    query = options.query;
-                }
+                var signal = options != null ? options.signal : null;
+                var params = options != null ? options.params : null;
+                var key = options != null ? options.key : null;
+                var callback = options != null ? options.callback : null;
+                var query = options != null ? options.query : null;
                 if (key == null) {
                     throw new RuntimeException("key is required for incremental queries");
                 }

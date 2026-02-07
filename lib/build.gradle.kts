@@ -11,6 +11,7 @@ repositories {
 dependencies {
     implementation("com.dylibso.chicory:runtime:1.6.1")
     implementation("com.dylibso.chicory:wasm:1.6.1")
+    implementation("com.dylibso.chicory:wasi:1.6.1")
     implementation("org.apache.commons:commons-compress:1.28.0")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.2")
 }

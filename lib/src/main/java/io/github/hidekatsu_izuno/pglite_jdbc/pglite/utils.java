@@ -12,6 +12,8 @@ import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.ArrayBuffer;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
@@ -357,6 +359,14 @@ public final class utils {
             if (input == null) {
                 throw new FileNotFoundException("Resource not found: " + path);
             }
+            return input.readAllBytes();
+        } catch (IOException e) {
+            throw new CompletionException(e);
+        }
+    }
+
+    public static byte[] readFile(URL url) {
+        try (InputStream input = url.openStream()) {
             return input.readAllBytes();
         } catch (IOException e) {
             throw new CompletionException(e);
