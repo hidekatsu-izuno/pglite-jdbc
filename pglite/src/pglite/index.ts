@@ -1,11 +1,11 @@
-export * from './pglite.js'
-export * from './interface.js'
-export * as types from './types.js'
-export * as parse from './parse.js'
-export * as messages from '../pg-protocol/messages'
-export * as protocol from '../pg-protocol'
-export { MemoryFS } from './fs/memoryfs.js'
-export { IdbFs } from './fs/idbfs.js'
-export { Mutex } from 'async-mutex'
-export { uuid, formatQuery } from './utils.js'
-export type * as postgresMod from './postgresMod.js'
+export { Mutex } from "async-mutex";
+export * as protocol from "../pg-protocol";
+export * as messages from "../pg-protocol/messages";
+export { IdbFs } from "./fs/idbfs.js";
+export { MemoryFS } from "./fs/memoryfs.js";
+export * from "./interface.js";
+export * as parse from "./parse.js";
+export * from "./pglite.js";
+export type * as postgresMod from "./postgresMod.js";
+export * as types from "./types.js";
+export { formatQuery, uuid } from "./utils.js";

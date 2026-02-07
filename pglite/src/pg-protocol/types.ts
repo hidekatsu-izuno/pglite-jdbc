@@ -1,8 +1,8 @@
 export const Modes = {
-  text: 0,
-  binary: 1,
-} as const
+	text: 0,
+	binary: 1,
+} as const;
 
-export type Mode = (typeof Modes)[keyof typeof Modes]
+export type Mode = (typeof Modes)[keyof typeof Modes];
 
-export type BufferParameter = ArrayBuffer | ArrayBufferView
+export type BufferParameter = ArrayBuffer | ArrayBufferView;

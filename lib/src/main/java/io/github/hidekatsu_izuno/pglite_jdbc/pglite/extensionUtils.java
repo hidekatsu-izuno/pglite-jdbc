@@ -4,19 +4,13 @@ import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.ArrayBuffer;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Blob;
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.zip.GZIPInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 
@@ -83,107 +77,37 @@ public final class extensionUtils {
         }
     }
 
-    public static CompletableFuture<ExtensionBlob> loadExtensionBundle(
-        URL bundlePath
+    public static ExtensionBlob loadExtensionBundle(
+        String bundlePath
     ) {
         // Async load the extension bundle tar file
         // could be from a URL or a file
-        if (utils.IN_NODE) {
-            return CompletableFuture.supplyAsync(
-                () -> {
-                    try {
-                        var path = Paths.get(bundlePath.toURI());
-                        if (!Files.exists(path)) {
-                            throw new RuntimeException(
-                                "Extension bundle not found: " + bundlePath
-                            );
-                        }
-
-                        var chunks = new ByteArrayOutputStream();
-                        try (
-                            var inputStream = Files.newInputStream(path);
-                            var gunzip = new GZIPInputStream(inputStream)
-                        ) {
-                            var buffer = new byte[65536];
-                            var read = 0;
-                            while ((read = gunzip.read(buffer)) != -1) {
-                                chunks.write(buffer, 0, read);
-                            }
-                        }
-                        return new ByteArrayBlob(chunks.toByteArray());
-                    } catch (Exception e) {
-                        throw new CompletionException(e);
-                    }
-                }
-            );
-        } else {
-            return CompletableFuture.supplyAsync(
-                () -> {
-                    try {
-                        var connection = (HttpURLConnection) bundlePath.openConnection();
-                        connection.setRequestMethod("GET");
-                        connection.connect();
-                        if (connection.getResponseCode() / 100 != 2) {
-                            return null;
-                        }
-                        if (
-                            "gzip".equalsIgnoreCase(
-                                connection.getHeaderField("Content-Encoding")
-                            )
-                        ) {
-                            // Although the bundle is manually compressed, some servers will recognize
-                            // that and add a content-encoding header. Fetch will then automatically
-                            // decompress the response.
-                            try (
-                                var stream = new GZIPInputStream(
-                                    connection.getInputStream()
-                                )
-                            ) {
-                                return new ByteArrayBlob(readAllBytes(stream));
-                            }
-                        } else {
-                            var decompressionStream = new GZIPInputStream(
-                                connection.getInputStream()
-                            );
-                            try (var stream = decompressionStream) {
-                                return new ByteArrayBlob(readAllBytes(stream));
-                            }
-                        }
-                    } catch (IOException e) {
-                        throw new CompletionException(e);
-                    }
-                }
-            );
-        }
+        return new ByteArrayBlob(utils.readFile(bundlePath));
     }
 
-    public static CompletableFuture<Void> loadExtensions(
+    public static void loadExtensions(
         PostgresMod mod,
         Log log
     ) {
-        return CompletableFuture.runAsync(
-            () -> {
-                for (var ext : mod.pg_extensions().keySet()) {
-                    ExtensionBlob blob;
-                    try {
-                        blob = mod.pg_extensions().get(ext).join();
-                    } catch (RuntimeException err) {
-                        System.err.println(
-                            "Failed to fetch extension: " + ext + " " + err
-                        );
-                        continue;
-                    }
-                    if (blob != null) {
-                        var bytes = new Uint8Array(blob.arrayBuffer());
-                        loadExtension(mod, ext, bytes, log);
-                    } else {
-                        System.err.println(
-                            "Could not get binary data for extension: " + ext
-                        );
-                    }
-                }
+        for (var ext : mod.pg_extensions().keySet()) {
+            ExtensionBlob blob;
+            try {
+                blob = mod.pg_extensions().get(ext).join();
+            } catch (RuntimeException err) {
+                System.err.println(
+                    "Failed to fetch extension: " + ext + " " + err
+                );
+                continue;
             }
-        );
+            if (blob != null) {
+                var bytes = new Uint8Array(blob.arrayBuffer());
+                loadExtension(mod, ext, bytes, log);
+            } else {
+                System.err.println(
+                    "Could not get binary data for extension: " + ext
+                );
+            }
+        }
     }
 
     private static void loadExtension(
@@ -254,16 +178,6 @@ public final class extensionUtils {
         } else {
             return path;
         }
-    }
-
-    private static byte[] readAllBytes(InputStream stream) throws IOException {
-        var buffer = new byte[65536];
-        var out = new ByteArrayOutputStream();
-        var read = 0;
-        while ((read = stream.read(buffer)) != -1) {
-            out.write(buffer, 0, read);
-        }
-        return out.toByteArray();
     }
 
     private static List<TarFile> untar(Uint8Array bytes) {

@@ -1,45 +1,45 @@
 const TemplateType = {
-  part: 'part',
-  container: 'container',
-} as const
+	part: "part",
+	container: "container",
+} as const;
 
 interface TemplatePart {
-  _templateType: typeof TemplateType.part
-  str: string
+	_templateType: typeof TemplateType.part;
+	str: string;
 }
 
 interface TemplateContainer {
-  _templateType: typeof TemplateType.container
-  strings: TemplateStringsArray
-  values: any[]
+	_templateType: typeof TemplateType.container;
+	strings: TemplateStringsArray;
+	values: any[];
 }
 
 interface TemplatedQuery {
-  query: string
-  params: any[]
+	query: string;
+	params: any[];
 }
 
 function addToLastAndPushWithSuffix(
-  arr: string[],
-  suffix: string,
-  ...values: string[]
+	arr: string[],
+	suffix: string,
+	...values: string[]
 ) {
-  const lastArrIdx = arr.length - 1
-  const lastValIdx = values.length - 1
+	const lastArrIdx = arr.length - 1;
+	const lastValIdx = values.length - 1;
 
-  // no-op
-  if (lastValIdx === -1) return
+	// no-op
+	if (lastValIdx === -1) return;
 
-  // overwrite last element
-  if (lastValIdx === 0) {
-    arr[lastArrIdx] = arr[lastArrIdx] + values[0] + suffix
-    return
-  }
+	// overwrite last element
+	if (lastValIdx === 0) {
+		arr[lastArrIdx] = arr[lastArrIdx] + values[0] + suffix;
+		return;
+	}
 
-  // sandwich values between array and suffix
-  arr[lastArrIdx] = arr[lastArrIdx] + values[0]
-  arr.push(...values.slice(1, lastValIdx))
-  arr.push(values[lastValIdx] + suffix)
+	// sandwich values between array and suffix
+	arr[lastArrIdx] = arr[lastArrIdx] + values[0];
+	arr.push(...values.slice(1, lastValIdx));
+	arr.push(values[lastValIdx] + suffix);
 }
 
 /**
@@ -55,61 +55,61 @@ function addToLastAndPushWithSuffix(
  * ```
  */
 export function sql(
-  strings: TemplateStringsArray,
-  ...values: any[]
+	strings: TemplateStringsArray,
+	...values: any[]
 ): TemplateContainer {
-  const parsedStrings = [strings[0]] as string[] & {
-    raw: string[]
-  }
-  parsedStrings.raw = [strings.raw[0]]
+	const parsedStrings = [strings[0]] as string[] & {
+		raw: string[];
+	};
+	parsedStrings.raw = [strings.raw[0]];
 
-  const parsedValues: any[] = []
-  for (let i = 0; i < values.length; i++) {
-    const value = values[i]
-    const nextStringIdx = i + 1
+	const parsedValues: any[] = [];
+	for (let i = 0; i < values.length; i++) {
+		const value = values[i];
+		const nextStringIdx = i + 1;
 
-    // if value is a template tag, collapse into last string
-    if (value?._templateType === TemplateType.part) {
-      addToLastAndPushWithSuffix(
-        parsedStrings,
-        strings[nextStringIdx],
-        value.str,
-      )
-      addToLastAndPushWithSuffix(
-        parsedStrings.raw,
-        strings.raw[nextStringIdx],
-        value.str,
-      )
-      continue
-    }
+		// if value is a template tag, collapse into last string
+		if (value?._templateType === TemplateType.part) {
+			addToLastAndPushWithSuffix(
+				parsedStrings,
+				strings[nextStringIdx],
+				value.str,
+			);
+			addToLastAndPushWithSuffix(
+				parsedStrings.raw,
+				strings.raw[nextStringIdx],
+				value.str,
+			);
+			continue;
+		}
 
-    // if value is an output of this method, append in place
-    if (value?._templateType === TemplateType.container) {
-      addToLastAndPushWithSuffix(
-        parsedStrings,
-        strings[nextStringIdx],
-        ...value.strings,
-      )
-      addToLastAndPushWithSuffix(
-        parsedStrings.raw,
-        strings.raw[nextStringIdx],
-        ...value.strings.raw,
-      )
-      parsedValues.push(...value.values)
-      continue
-    }
+		// if value is an output of this method, append in place
+		if (value?._templateType === TemplateType.container) {
+			addToLastAndPushWithSuffix(
+				parsedStrings,
+				strings[nextStringIdx],
+				...value.strings,
+			);
+			addToLastAndPushWithSuffix(
+				parsedStrings.raw,
+				strings.raw[nextStringIdx],
+				...value.strings.raw,
+			);
+			parsedValues.push(...value.values);
+			continue;
+		}
 
-    // otherwise keep reconstructing
-    parsedStrings.push(strings[nextStringIdx])
-    parsedStrings.raw.push(strings.raw[nextStringIdx])
-    parsedValues.push(value)
-  }
+		// otherwise keep reconstructing
+		parsedStrings.push(strings[nextStringIdx]);
+		parsedStrings.raw.push(strings.raw[nextStringIdx]);
+		parsedValues.push(value);
+	}
 
-  return {
-    _templateType: 'container',
-    strings: parsedStrings,
-    values: parsedValues,
-  }
+	return {
+		_templateType: "container",
+		strings: parsedStrings,
+		values: parsedValues,
+	};
 }
 
 /**
@@ -123,13 +123,13 @@ export function sql(
  * ```
  */
 export function identifier(
-  strings: TemplateStringsArray,
-  ...values: any[]
+	strings: TemplateStringsArray,
+	...values: any[]
 ): TemplatePart {
-  return {
-    _templateType: 'part',
-    str: `"${String.raw(strings, ...values)}"`,
-  }
+	return {
+		_templateType: "part",
+		str: `"${String.raw(strings, ...values)}"`,
+	};
 }
 
 /**
@@ -144,13 +144,13 @@ export function identifier(
  */
 
 export function raw(
-  strings: TemplateStringsArray,
-  ...values: any[]
+	strings: TemplateStringsArray,
+	...values: any[]
 ): TemplatePart {
-  return {
-    _templateType: 'part',
-    str: String.raw(strings, ...values),
-  }
+	return {
+		_templateType: "part",
+		str: String.raw(strings, ...values),
+	};
 }
 
 /**
@@ -168,15 +168,15 @@ export function raw(
  * ```
  */
 export function query(
-  strings: TemplateStringsArray,
-  ...values: any[]
+	strings: TemplateStringsArray,
+	...values: any[]
 ): TemplatedQuery {
-  const { strings: queryStringParts, values: params } = sql(strings, ...values)
-  return {
-    query: [
-      queryStringParts[0],
-      ...params.flatMap((_, idx) => [`$${idx + 1}`, queryStringParts[idx + 1]]),
-    ].join(''),
-    params: params,
-  }
+	const { strings: queryStringParts, values: params } = sql(strings, ...values);
+	return {
+		query: [
+			queryStringParts[0],
+			...params.flatMap((_, idx) => [`$${idx + 1}`, queryStringParts[idx + 1]]),
+		].join(""),
+		params: params,
+	};
 }

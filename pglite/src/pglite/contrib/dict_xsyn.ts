@@ -1,16 +1,16 @@
 import type {
-  Extension,
-  ExtensionSetupResult,
-  PGliteInterface,
-} from '../interface'
+	Extension,
+	ExtensionSetupResult,
+	PGliteInterface,
+} from "../interface";
 
 const setup = async (_pg: PGliteInterface, _emscriptenOpts: any) => {
-  return {
-    bundlePath: new URL('dict_xsyn.tar.gz', import.meta.url),
-  } satisfies ExtensionSetupResult
-}
+	return {
+		bundlePath: new URL("dict_xsyn.tar.gz", import.meta.url),
+	} satisfies ExtensionSetupResult;
+};
 
 export const dict_xsyn = {
-  name: 'dict_xsyn',
-  setup,
-} satisfies Extension
+	name: "dict_xsyn",
+	setup,
+} satisfies Extension;

@@ -1160,8 +1160,7 @@ public final class opfs_ahp {
         private final Integer code;
 
         public FsError(String code, String message) {
-            super(message);
-            this.code = base.ERRNO_CODES.get(code);
+            this(base.ERRNO_CODES.get(code), message);
         }
 
         public FsError(Integer code, String message) {

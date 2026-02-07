@@ -10,13 +10,12 @@ import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.serializer;
 import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.serializer.serialize;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.ArrayBuffer;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
+import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Semaphore;
@@ -26,19 +25,6 @@ import java.util.function.Function;
 import java.util.regex.Pattern;
 
 public final class utils {
-    public static final boolean IN_NODE = true;
-
-    private static CompletableFuture<byte[]> wasmDownloadPromise;
-
-    public static CompletableFuture<Void> startWasmDownload() {
-        if (IN_NODE || wasmDownloadPromise != null) {
-            return CompletableFuture.completedFuture(null);
-        }
-        var modulePath = wasmModulePath();
-        wasmDownloadPromise = CompletableFuture.supplyAsync(() -> readFile(modulePath));
-        return wasmDownloadPromise.thenApply(ignored -> null);
-    }
-
     // This is a global cache of the PGlite Wasm module to avoid having to re-download or
     // compile it on subsequent calls.
     private static WasmModule cachedWasmModule;
@@ -57,63 +43,30 @@ public final class utils {
         }
     }
 
-    public static CompletableFuture<WasmInstantiation> instantiateWasm(
+    public static WasmInstantiation instantiateWasm(
         ImportValues imports,
         WasmModule module
     ) {
         if (module != null || cachedWasmModule != null) {
             var activeModule = module != null ? module : cachedWasmModule;
-            return CompletableFuture.supplyAsync(
-                () -> new WasmInstantiation(
+            return new WasmInstantiation(
                     Instance.builder(activeModule).withImportValues(imports).build(),
-                    activeModule
-                )
-            );
+                    activeModule);
         }
 
         var modulePath = wasmModulePath();
-        if (IN_NODE) {
-            return CompletableFuture.supplyAsync(
-                () -> {
-                    var bytes = readFile(modulePath);
-                    var newModule = Parser.parse(bytes);
-                    var instance = Instance.builder(newModule)
-                        .withImportValues(imports)
-                        .build();
-                    cachedWasmModule = newModule;
-                    return new WasmInstantiation(instance, newModule);
-                }
-            );
-        } else {
-            if (wasmDownloadPromise == null) {
-                wasmDownloadPromise = CompletableFuture.supplyAsync(
-                    () -> readFile(modulePath)
-                );
-            }
-            return wasmDownloadPromise.thenApply(
-                bytes -> {
-                    var newModule = Parser.parse(bytes);
-                    var instance = Instance.builder(newModule)
-                        .withImportValues(imports)
-                        .build();
-                    cachedWasmModule = newModule;
-                    return new WasmInstantiation(instance, newModule);
-                }
-            );
-        }
+        var bytes = readFile(modulePath);
+        var newModule = Parser.parse(bytes);
+        var instance = Instance.builder(newModule)
+            .withImportValues(imports)
+            .build();
+        cachedWasmModule = newModule;
+        return new WasmInstantiation(instance, newModule);
     }
 
-    public static CompletableFuture<ArrayBuffer> getFsBundle() {
+    public static ArrayBuffer getFsBundle() {
         var fsBundlePath = fsBundlePath();
-        if (IN_NODE) {
-            return CompletableFuture.supplyAsync(
-                () -> new Uint8Array(readFile(fsBundlePath)).buffer
-            );
-        } else {
-            return CompletableFuture.supplyAsync(
-                () -> new Uint8Array(readFile(fsBundlePath)).buffer
-            );
-        }
+        return new Uint8Array(readFile(fsBundlePath)).buffer;
     }
 
     public static String uuid() {
@@ -172,19 +125,18 @@ public final class utils {
      * @returns The formatted query
      */
     public static CompletableFuture<String> formatQuery(
-        PGliteInterface pg,
+        interface_.PGliteInterface<?> pg,
         String query,
         Object[] params,
-        Transaction tx
+        interface_.Transaction tx
     ) {
         if (params == null || params.length == 0) {
             // no params so no formatting needed
             return CompletableFuture.completedFuture(query);
         }
 
-        var queryExecutor = tx != null ? tx : pg;
         var messages = new ArrayList<BackendMessage>();
-        var options = new ExecProtocolOptions();
+        var options = new interface_.ExecProtocolOptions();
         options.syncToFs = false;
 
         var parseOpts = new serializer.ParseOpts();
@@ -255,15 +207,18 @@ public final class utils {
                 queryParams[0] = subbedQuery;
                 System.arraycopy(params, 0, queryParams, 1, params.length);
 
-                var queryOptions = new QueryOptions();
+                var queryOptions = new interface_.QueryOptions();
                 queryOptions.paramTypes = paramTypes;
 
-                return queryExecutor.query(
-                    formattedQuery,
-                    queryParams,
-                    queryOptions
-                ).thenApply(
-                    result -> result.rows.get(0).query
+                var queryFuture = tx != null
+                    ? tx.query(formattedQuery, queryParams, queryOptions)
+                    : pg.query(formattedQuery, queryParams, queryOptions);
+
+                return queryFuture.thenApply(
+                    result -> {
+                        var row = (Map<?, ?>) result.rows.get(0);
+                        return (String) row.get("query");
+                    }
                 );
             }
         );
@@ -396,20 +351,24 @@ public final class utils {
         return new int[0];
     }
 
-    private static byte[] readFile(Path path) {
-        try {
-            return Files.readAllBytes(path);
+    public static byte[] readFile(String path) {
+        var classLoader = utils.class.getClassLoader();
+        try (var input = classLoader.getResourceAsStream(path)) {
+            if (input == null) {
+                throw new FileNotFoundException("Resource not found: " + path);
+            }
+            return input.readAllBytes();
         } catch (IOException e) {
             throw new CompletionException(e);
         }
     }
 
-    private static Path wasmModulePath() {
-        return Paths.get("pglite", "src", "pglite", "release", "pglite.wasm");
+    private static String wasmModulePath() {
+        return "pglite.wasm";
     }
 
-    private static Path fsBundlePath() {
-        return Paths.get("pglite", "src", "pglite", "release", "pglite.data");
+    private static String fsBundlePath() {
+        return "pglite.data";
     }
 
     public interface AsyncFunction<R> {

@@ -2,209 +2,127 @@ package io.github.hidekatsu_izuno.pglite_jdbc.pglite.live;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Extension;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.ExtensionSetupResult;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Extensions;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.PGliteInterface;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Results;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Transaction;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.AbortSignal;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.AddEventListenerOptions;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.Change;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveChanges;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveChangesCallback;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveChangesOptions;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveIncrementalQueryOptions;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQuery;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryCallback;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryOptions;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryResults;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.RefreshOptions;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.utils;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.utils.AsyncFunction;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 public final class index {
     private static final int MAX_RETRIES = 5;
 
-    private static CompletableFuture<ExtensionSetupResult<interface_.LiveNamespace>> setup(
+    private static CompletableFuture<ExtensionSetupResult<LiveNamespace>> setup(
         PGliteInterface<?> pg,
-        Object _emscriptenOpts,
-        Boolean clientOnly
+        Object emscriptenOpts
     ) {
         // The notify triggers are only ever added and never removed
         // Keep track of which triggers have been added to avoid adding them multiple times
         var tableNotifyTriggersAdded = new HashSet<String>();
 
-        var namespaceObj = new interface_.LiveNamespace() {
+        var namespaceObj = new LiveNamespace() {
             @Override
-            public <T> CompletableFuture<interface_.LiveQuery<T>> query(
+            public <T> CompletableFuture<LiveQuery<T>> query(
                 String query,
                 Object[] params,
-                interface_.LiveQueryCallback<T> callback
+                LiveQueryCallback<T> callback
             ) {
-                return queryInternal(pg, tableNotifyTriggersAdded, query, params, callback);
+                var options = new LiveQueryOptions<T>();
+                options.query = query;
+                options.params = params;
+                options.callback = callback;
+                return query(options);
             }
 
             @Override
-            public <T> CompletableFuture<interface_.LiveQuery<T>> query(
-                interface_.LiveQueryOptions<T> options
+            public <T> CompletableFuture<LiveQuery<T>> query(
+                LiveQueryOptions<T> options
             ) {
-                return queryInternal(
-                    pg,
-                    tableNotifyTriggersAdded,
-                    options.query,
-                    options.params,
-                    options.callback,
-                    options.signal,
-                    options.offset,
-                    options.limit
-                );
-            }
+                var signal = (AbortSignal) null;
+                var params = (Object[]) null;
+                var callback = (LiveQueryCallback<T>) null;
+                var offset = (Integer) null;
+                var limit = (Integer) null;
+                var query = options.query;
+                if (options != null) {
+                    signal = options.signal;
+                    params = options.params;
+                    callback = options.callback;
+                    offset = options.offset;
+                    limit = options.limit;
+                    query = options.query;
+                }
 
-            @Override
-            public <T> CompletableFuture<interface_.LiveChanges<T>> changes(
-                String query,
-                Object[] params,
-                String key,
-                interface_.LiveChangesCallback<T> callback
-            ) {
-                return changesInternal(
-                    pg,
-                    tableNotifyTriggersAdded,
-                    query,
-                    params,
-                    key,
-                    callback,
-                    null
-                );
-            }
+                // Offset and limit must be provided together
+                if ((offset == null) != (limit == null)) {
+                    throw new RuntimeException("offset and limit must be provided together");
+                }
 
-            @Override
-            public <T> CompletableFuture<interface_.LiveChanges<T>> changes(
-                interface_.LiveChangesOptions<T> options
-            ) {
-                return changesInternal(
-                    pg,
-                    tableNotifyTriggersAdded,
-                    options.query,
-                    options.params,
-                    options.key,
-                    options.callback,
-                    options.signal
-                );
-            }
+                var isWindowed = offset != null && limit != null;
+                var totalCount = new AtomicReference<Integer>(null);
 
-            @Override
-            public <T> CompletableFuture<interface_.LiveQuery<T>> incrementalQuery(
-                String query,
-                Object[] params,
-                String key,
-                interface_.LiveQueryCallback<T> callback
-            ) {
-                return incrementalQueryInternal(
-                    this,
-                    query,
-                    params,
-                    key,
-                    callback,
-                    null
-                );
-            }
+                if (
+                    isWindowed &&
+                    (offset == null || limit == null)
+                ) {
+                    throw new RuntimeException("offset and limit must be numbers");
+                }
 
-            @Override
-            public <T> CompletableFuture<interface_.LiveQuery<T>> incrementalQuery(
-                interface_.LiveIncrementalQueryOptions<T> options
-            ) {
-                return incrementalQueryInternal(
-                    this,
-                    options.query,
-                    options.params,
-                    options.key,
-                    options.callback,
-                    options.signal
-                );
-            }
-        };
+                var callbacks = callback != null
+                    ? new ArrayList<LiveQueryCallback<T>>(List.of(callback))
+                    : new ArrayList<LiveQueryCallback<T>>();
+                var id = utils.uuid().replace("-", "");
+                var dead = new AtomicBoolean(false);
 
-        var result = new ExtensionSetupResult<interface_.LiveNamespace>();
-        result.namespaceObj = namespaceObj;
-        return CompletableFuture.completedFuture(result);
-    }
+                var results = new AtomicReference<LiveQueryResults<T>>();
 
-    private static <T> CompletableFuture<interface_.LiveQuery<T>> queryInternal(
-        PGliteInterface<?> pg,
-        Set<String> tableNotifyTriggersAdded,
-        String query,
-        Object[] params,
-        interface_.LiveQueryCallback<T> callback
-    ) {
-        return queryInternal(
-            pg,
-            tableNotifyTriggersAdded,
-            query,
-            params,
-            callback,
-            null,
-            null,
-            null
-        );
-    }
+                var unsubList = new AtomicReference<List<Function<Transaction, CompletableFuture<Void>>>>();
+                var offsetRef = new AtomicReference<Integer>(offset);
+                var limitRef = new AtomicReference<Integer>(limit);
+                var refreshRef = new AtomicReference<AsyncFunction<Void>>();
 
-    private static <T> CompletableFuture<interface_.LiveQuery<T>> queryInternal(
-        PGliteInterface<?> pg,
-        Set<String> tableNotifyTriggersAdded,
-        String query,
-        Object[] params,
-        interface_.LiveQueryCallback<T> callback,
-        interface_.AbortSignal signal,
-        Integer offset,
-        Integer limit
-    ) {
-        // Offset and limit must be provided together
-        if ((offset == null) != (limit == null)) {
-            throw new RuntimeException("offset and limit must be provided together");
-        }
+                var init = (Supplier<CompletableFuture<Void>>) () ->
+                    pg.transaction(
+                        tx -> {
+                            // Create a temporary view with the query
+                            var formattedQueryFuture = (params != null && params.length > 0)
+                                ? utils.formatQuery(pg, query, params, tx)
+                                : CompletableFuture.completedFuture(query);
 
-        var isWindowed = offset != null && limit != null;
-        var offsetRef = new Integer[] { offset };
-        var limitRef = new Integer[] { limit };
-        var totalCountRef = new Integer[1];
-
-        if (
-            isWindowed
-            && (offset == null || limit == null)
-        ) {
-            throw new RuntimeException("offset and limit must be numbers");
-        }
-
-        var callbacks = new ArrayList<interface_.LiveQueryCallback<T>>();
-        if (callback != null) {
-            callbacks.add(callback);
-        }
-        var id = utils.uuid().replace("-", "");
-        var dead = new boolean[] { false };
-
-        var resultsHolder = new AtomicReference<interface_.LiveQueryResults<T>>();
-
-        var unsubList = new ArrayList<Function<Transaction, CompletableFuture<Void>>>();
-
-        var refreshRef = new AtomicReference<utils.AsyncFunction<Void>>();
-
-        var init = (Runnable) () -> {
-            pg.transaction(
-                tx -> {
-                    // Create a temporary view with the query
-                    var formattedFuture = CompletableFuture.completedFuture(query);
-                    if (params != null && params.length > 0) {
-                        formattedFuture = formatQuery(pg, query, params, tx);
-                    }
-                    return formattedFuture.thenCompose(
-                        formattedQuery -> {
-                            return tx.exec(
-                                "CREATE OR REPLACE TEMP VIEW live_query_"
-                                    + id
-                                    + "_view AS "
-                                    + formattedQuery,
-                                null
-                            ).thenCompose(
-                                ignored -> getTablesForView(
-                                    tx,
-                                    "live_query_" + id + "_view"
+                            return formattedQueryFuture.thenCompose(
+                                formattedQuery -> tx.exec(
+                                    "CREATE OR REPLACE TEMP VIEW live_query_" + id + "_view AS " + formattedQuery,
+                                    null
                                 )
+                            ).thenCompose(
+                                ignored -> getTablesForView(tx, "live_query_" + id + "_view")
                             ).thenCompose(
                                 tables -> addNotifyTriggersToTables(
                                     tx,
@@ -212,118 +130,522 @@ public final class index {
                                     tableNotifyTriggersAdded
                                 ).thenCompose(
                                     ignored -> {
+                                        var setupQuery = (CompletableFuture<Void>) null;
                                         if (isWindowed) {
-                                            return tx.exec(
-                                                "\n              PREPARE live_query_"
-                                                    + id
-                                                    + "_get(int, int) AS\n              SELECT * FROM live_query_"
-                                                    + id
-                                                    + "_view\n              LIMIT $1 OFFSET $2;\n            ",
+                                            setupQuery = tx.exec(
+                                                """
+                                                PREPARE live_query_%s_get(int, int) AS
+                                                SELECT * FROM live_query_%s_view
+                                                LIMIT $1 OFFSET $2;
+                                                """.formatted(id, id),
                                                 null
                                             ).thenCompose(
-                                                ignoredPrepare -> tx.exec(
-                                                    "\n              PREPARE live_query_"
-                                                        + id
-                                                        + "_get_total_count AS\n              SELECT COUNT(*) FROM live_query_"
-                                                        + id
-                                                        + "_view;\n            ",
+                                                ignoredExec -> tx.exec(
+                                                    """
+                                                    PREPARE live_query_%s_get_total_count AS
+                                                    SELECT COUNT(*) FROM live_query_%s_view;
+                                                    """.formatted(id, id),
                                                     null
                                                 )
                                             ).thenCompose(
-                                                ignoredPrepare -> tx.query(
-                                                    "EXECUTE live_query_"
-                                                        + id
-                                                        + "_get_total_count;",
+                                                ignoredExec -> tx.query(
+                                                    "EXECUTE live_query_" + id + "_get_total_count;",
                                                     null,
                                                     null
                                                 )
                                             ).thenCompose(
-                                                countResult -> {
-                                                    totalCountRef[0] = extractCount(countResult);
+                                                totalCountResult -> {
+                                                    var countRow = (Map<?, ?>) totalCountResult.rows.get(0);
+                                                    totalCount.set(((Number) countRow.get("count")).intValue());
                                                     return tx.query(
-                                                        "EXECUTE live_query_"
-                                                            + id
-                                                            + "_get("
-                                                            + limitRef[0]
-                                                            + ", "
-                                                            + offsetRef[0]
-                                                            + ");",
+                                                        "EXECUTE live_query_" + id + "_get("
+                                                            + limitRef.get() + ", "
+                                                            + offsetRef.get() + ");",
                                                         null,
                                                         null
                                                     ).thenApply(
                                                         queryResult -> {
-                                                            var liveResults = new interface_.LiveQueryResults<T>();
-                                                            liveResults.rows = queryResult.rows;
-                                                            liveResults.fields = queryResult.fields;
-                                                            liveResults.affectedRows = queryResult.affectedRows;
-                                                            liveResults.blob = queryResult.blob;
-                                                            liveResults.offset = offsetRef[0];
-                                                            liveResults.limit = limitRef[0];
-                                                            liveResults.totalCount = totalCountRef[0];
-                                                            resultsHolder.set(liveResults);
-                                                            return liveResults;
+                                                            var liveResults =
+                                                                index.<T>toLiveQueryResults(queryResult);
+                                                            liveResults.offset = offsetRef.get();
+                                                            liveResults.limit = limitRef.get();
+                                                            liveResults.totalCount = totalCount.get();
+                                                            results.set(liveResults);
+                                                            return null;
                                                         }
                                                     );
                                                 }
                                             );
-                                        }
-                                        return tx.exec(
-                                            "\n              PREPARE live_query_"
-                                                + id
-                                                + "_get AS\n              SELECT * FROM live_query_"
-                                                + id
-                                                + "_view;\n            ",
-                                            null
-                                        ).thenCompose(
-                                            ignoredPrepare -> tx.query(
-                                                "EXECUTE live_query_"
-                                                    + id
-                                                    + "_get;",
-                                                null,
+                                        } else {
+                                            setupQuery = tx.exec(
+                                                """
+                                                PREPARE live_query_%s_get AS
+                                                SELECT * FROM live_query_%s_view;
+                                                """.formatted(id, id),
                                                 null
+                                            ).thenCompose(
+                                                ignoredExec -> tx.query(
+                                                    "EXECUTE live_query_" + id + "_get;",
+                                                    null,
+                                                    null
+                                                )
                                             ).thenApply(
                                                 queryResult -> {
-                                                    var liveResults = new interface_.LiveQueryResults<T>();
-                                                    liveResults.rows = queryResult.rows;
-                                                    liveResults.fields = queryResult.fields;
-                                                    liveResults.affectedRows = queryResult.affectedRows;
-                                                    liveResults.blob = queryResult.blob;
-                                                    resultsHolder.set(liveResults);
-                                                    return liveResults;
+                                                    results.set(
+                                                        index.<T>toLiveQueryResults(queryResult)
+                                                    );
+                                                    return null;
                                                 }
-                                            )
-                                        );
-                                    }
-                                ).thenCompose(
-                                    liveResults -> getTablesForView(
-                                        tx,
-                                        "live_query_" + id + "_view"
-                                    ).thenCompose(
-                                        tableList -> {
-                                            var subs = new ArrayList<CompletableFuture<Function<Transaction, CompletableFuture<Void>>>>();
-                                            for (var table : tableList) {
-                                                subs.add(
-                                                    tx.listen(
-                                                        "\"table_change__"
-                                                            + table.schema_oid
-                                                            + "__"
-                                                            + table.table_oid
-                                                            + "\"",
-                                                        payload -> {
-                                                            refreshRef.get().apply(new interface_.RefreshOptions());
+                                            );
+                                        }
+
+                                        return setupQuery.thenCompose(
+                                            ignoredSetup -> {
+                                                var listenFutures =
+                                                    new ArrayList<CompletableFuture<Function<Transaction, CompletableFuture<Void>>>>();
+                                                for (var table : tables) {
+                                                    listenFutures.add(
+                                                        tx.listen(
+                                                            "\"table_change__" + table.schema_oid + "__" + table.table_oid + "\"",
+                                                            ignoredListen -> {
+                                                                var refreshFn = refreshRef.get();
+                                                                if (refreshFn != null) {
+                                                                    refreshFn.apply();
+                                                                }
+                                                            }
+                                                        )
+                                                    );
+                                                }
+                                                var combined = CompletableFuture.allOf(
+                                                    listenFutures.toArray(new CompletableFuture[0])
+                                                );
+                                                return combined.thenApply(
+                                                    ignoredCombined -> {
+                                                        var list =
+                                                            new ArrayList<Function<Transaction, CompletableFuture<Void>>>(
+                                                                listenFutures.size()
+                                                            );
+                                                        for (var future : listenFutures) {
+                                                            list.add(future.join());
                                                         }
-                                                    )
+                                                        unsubList.set(list);
+                                                        return null;
+                                                    }
                                                 );
                                             }
-                                            return CompletableFuture.allOf(
-                                                subs.toArray(new CompletableFuture[0])
-                                            ).thenApply(
-                                                ignoredSubs -> {
-                                                    unsubList.clear();
-                                                    for (var sub : subs) {
-                                                        unsubList.add(sub.join());
+                                        );
+                                    }
+                                )
+                            );
+                        }
+                    );
+
+                return init.get().thenCompose(
+                    ignoredInit -> {
+                        // Function to refresh the query
+                        var refreshFn = utils.debounceMutex(
+                            (Object... args) -> {
+                                var refreshOptions =
+                                    args.length > 0 ? (RefreshOptions) args[0] : null;
+                                var newOffset =
+                                    refreshOptions != null ? refreshOptions.offset : null;
+                                var newLimit =
+                                    refreshOptions != null ? refreshOptions.limit : null;
+
+                                // We can optionally provide new offset and limit values to refresh with
+                                if (
+                                    !isWindowed &&
+                                    (newOffset != null || newLimit != null)
+                                ) {
+                                    throw new RuntimeException(
+                                        "offset and limit cannot be provided for non-windowed queries"
+                                    );
+                                }
+                                if (
+                                    (newOffset != null
+                                        && newOffset != 0
+                                        && Double.isNaN(newOffset.doubleValue()))
+                                        || (newLimit != null
+                                            && newLimit != 0
+                                            && Double.isNaN(newLimit.doubleValue()))
+                                ) {
+                                    throw new RuntimeException("offset and limit must be numbers");
+                                }
+                                offsetRef.set(newOffset != null ? newOffset : offsetRef.get());
+                                limitRef.set(newLimit != null ? newLimit : limitRef.get());
+
+                                var run = new Function<Integer, CompletableFuture<Void>>() {
+                                    @Override
+                                    public CompletableFuture<Void> apply(Integer count) {
+                                        if (callbacks.isEmpty()) {
+                                            return CompletableFuture.completedFuture(null);
+                                        }
+                                        var queryFuture = isWindowed
+                                            ? pg.query(
+                                                "EXECUTE live_query_" + id + "_get("
+                                                    + limitRef.get() + ", "
+                                                    + offsetRef.get() + ");",
+                                                null,
+                                                null
+                                            )
+                                            : pg.query(
+                                                "EXECUTE live_query_" + id + "_get;",
+                                                null,
+                                                null
+                                            );
+
+                                        return queryFuture.<CompletableFuture<Void>>handle(
+                                            (queryResult, error) -> {
+                                                if (error != null) {
+                                                    var cause = error instanceof CompletionException
+                                                        ? error.getCause()
+                                                        : error;
+                                                    var msg = cause.getMessage();
+                                                    if (
+                                                        msg != null
+                                                            && msg.startsWith("prepared statement \"live_query_" + id)
+                                                            && msg.endsWith("does not exist")
+                                                    ) {
+                                                        // If the prepared statement does not exist, reset and try again
+                                                        // This can happen if using the multi-tab worker
+                                                        if (count > MAX_RETRIES) {
+                                                            throw new CompletionException(cause);
+                                                        }
+                                                        return init.get().thenCompose(
+                                                            ignoredReinit -> apply(count + 1)
+                                                        );
                                                     }
-                                                    return liveResults;
+                                                    throw new CompletionException(cause);
+                                                }
+                                                var liveResults =
+                                                    index.<T>toLiveQueryResults(queryResult);
+                                                if (isWindowed) {
+                                                    liveResults.offset = offsetRef.get();
+                                                    liveResults.limit = limitRef.get();
+                                                    liveResults.totalCount = totalCount.get();
+                                                }
+                                                results.set(liveResults);
+                                                runResultCallbacks(callbacks, liveResults);
+                                                if (!isWindowed) {
+                                                    return CompletableFuture.completedFuture(null);
+                                                }
+                                                return pg.query(
+                                                    "EXECUTE live_query_" + id + "_get_total_count;",
+                                                    null,
+                                                    null
+                                                ).thenCompose(
+                                                    countResult -> {
+                                                        var countRow = (Map<?, ?>) countResult.rows.get(0);
+                                                        var newTotalCount =
+                                                            ((Number) countRow.get("count")).intValue();
+                                                        if (
+                                                            !Objects.equals(newTotalCount, totalCount.get())
+                                                        ) {
+                                                            // The total count has changed, refresh the query
+                                                            totalCount.set(newTotalCount);
+                                                            var currentRefresh = refreshRef.get();
+                                                            return currentRefresh != null
+                                                                ? currentRefresh.apply()
+                                                                : CompletableFuture.completedFuture(null);
+                                                        }
+                                                        return CompletableFuture.completedFuture(null);
+                                                    }
+                                                );
+                                            }
+                                        ).thenCompose(handled -> handled);
+                                    }
+                                };
+                                return run.apply(0);
+                            }
+                        );
+                        refreshRef.set(refreshFn);
+
+                        // Function to subscribe to the query
+                        var subscribe = (interface_.LiveQuerySubscribe<T>) cb -> {
+                            if (dead.get()) {
+                                throw new RuntimeException(
+                                    "Live query is no longer active and cannot be subscribed to"
+                                );
+                            }
+                            callbacks.add(cb);
+                        };
+
+                        // Function to unsubscribe from the query
+                        // If no function is provided, unsubscribe all callbacks
+                        // If there are no callbacks, unsubscribe from the notify triggers
+                        var unsubscribe = (interface_.LiveQueryUnsubscribe<T>) cb -> {
+                            if (cb != null) {
+                                var filtered = callbacks.stream()
+                                    .filter(item -> item != cb)
+                                    .toList();
+                                callbacks.clear();
+                                callbacks.addAll(filtered);
+                            } else {
+                                callbacks.clear();
+                            }
+                            if (callbacks.isEmpty() && !dead.get()) {
+                                dead.set(true);
+                                return pg.transaction(
+                                    tx -> {
+                                        var unsubFutures = new ArrayList<CompletableFuture<Void>>();
+                                        var list = unsubList.get();
+                                        if (list != null) {
+                                            for (var unsub : list) {
+                                                unsubFutures.add(unsub.apply(tx));
+                                            }
+                                        }
+                                        return CompletableFuture.allOf(
+                                            unsubFutures.toArray(new CompletableFuture[0])
+                                        ).thenCompose(
+                                            ignoredUnsub -> tx.exec(
+                                                """
+                                                DROP VIEW IF EXISTS live_query_%s_view;
+                                                DEALLOCATE live_query_%s_get;
+                                                """.formatted(id, id),
+                                                null
+                                            )
+                                        ).thenApply(
+                                            ignoredExec -> null
+                                        );
+                                    }
+                                );
+                            }
+                            return CompletableFuture.completedFuture(null);
+                        };
+
+                        var abortFuture = CompletableFuture.<Void>completedFuture(null);
+                        // If the signal has already been aborted, unsubscribe
+                        if (signal != null && signal.aborted()) {
+                            abortFuture = unsubscribe.apply(null);
+                        } else if (signal != null) {
+                            // Add an event listener to unsubscribe if the signal is aborted
+                            var opts = new AddEventListenerOptions();
+                            opts.once = true;
+                            signal.addEventListener(
+                                "abort",
+                                () -> unsubscribe.apply(null),
+                                opts
+                            );
+                        }
+
+                        return abortFuture.thenApply(
+                            ignoredAbort -> {
+                                // Run the callback with the initial results
+                                runResultCallbacks(callbacks, results.get());
+
+                                // Return the initial results
+                                var liveQuery = new LiveQuery<T>();
+                                liveQuery.initialResults = results.get();
+                                liveQuery.subscribe = subscribe;
+                                liveQuery.unsubscribe = unsubscribe;
+                                liveQuery.refresh = refreshOptions ->
+                                    refreshFn.apply(refreshOptions);
+                                return liveQuery;
+                            }
+                        );
+                    }
+                );
+            }
+
+            @Override
+            public <T> CompletableFuture<LiveChanges<T>> changes(
+                String query,
+                Object[] params,
+                String key,
+                LiveChangesCallback<T> callback
+            ) {
+                var options = new LiveChangesOptions<T>();
+                options.query = query;
+                options.params = params;
+                options.key = key;
+                options.callback = callback;
+                return changes(options);
+            }
+
+            @Override
+            public <T> CompletableFuture<LiveChanges<T>> changes(
+                LiveChangesOptions<T> options
+            ) {
+                var signal = (AbortSignal) null;
+                var params = (Object[]) null;
+                var key = (String) null;
+                var callback = (LiveChangesCallback<T>) null;
+                var query = options.query;
+                if (options != null) {
+                    signal = options.signal;
+                    params = options.params;
+                    key = options.key;
+                    callback = options.callback;
+                    query = options.query;
+                }
+                if (key == null) {
+                    throw new RuntimeException("key is required for changes queries");
+                }
+                var callbacks = callback != null
+                    ? new ArrayList<LiveChangesCallback<T>>(List.of(callback))
+                    : new ArrayList<LiveChangesCallback<T>>();
+                var id = utils.uuid().replace("-", "");
+                var dead = new AtomicBoolean(false);
+
+                var stateSwitch = new AtomicInteger(1);
+                var changes = new AtomicReference<Results>();
+
+                var unsubList = new AtomicReference<List<Function<Transaction, CompletableFuture<Void>>>>();
+                var refreshRef = new AtomicReference<AsyncFunction<Void>>();
+
+                var init = (Supplier<CompletableFuture<Void>>) () ->
+                    pg.transaction(
+                        tx -> {
+                            // Create a temporary view with the query
+                            return utils.formatQuery(pg, query, params, tx).thenCompose(
+                                formattedQuery -> tx.query(
+                                    "CREATE OR REPLACE TEMP VIEW live_query_" + id + "_view AS " + formattedQuery,
+                                    null,
+                                    null
+                                )
+                            ).thenCompose(
+                                ignored -> getTablesForView(tx, "live_query_" + id + "_view")
+                            ).thenCompose(
+                                tables -> addNotifyTriggersToTables(
+                                    tx,
+                                    tables,
+                                    tableNotifyTriggersAdded
+                                ).thenCompose(
+                                    ignored -> tx.query(
+                                        """
+                                        SELECT column_name, data_type, udt_name
+                                        FROM information_schema.columns
+                                        WHERE table_name = 'live_query_%s_view'
+                                        """.formatted(id),
+                                        null,
+                                        null
+                                    ).thenCompose(
+                                        columnsResult -> {
+                                            var columns = new ArrayList<Map<String, Object>>();
+                                            for (var rowObj : columnsResult.rows) {
+                                                @SuppressWarnings("unchecked")
+                                                var row = (Map<String, Object>) rowObj;
+                                                columns.add(row);
+                                            }
+                                            var afterColumn = new HashMap<String, Object>();
+                                            afterColumn.put("column_name", "__after__");
+                                            afterColumn.put("data_type", "integer");
+                                            columns.add(afterColumn);
+
+                                            // Init state tables as empty temp table
+                                            return tx.exec(
+                                                """
+                                                CREATE TEMP TABLE live_query_%s_state1 (LIKE live_query_%s_view INCLUDING ALL);
+                                                CREATE TEMP TABLE live_query_%s_state2 (LIKE live_query_%s_view INCLUDING ALL);
+                                                """.formatted(id, id, id, id),
+                                                null
+                                            ).thenCompose(
+                                                ignoredExec -> {
+                                                    // Create Diff views and prepared statements
+                                                    var diffFutures = new ArrayList<CompletableFuture<Void>>();
+                                                    for (var curr = 1; curr <= 2; curr++) {
+                                                        var prev = curr == 1 ? 2 : 1;
+                                                        var diffSql =
+                                                            """
+                                                            PREPARE live_query_%s_diff%s AS
+                                                            WITH
+                                                              prev AS (SELECT LAG("%s") OVER () as __after__, * FROM live_query_%s_state%s),
+                                                              curr AS (SELECT LAG("%s") OVER () as __after__, * FROM live_query_%s_state%s),
+                                                              data_diff AS (
+                                                                -- INSERT operations: Include all columns
+                                                                SELECT
+                                                                  'INSERT' AS __op__,
+                                                                  %s,
+                                                                  ARRAY[]::text[] AS __changed_columns__
+                                                                FROM curr
+                                                                LEFT JOIN prev ON curr.%s = prev.%s
+                                                                WHERE prev.%s IS NULL
+                                                              UNION ALL
+                                                                -- DELETE operations: Include only the primary key
+                                                                SELECT
+                                                                  'DELETE' AS __op__,
+                                                                  %s,
+                                                                  ARRAY[]::text[] AS __changed_columns__
+                                                                FROM prev
+                                                                LEFT JOIN curr ON prev.%s = curr.%s
+                                                                WHERE curr.%s IS NULL
+                                                              UNION ALL
+                                                                -- UPDATE operations: Include only changed columns
+                                                                SELECT
+                                                                  'UPDATE' AS __op__,
+                                                                  %s,
+                                                                  ARRAY(SELECT unnest FROM unnest(ARRAY[%s]) WHERE unnest IS NOT NULL) AS __changed_columns__
+                                                                FROM curr
+                                                                INNER JOIN prev ON curr.%s = prev.%s
+                                                                WHERE NOT (curr IS NOT DISTINCT FROM prev)
+                                                              )
+                                                            SELECT * FROM data_diff;
+                                                            """.formatted(
+                                                                id,
+                                                                curr,
+                                                                key,
+                                                                id,
+                                                                prev,
+                                                                key,
+                                                                id,
+                                                                curr,
+                                                                columnsForInsert(columns),
+                                                                key,
+                                                                key,
+                                                                key,
+                                                                columnsForDelete(columns, key),
+                                                                key,
+                                                                key,
+                                                                key,
+                                                                columnsForUpdate(columns, key),
+                                                                columnsForChanged(columns, key),
+                                                                key,
+                                                                key
+                                                            );
+                                                        diffFutures.add(
+                                                            tx.exec(diffSql, null).thenApply(
+                                                                ignoredDiff -> null
+                                                            )
+                                                        );
+                                                    }
+                                                    var combined = CompletableFuture.allOf(
+                                                        diffFutures.toArray(new CompletableFuture[0])
+                                                    );
+                                                    return combined.thenCompose(
+                                                        ignoredDiffs -> {
+                                                            var listenFutures =
+                                                                new ArrayList<CompletableFuture<Function<Transaction, CompletableFuture<Void>>>>();
+                                                            for (var table : tables) {
+                                                                listenFutures.add(
+                                                                    tx.listen(
+                                                                        "\"table_change__" + table.schema_oid + "__" + table.table_oid + "\"",
+                                                                        ignoredListen -> {
+                                                                            var refreshFn = refreshRef.get();
+                                                                            if (refreshFn != null) {
+                                                                                refreshFn.apply();
+                                                                            }
+                                                                        }
+                                                                    )
+                                                                );
+                                                            }
+                                                            var combinedListen = CompletableFuture.allOf(
+                                                                listenFutures.toArray(new CompletableFuture[0])
+                                                            );
+                                                            return combinedListen.thenApply(
+                                                                ignoredCombined -> {
+                                                                    var list =
+                                                                        new ArrayList<Function<Transaction, CompletableFuture<Void>>>(
+                                                                            listenFutures.size()
+                                                                        );
+                                                                    for (var future : listenFutures) {
+                                                                        list.add(future.join());
+                                                                    }
+                                                                    unsubList.set(list);
+                                                                    return null;
+                                                                }
+                                                            );
+                                                        }
+                                                    );
                                                 }
                                             );
                                         }
@@ -332,634 +654,393 @@ public final class index {
                             );
                         }
                     );
-                }
-            ).join();
-        };
 
-        var refresh = utils.debounceMutex(
-            (Object... args) -> {
-                var options = args.length > 0
-                    ? (interface_.RefreshOptions) args[0]
-                    : null;
-                var newOffset = options != null ? options.offset : null;
-                var newLimit = options != null ? options.limit : null;
-                // We can optionally provide new offset and limit values to refresh with
-                if (!isWindowed && (newOffset != null || newLimit != null)) {
-                    throw new RuntimeException(
-                        "offset and limit cannot be provided for non-windowed queries"
-                    );
-                }
-                if (
-                    (newOffset != null) || (newLimit != null)
-                ) {
-                    offsetRef[0] = newOffset != null ? newOffset : offsetRef[0];
-                    limitRef[0] = newLimit != null ? newLimit : limitRef[0];
-                }
-
-                return runQueryRefresh(
-                    pg,
-                    id,
-                    isWindowed,
-                    callbacks,
-                    resultsHolder,
-                    offsetRef[0],
-                    limitRef[0],
-                    totalCountRef,
-                    init
-                );
-            }
-        );
-        refreshRef.set(refresh);
-
-        init.run();
-
-        // Function to subscribe to the query
-        interface_.LiveQuerySubscribe<T> subscribe = cb -> {
-            if (dead[0]) {
-                throw new RuntimeException(
-                    "Live query is no longer active and cannot be subscribed to"
-                );
-            }
-            callbacks.add(cb);
-        };
-
-        // Function to unsubscribe from the query
-        // If no function is provided, unsubscribe all callbacks
-        // If there are no callbacks, unsubscribe from the notify triggers
-        interface_.LiveQueryUnsubscribe<T> unsubscribe = cb -> {
-            if (cb != null) {
-                var filtered = filterCallbacks(callbacks);
-                callbacks.clear();
-                callbacks.addAll(filtered);
-            } else {
-                callbacks.clear();
-            }
-            if (callbacks.size() == 0 && !dead[0]) {
-                dead[0] = true;
-                return pg.transaction(
-                    tx -> {
-                        var unsubFutures = new ArrayList<CompletableFuture<Void>>();
-                        for (var unsub : unsubList) {
-                            unsubFutures.add(unsub.apply(tx));
-                        }
-                        return CompletableFuture.allOf(
-                            unsubFutures.toArray(new CompletableFuture[0])
-                        ).thenCompose(
-                            ignored -> tx.exec(
-                                "\n              DROP VIEW IF EXISTS live_query_"
-                                    + id
-                                    + "_view;\n              DEALLOCATE live_query_"
-                                    + id
-                                    + "_get;\n            ",
-                                null
-                            ).thenApply(ignoredExec -> null)
-                        );
-                    }
-                );
-            }
-            return CompletableFuture.completedFuture(null);
-        };
-
-        // If the signal has already been aborted, unsubscribe
-        if (signal != null && signal.aborted()) {
-            unsubscribe.apply(null);
-        } else if (signal != null) {
-            // Add an event listener to unsubscribe if the signal is aborted
-            var options = new interface_.AddEventListenerOptions();
-            options.once = true;
-            signal.addEventListener(
-                "abort",
-                () -> {
-                    unsubscribe.apply(null);
-                },
-                options
-            );
-        }
-
-        // Run the callback with the initial results
-        runResultCallbacks(callbacks, resultsHolder.get());
-
-        // Return the initial results
-        var liveQuery = new interface_.LiveQuery<T>();
-        liveQuery.initialResults = resultsHolder.get();
-        liveQuery.subscribe = subscribe;
-        liveQuery.unsubscribe = unsubscribe;
-        liveQuery.refresh = opts -> refresh.apply(opts);
-        return CompletableFuture.completedFuture(liveQuery);
-    }
-
-    private static <T> CompletableFuture<interface_.LiveChanges<T>> changesInternal(
-        PGliteInterface<?> pg,
-        Set<String> tableNotifyTriggersAdded,
-        String query,
-        Object[] params,
-        String key,
-        interface_.LiveChangesCallback<T> callback,
-        interface_.AbortSignal signal
-    ) {
-        if (key == null || key.isEmpty()) {
-            throw new RuntimeException("key is required for changes queries");
-        }
-        var callbacks = new ArrayList<interface_.LiveChangesCallback<T>>();
-        if (callback != null) {
-            callbacks.add(callback);
-        }
-        var id = utils.uuid().replace("-", "");
-        var dead = new boolean[] { false };
-
-        var stateSwitch = new int[] { 1 };
-        var changesHolder = new Results[1];
-
-        var unsubList = new ArrayList<Function<Transaction, CompletableFuture<Void>>>();
-        var refreshRefChanges = new interface_.LiveChangesRefresh[1];
-
-        var init = (Runnable) () -> {
-            pg.transaction(
-                tx -> {
-                    // Create a temporary view with the query
-                    return formatQuery(pg, query, params, tx).thenCompose(
-                        formattedQuery -> tx.query(
-                            "CREATE OR REPLACE TEMP VIEW live_query_"
-                                + id
-                                + "_view AS "
-                                + formattedQuery,
-                            null,
-                            null
-                        )
-                    ).thenCompose(
-                        ignored -> getTablesForView(tx, "live_query_" + id + "_view")
-                    ).thenCompose(
-                        tables -> addNotifyTriggersToTables(
-                            tx,
-                            tables,
-                            tableNotifyTriggersAdded
-                        ).thenCompose(
-                            ignored -> tx.query(
-                                "\n                SELECT column_name, data_type, udt_name\n                FROM information_schema.columns \n                WHERE table_name = 'live_query_"
-                                    + id
-                                    + "_view'\n              ",
-                                null,
-                                null
-                            ).thenApply(
-                                columnsResult -> {
-                                    var columns = new ArrayList<Map<String, Object>>();
-                                    for (var row : columnsResult.rows) {
-                                        columns.add((Map<String, Object>) row);
-                                    }
-                                    var extra = new HashMap<String, Object>();
-                                    extra.put("column_name", "__after__");
-                                    extra.put("data_type", "integer");
-                                    columns.add(extra);
-                                    return columns;
+                return init.get().thenCompose(
+                    ignoredInit -> {
+                        var refreshFn = utils.debounceMutex(
+                            (Object... args) -> {
+                                if (callbacks.isEmpty() && changes.get() != null) {
+                                    return CompletableFuture.<Void>completedFuture(null);
                                 }
-                            ).thenCompose(
-                                columns -> tx.exec(
-                                    "\n            CREATE TEMP TABLE live_query_"
-                                        + id
-                                        + "_state1 (LIKE live_query_"
-                                        + id
-                                        + "_view INCLUDING ALL);\n            CREATE TEMP TABLE live_query_"
-                                        + id
-                                        + "_state2 (LIKE live_query_"
-                                        + id
-                                        + "_view INCLUDING ALL);\n          ",
-                                    null
-                                ).thenCompose(
-                                    ignoredTables -> {
-                                        var ops = new ArrayList<CompletableFuture<Void>>();
-                                        for (var curr : new int[] { 1, 2 }) {
-                                            var prev = curr == 1 ? 2 : 1;
-                                            ops.add(
-                                                tx.exec(
-                                                    "\n              PREPARE live_query_"
-                                                        + id
-                                                        + "_diff"
-                                                        + curr
-                                                        + " AS\n              WITH\n                prev AS (SELECT LAG(\""
-                                                        + key
-                                                        + "\") OVER () as __after__, * FROM live_query_"
-                                                        + id
-                                                        + "_state"
-                                                        + prev
-                                                        + "),\n                curr AS (SELECT LAG(\""
-                                                        + key
-                                                        + "\") OVER () as __after__, * FROM live_query_"
-                                                        + id
-                                                        + "_state"
-                                                        + curr
-                                                        + "),\n                data_diff AS (\n                  -- INSERT operations: Include all columns\n                  SELECT \n                    'INSERT' AS __op__,\n                    "
-                                                        + joinColumns(columns, "curr")
-                                                        + ",\n                    ARRAY[]::text[] AS __changed_columns__\n                  FROM curr\n                  LEFT JOIN prev ON curr."
-                                                        + key
-                                                        + " = prev."
-                                                        + key
-                                                        + "\n                  WHERE prev."
-                                                        + key
-                                                        + " IS NULL\n                UNION ALL\n                  -- DELETE operations: Include only the primary key\n                  SELECT \n                    'DELETE' AS __op__,\n                    "
-                                                        + joinDeleteColumns(columns, key)
-                                                        + ",\n                      ARRAY[]::text[] AS __changed_columns__\n                  FROM prev\n                  LEFT JOIN curr ON prev."
-                                                        + key
-                                                        + " = curr."
-                                                        + key
-                                                        + "\n                  WHERE curr."
-                                                        + key
-                                                        + " IS NULL\n                UNION ALL\n                  -- UPDATE operations: Include only changed columns\n                  SELECT \n                    'UPDATE' AS __op__,\n                    "
-                                                        + joinUpdateColumns(columns, key)
-                                                        + ",\n                      ARRAY(SELECT unnest FROM unnest(ARRAY["
-                                                        + joinChangedColumns(columns, key)
-                                                        + "]) WHERE unnest IS NOT NULL) AS __changed_columns__\n                  FROM curr\n                  INNER JOIN prev ON curr."
-                                                        + key
-                                                        + " = prev."
-                                                        + key
-                                                        + "\n                  WHERE NOT (curr IS NOT DISTINCT FROM prev)\n                )\n              SELECT * FROM data_diff;\n            ",
+                                var reset = new AtomicBoolean(false);
+
+                                var runAttempt = new Function<Integer, CompletableFuture<Void>>() {
+                                    @Override
+                                    public CompletableFuture<Void> apply(Integer attempt) {
+                                        if (attempt >= 5) {
+                                            return CompletableFuture.completedFuture(null);
+                                        }
+                                        return pg.transaction(
+                                            tx -> tx.exec(
+                                                """
+                                                INSERT INTO live_query_%s_state%s
+                                                  SELECT * FROM live_query_%s_view;
+                                                """.formatted(id, stateSwitch.get(), id),
+                                                null
+                                            ).thenCompose(
+                                                ignoredExec -> tx.query(
+                                                    "EXECUTE live_query_" + id + "_diff" + stateSwitch.get() + ";",
+                                                    null,
                                                     null
-                                                ).thenApply(ignoredExec -> null)
-                                            );
-                                        }
-                                        return CompletableFuture.allOf(
-                                            ops.toArray(new CompletableFuture[0])
-                                        );
-                                    }
-                                )
-                            )
-                        )
-                    ).thenCompose(
-                        ignored -> getTablesForView(
-                            tx,
-                            "live_query_" + id + "_view"
-                        ).thenCompose(
-                            tables -> {
-                                var subs = new ArrayList<CompletableFuture<Function<Transaction, CompletableFuture<Void>>>>();
-                                for (var table : tables) {
-                                    subs.add(
-                                        tx.listen(
-                                            "\"table_change__"
-                                                + table.schema_oid
-                                                + "__"
-                                                + table.table_oid
-                                                + "\"",
-                                            payload -> {
-                                                refreshRefChanges[0].apply();
+                                                )
+                                            ).thenCompose(
+                                                changesResult -> {
+                                                    changes.set(changesResult);
+                                                    stateSwitch.set(stateSwitch.get() == 1 ? 2 : 1);
+                                                    return tx.exec(
+                                                        """
+                                                        TRUNCATE live_query_%s_state%s;
+                                                        """.formatted(id, stateSwitch.get()),
+                                                        null
+                                                    );
+                                                }
+                                            ).thenApply(
+                                                ignoredExec -> null
+                                            )
+                                        ).<CompletableFuture<Void>>handle(
+                                            (ignored, error) -> {
+                                                if (error != null) {
+                                                    var cause = error instanceof CompletionException
+                                                        ? error.getCause()
+                                                        : error;
+                                                    var msg = cause.getMessage();
+                                                    if (
+                                                        msg != null
+                                                            && msg.equals(
+                                                                "relation \"live_query_" + id + "_state"
+                                                                    + stateSwitch.get() + "\" does not exist"
+                                                            )
+                                                    ) {
+                                                        // If the state table does not exist, reset and try again
+                                                        // This can happen if using the multi-tab worker
+                                                        reset.set(true);
+                                                        return init.get().thenCompose(
+                                                            ignoredInit -> apply(attempt + 1)
+                                                        );
+                                                    }
+                                                    throw new CompletionException(cause);
+                                                }
+                                                return CompletableFuture.completedFuture(null);
                                             }
-                                        )
-                                    );
-                                }
-                                return CompletableFuture.allOf(
-                                    subs.toArray(new CompletableFuture[0])
-                                ).thenApply(
-                                    ignoredSubs -> {
-                                        unsubList.clear();
-                                        for (var sub : subs) {
-                                            unsubList.add(sub.join());
+                                        ).thenCompose(handled -> handled);
+                                    }
+                                };
+
+                                return runAttempt.apply(0).thenApply(
+                                    ignored -> {
+                                        var changesList = new ArrayList<Change<T>>();
+                                        if (reset.get()) {
+                                            var resetChange = new Change<T>();
+                                            resetChange.put("__op__", "RESET");
+                                            changesList.add(resetChange);
                                         }
-                                        return null;
+                                        if (changes.get() != null) {
+                                            for (var rowObj : changes.get().rows) {
+                                                @SuppressWarnings("unchecked")
+                                                var row = (Change<T>) rowObj;
+                                                changesList.add(row);
+                                            }
+                                        }
+                                        runChangeCallbacks(callbacks, changesList);
+                                        return (Void) null;
                                     }
                                 );
                             }
-                        )
-                    );
-                }
-            ).join();
-        };
+                        );
+                        refreshRef.set(refreshFn);
 
-        var refresh = (interface_.LiveChangesRefresh) () -> {
-            if (callbacks.size() == 0 && changesHolder[0] != null) {
-                return CompletableFuture.completedFuture(null);
-            }
-            var reset = new boolean[] { false };
-            return pg.transaction(
-                tx -> {
-                    var changeFuture = CompletableFuture.<Void>completedFuture(null);
-                    for (var i = 0; i < 5; i++) {
-                        var idx = i;
-                        changeFuture = changeFuture.thenCompose(
-                            ignored -> {
-                                return tx.exec(
-                                    "\n                INSERT INTO live_query_"
-                                        + id
-                                        + "_state"
-                                        + stateSwitch[0]
-                                        + " \n                  SELECT * FROM live_query_"
-                                        + id
-                                        + "_view;\n              ",
-                                    null
-                                ).thenCompose(
-                                    ignoredInsert -> tx.query(
-                                        "EXECUTE live_query_"
-                                            + id
-                                            + "_diff"
-                                            + stateSwitch[0]
-                                            + ";",
-                                        null,
-                                        null
-                                    )
-                                ).thenApply(
-                                    queryResult -> {
-                                        changesHolder[0] = queryResult;
-                                        stateSwitch[0] = stateSwitch[0] == 1 ? 2 : 1;
-                                        return (Void) null;
-                                    }
-                                ).thenCompose(
-                                    ignoredResult -> tx.exec(
-                                        "\n                TRUNCATE live_query_"
-                                            + id
-                                            + "_state"
-                                            + stateSwitch[0]
-                                            + ";\n              ",
-                                        null
-                                    ).thenApply(ignoredExec -> null)
-                                ).exceptionally(
-                                    error -> {
-                                        var msg = error instanceof CompletionException
-                                            ? error.getCause().getMessage()
-                                            : error.getMessage();
-                                        if (
-                                            ("relation \"live_query_" + id + "_state" + stateSwitch[0] + "\" does not exist").equals(msg)
-                                        ) {
-                                            // If the state table does not exist, reset and try again
-                                            // This can happen if using the multi-tab worker
-                                            reset[0] = true;
-                                            init.run();
-                                            return (Void) null;
+                        // Function to subscribe to the query
+                        var subscribe = (interface_.LiveChangesSubscribe<T>) cb -> {
+                            if (dead.get()) {
+                                throw new RuntimeException(
+                                    "Live query is no longer active and cannot be subscribed to"
+                                );
+                            }
+                            callbacks.add(cb);
+                        };
+
+                        // Function to unsubscribe from the query
+                        var unsubscribe = (interface_.LiveChangesUnsubscribe<T>) cb -> {
+                            if (cb != null) {
+                                var filtered = callbacks.stream()
+                                    .filter(item -> item != cb)
+                                    .toList();
+                                callbacks.clear();
+                                callbacks.addAll(filtered);
+                            } else {
+                                callbacks.clear();
+                            }
+                            if (callbacks.isEmpty() && !dead.get()) {
+                                dead.set(true);
+                                return pg.transaction(
+                                    tx -> {
+                                        var unsubFutures = new ArrayList<CompletableFuture<Void>>();
+                                        var list = unsubList.get();
+                                        if (list != null) {
+                                            for (var unsub : list) {
+                                                unsubFutures.add(unsub.apply(tx));
+                                            }
                                         }
-                                        throw new CompletionException(error);
+                                        return CompletableFuture.allOf(
+                                            unsubFutures.toArray(new CompletableFuture[0])
+                                        ).thenCompose(
+                                            ignoredUnsub -> tx.exec(
+                                                """
+                                                DROP VIEW IF EXISTS live_query_%s_view;
+                                                DROP TABLE IF EXISTS live_query_%s_state1;
+                                                DROP TABLE IF EXISTS live_query_%s_state2;
+                                                DEALLOCATE live_query_%s_diff1;
+                                                DEALLOCATE live_query_%s_diff2;
+                                                """.formatted(id, id, id, id, id),
+                                                null
+                                            )
+                                        ).thenApply(
+                                            ignoredExec -> null
+                                        );
                                     }
-                                ).thenApply(ignoredCleanup -> null);
+                                );
+                            }
+                            return CompletableFuture.completedFuture(null);
+                        };
+
+                        var abortFuture = CompletableFuture.<Void>completedFuture(null);
+                        // If the signal has already been aborted, unsubscribe
+                        if (signal != null && signal.aborted()) {
+                            abortFuture = unsubscribe.apply(null);
+                        } else if (signal != null) {
+                            // Add an event listener to unsubscribe if the signal is aborted
+                            var opts = new AddEventListenerOptions();
+                            opts.once = true;
+                            signal.addEventListener(
+                                "abort",
+                                () -> unsubscribe.apply(null),
+                                opts
+                            );
+                        }
+
+                        // Run the callback with the initial changes
+                        return abortFuture.thenCompose(
+                            ignoredAbort -> refreshFn.apply()
+                        ).thenApply(
+                            ignored -> {
+                                // Fields
+                                var fields = filterChangeFields(
+                                    changes.get() != null ? changes.get().fields : null
+                                );
+
+                                // Return the initial results
+                                var liveChanges = new LiveChanges<T>();
+                                liveChanges.fields = fields;
+                                liveChanges.initialChanges =
+                                    changes.get() != null
+                                        ? castChanges(changes.get().rows)
+                                        : new ArrayList<>();
+                                liveChanges.subscribe = subscribe;
+                                liveChanges.unsubscribe = unsubscribe;
+                                liveChanges.refresh = () -> refreshFn.apply();
+                                return liveChanges;
                             }
                         );
-                        if (changesHolder[0] != null) {
-                            break;
-                        }
-                    }
-                    return changeFuture;
-                }
-            ).thenApply(
-                ignored -> {
-                    var changeRows = new ArrayList<interface_.Change<T>>();
-                    if (reset[0]) {
-                        var resetEntry = new interface_.Change<T>();
-                        changeRows.add(resetEntry);
-                    }
-                    for (var row : changesHolder[0].rows) {
-                        changeRows.add((interface_.Change<T>) row);
-                    }
-                    runChangeCallbacks(callbacks, changeRows);
-                    return null;
-                }
-            );
-        };
-        refreshRefChanges[0] = refresh;
-
-        init.run();
-
-        // Function to subscribe to the query
-        interface_.LiveChangesSubscribe<T> subscribe = cb -> {
-            if (dead[0]) {
-                throw new RuntimeException(
-                    "Live query is no longer active and cannot be subscribed to"
-                );
-            }
-            callbacks.add(cb);
-        };
-
-        // Function to unsubscribe from the query
-        interface_.LiveChangesUnsubscribe<T> unsubscribe = cb -> {
-            if (cb != null) {
-                var filtered = filterChangeCallbacks(callbacks);
-                callbacks.clear();
-                callbacks.addAll(filtered);
-            } else {
-                callbacks.clear();
-            }
-            if (callbacks.size() == 0 && !dead[0]) {
-                dead[0] = true;
-                return pg.transaction(
-                    tx -> {
-                        var unsubFutures = new ArrayList<CompletableFuture<Void>>();
-                        for (var unsub : unsubList) {
-                            unsubFutures.add(unsub.apply(tx));
-                        }
-                        return CompletableFuture.allOf(
-                            unsubFutures.toArray(new CompletableFuture[0])
-                        ).thenCompose(
-                            ignored -> tx.exec(
-                                "\n              DROP VIEW IF EXISTS live_query_"
-                                    + id
-                                    + "_view;\n              DROP TABLE IF EXISTS live_query_"
-                                    + id
-                                    + "_state1;\n              DROP TABLE IF EXISTS live_query_"
-                                    + id
-                                    + "_state2;\n              DEALLOCATE live_query_"
-                                    + id
-                                    + "_diff1;\n              DEALLOCATE live_query_"
-                                    + id
-                                    + "_diff2;\n            ",
-                                null
-                            ).thenApply(ignoredExec -> null)
-                        );
                     }
                 );
             }
-            return CompletableFuture.completedFuture(null);
-        };
 
-        // If the signal has already been aborted, unsubscribe
-        if (signal != null && signal.aborted()) {
-            unsubscribe.apply(null);
-        } else if (signal != null) {
-            // Add an event listener to unsubscribe if the signal is aborted
-            var options = new interface_.AddEventListenerOptions();
-            options.once = true;
-            signal.addEventListener(
-                "abort",
-                () -> {
-                    unsubscribe.apply(null);
-                },
-                options
-            );
-        }
-
-        // Run the callback with the initial changes
-        refresh.apply();
-
-        // Fields
-        var fields = new ArrayList<Results.Field>();
-        for (var field : changesHolder[0].fields) {
-            if (
-                !"__after__".equals(field.name)
-                && !"__op__".equals(field.name)
-                && !"__changed_columns__".equals(field.name)
+            @Override
+            public <T> CompletableFuture<LiveQuery<T>> incrementalQuery(
+                String query,
+                Object[] params,
+                String key,
+                LiveQueryCallback<T> callback
             ) {
-                fields.add(field);
+                var options = new LiveIncrementalQueryOptions<T>();
+                options.query = query;
+                options.params = params;
+                options.key = key;
+                options.callback = callback;
+                return incrementalQuery(options);
             }
-        }
 
-        // Return the initial results
-        var liveChanges = new interface_.LiveChanges<T>();
-        liveChanges.fields = fields;
-        liveChanges.initialChanges = (List) changesHolder[0].rows;
-        liveChanges.subscribe = subscribe;
-        liveChanges.unsubscribe = unsubscribe;
-        liveChanges.refresh = refresh;
-        return CompletableFuture.completedFuture(liveChanges);
-    }
+            @Override
+            public <T> CompletableFuture<LiveQuery<T>> incrementalQuery(
+                LiveIncrementalQueryOptions<T> options
+            ) {
+                var signal = (AbortSignal) null;
+                var params = (Object[]) null;
+                var key = (String) null;
+                var callback = (LiveQueryCallback<T>) null;
+                var query = options.query;
+                if (options != null) {
+                    signal = options.signal;
+                    params = options.params;
+                    key = options.key;
+                    callback = options.callback;
+                    query = options.query;
+                }
+                if (key == null) {
+                    throw new RuntimeException("key is required for incremental queries");
+                }
+                var callbacks = callback != null
+                    ? new ArrayList<LiveQueryCallback<T>>(List.of(callback))
+                    : new ArrayList<LiveQueryCallback<T>>();
+                var rowsMap = new HashMap<Object, Map<String, Object>>();
+                var afterMap = new HashMap<Object, Object>();
+                var lastRows = new AtomicReference<List<T>>(new ArrayList<>());
+                var firstRun = new AtomicBoolean(true);
+                var fieldsRef = new AtomicReference<List<Results.Field>>();
 
-    private static <T> CompletableFuture<interface_.LiveQuery<T>> incrementalQueryInternal(
-        interface_.LiveNamespace namespaceObj,
-        String query,
-        Object[] params,
-        String key,
-        interface_.LiveQueryCallback<T> callback,
-        interface_.AbortSignal signal
-    ) {
-        if (key == null || key.isEmpty()) {
-            throw new RuntimeException("key is required for incremental queries");
-        }
-        var callbacks = new ArrayList<interface_.LiveQueryCallback<T>>();
-        if (callback != null) {
-            callbacks.add(callback);
-        }
-        var rowsMap = new HashMap<Object, Map<String, Object>>();
-        var afterMap = new HashMap<Object, Object>();
-        var lastRows = new ArrayList<Map<String, Object>>();
-        var firstRun = new boolean[] { true };
-
-        return namespaceObj.changes(
-            query,
-            params,
-            key,
-            changes -> {
-                // Process the changes
-                for (var change : changes) {
-                    var changeMap = (Map<String, Object>) change;
-                    var op = String.valueOf(changeMap.get("__op__"));
-                    var changedColumns = (List<String>) changeMap.get("__changed_columns__");
-                    var obj = new HashMap<String, Object>(changeMap);
-                    switch (op) {
-                        case "RESET":
-                            rowsMap.clear();
-                            afterMap.clear();
-                            break;
-                        case "INSERT":
-                            rowsMap.put(obj.get(key), obj);
-                            afterMap.put(obj.get("__after__"), obj.get(key));
-                            break;
-                        case "DELETE": {
-                            var oldObj = rowsMap.get(obj.get(key));
-                            rowsMap.remove(obj.get(key));
-                            // null is the starting point, we don't delete it as another insert
-                            // may have happened thats replacing it
-                            if (oldObj != null && oldObj.get("__after__") != null) {
-                                afterMap.remove(oldObj.get("__after__"));
+                return changes(query, params, key, changes -> {
+                    // Process the changes
+                    for (var change : changes) {
+                        var op = (String) change.get("__op__");
+                        @SuppressWarnings("unchecked")
+                        var changedColumns =
+                            (List<String>) change.get("__changed_columns__");
+                        var obj = new HashMap<String, Object>(change);
+                        obj.remove("__op__");
+                        obj.remove("__changed_columns__");
+                        switch (op) {
+                            case "RESET":
+                                rowsMap.clear();
+                                afterMap.clear();
+                                break;
+                            case "INSERT":
+                                rowsMap.put(obj.get(key), obj);
+                                afterMap.put(obj.get("__after__"), obj.get(key));
+                                break;
+                            case "DELETE": {
+                                var oldObj = rowsMap.get(obj.get(key));
+                                rowsMap.remove(obj.get(key));
+                                // null is the starting point, we don't delete it as another insert
+                                // may have happened thats replacing it
+                                if (oldObj != null && oldObj.get("__after__") != null) {
+                                    afterMap.remove(oldObj.get("__after__"));
+                                }
+                                break;
                             }
-                            break;
-                        }
-                        case "UPDATE": {
-                            var existing = rowsMap.get(obj.get(key));
-                            var newObj = existing != null
-                                ? new HashMap<String, Object>(existing)
-                                : new HashMap<String, Object>();
-                            if (changedColumns != null) {
-                                for (var columnName : changedColumns) {
-                                    newObj.put(columnName, obj.get(columnName));
-                                    if ("__after__".equals(columnName)) {
-                                        afterMap.put(obj.get("__after__"), obj.get(key));
+                            case "UPDATE": {
+                                var newObj = new HashMap<String, Object>(
+                                    rowsMap.getOrDefault(obj.get(key), new HashMap<>())
+                                );
+                                if (changedColumns != null) {
+                                    for (var columnName : changedColumns) {
+                                        newObj.put(columnName, obj.get(columnName));
+                                        if ("__after__".equals(columnName)) {
+                                            afterMap.put(obj.get("__after__"), obj.get(key));
+                                        }
                                     }
                                 }
+                                rowsMap.put(obj.get(key), newObj);
+                                break;
                             }
-                            rowsMap.put(obj.get(key), newObj);
+                            default:
+                                break;
+                        }
+                    }
+
+                    // Get the rows in order
+                    var rows = new ArrayList<T>();
+                    var lastKey = (Object) null;
+                    for (var i = 0; i < rowsMap.size(); i++) {
+                        var nextKey = afterMap.get(lastKey);
+                        var obj = rowsMap.get(nextKey);
+                        if (obj == null) {
                             break;
                         }
-                        default:
-                            break;
+                        // Remove the __after__ key from the exposed row
+                        var cleanObj = new HashMap<>(obj);
+                        cleanObj.remove("__after__");
+                        @SuppressWarnings("unchecked")
+                        var typedObj = (T) cleanObj;
+                        rows.add(typedObj);
+                        lastKey = nextKey;
                     }
-                }
+                    lastRows.set(rows);
 
-                // Get the rows in order
-                var rows = new ArrayList<Map<String, Object>>();
-                Object lastKey = null;
-                for (var i = 0; i < rowsMap.size(); i++) {
-                    var nextKey = afterMap.get(lastKey);
-                    var obj = rowsMap.get(nextKey);
-                    if (obj == null) {
-                        break;
+                    // Run the callbacks
+                    if (!firstRun.get()) {
+                        var result = new Results();
+                        result.rows = new ArrayList<>((List<Object>) (List<?>) rows);
+                        result.fields = fieldsRef.get();
+                        runResultCallbacks(callbacks, result);
                     }
-                    // Remove the __after__ key from the exposed row
-                    var cleanObj = new HashMap<String, Object>(obj);
-                    cleanObj.remove("__after__");
-                    rows.add(cleanObj);
-                    lastKey = nextKey;
-                }
-                lastRows.clear();
-                lastRows.addAll(rows);
+                }).thenCompose(
+                    changesResult -> {
+                        fieldsRef.set(changesResult.fields);
+                        var unsubscribeChanges = changesResult.unsubscribe;
+                        var refresh = changesResult.refresh;
 
-                // Run the callbacks
-                if (!firstRun[0]) {
-                    var results = new Results();
-                    results.rows = (List) rows;
-                    results.fields = new ArrayList<>();
-                    runResultCallbacks(callbacks, results);
-                }
+                        firstRun.set(false);
+                        var initialResult = new Results();
+                        initialResult.rows =
+                            new ArrayList<>((List<Object>) (List<?>) lastRows.get());
+                        initialResult.fields = fieldsRef.get();
+                        runResultCallbacks(callbacks, initialResult);
+
+                        var subscribe = (interface_.LiveQuerySubscribe<T>) callbacks::add;
+
+                        var unsubscribe = (interface_.LiveQueryUnsubscribe<T>) cb -> {
+                            if (cb != null) {
+                                var filtered = callbacks.stream()
+                                    .filter(item -> item != cb)
+                                    .toList();
+                                callbacks.clear();
+                                callbacks.addAll(filtered);
+                            } else {
+                                callbacks.clear();
+                            }
+                            if (callbacks.isEmpty()) {
+                                return unsubscribeChanges.apply(null);
+                            }
+                            return CompletableFuture.completedFuture(null);
+                        };
+
+                        var abortFuture = CompletableFuture.<Void>completedFuture(null);
+                        if (signal != null && signal.aborted()) {
+                            abortFuture = unsubscribe.apply(null);
+                        } else if (signal != null) {
+                            var opts = new AddEventListenerOptions();
+                            opts.once = true;
+                            signal.addEventListener(
+                                "abort",
+                                () -> unsubscribe.apply(null),
+                                opts
+                            );
+                        }
+
+                        return abortFuture.thenApply(
+                            ignoredAbort -> {
+                                var liveQuery = new LiveQuery<T>();
+                                var initialResults = new LiveQueryResults<T>();
+                                initialResults.rows =
+                                    new ArrayList<>((List<Object>) (List<?>) lastRows.get());
+                                initialResults.fields = fieldsRef.get();
+                                liveQuery.initialResults = initialResults;
+                                liveQuery.subscribe = subscribe;
+                                liveQuery.unsubscribe = unsubscribe;
+                                liveQuery.refresh = refreshOptions -> refresh.apply();
+                                return liveQuery;
+                            }
+                        );
+                    }
+                );
             }
-        ).thenApply(
-            liveChanges -> {
-                firstRun[0] = false;
-                var initialResults = new Results();
-                initialResults.rows = (List) lastRows;
-                initialResults.fields = liveChanges.fields;
-                runResultCallbacks(callbacks, initialResults);
+        };
 
-                interface_.LiveQuerySubscribe<T> subscribe = cb -> callbacks.add(cb);
-                interface_.LiveQueryUnsubscribe<T> unsubscribe = cb -> {
-                    if (cb != null) {
-                        var filtered = filterCallbacks(callbacks);
-                        callbacks.clear();
-                        callbacks.addAll(filtered);
-                    } else {
-                        callbacks.clear();
-                    }
-                    if (callbacks.size() == 0) {
-                        return liveChanges.unsubscribe.apply(null);
-                    }
-                    return CompletableFuture.completedFuture(null);
-                };
-
-                if (signal != null && signal.aborted()) {
-                    unsubscribe.apply(null);
-                } else if (signal != null) {
-                    var options = new interface_.AddEventListenerOptions();
-                    options.once = true;
-                    signal.addEventListener(
-                        "abort",
-                        () -> {
-                            unsubscribe.apply(null);
-                        },
-                        options
-                    );
-                }
-
-                var liveQuery = new interface_.LiveQuery<T>();
-                var liveResults = new interface_.LiveQueryResults<T>();
-                liveResults.rows = (List) lastRows;
-                liveResults.fields = liveChanges.fields;
-                liveQuery.initialResults = liveResults;
-                liveQuery.subscribe = subscribe;
-                liveQuery.unsubscribe = unsubscribe;
-                liveQuery.refresh = opts -> liveChanges.refresh.apply();
-                return liveQuery;
-            }
-        );
+        var result = new ExtensionSetupResult<LiveNamespace>();
+        result.emscriptenOpts = emscriptenOpts;
+        result.namespaceObj = namespaceObj;
+        return CompletableFuture.completedFuture(result);
     }
 
-    public static final Extension<interface_.LiveNamespace> live = new Extension<>();
+    public static final Extension<LiveNamespace> live = new Extension<>();
 
     static {
         live.name = "Live Queries";
-        live.setup = index::setup;
+        live.setup = (pg, emscriptenOpts, clientOnly) -> setup(pg, emscriptenOpts);
     }
 
-    public interface PGliteWithLive extends PGliteInterface<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Extensions> {
-        interface_.LiveNamespace live();
+    public interface PGliteWithLive extends PGliteInterface<Extensions> {
+        LiveNamespace live();
     }
 
     /**
@@ -973,19 +1054,63 @@ public final class index {
         String viewName
     ) {
         return tx.query(
-            "\n      WITH RECURSIVE view_dependencies AS (\n        -- Base case: Get the initial view's dependencies\n        SELECT DISTINCT\n          cl.relname AS dependent_name,\n          n.nspname AS schema_name,\n          cl.oid AS dependent_oid,\n          n.oid AS schema_oid,\n          cl.relkind = 'v' AS is_view\n        FROM pg_rewrite r\n        JOIN pg_depend d ON r.oid = d.objid\n        JOIN pg_class cl ON d.refobjid = cl.oid\n        JOIN pg_namespace n ON cl.relnamespace = n.oid\n        WHERE\n          r.ev_class = (\n              SELECT oid FROM pg_class WHERE relname = $1 AND relkind = 'v'\n          )\n          AND d.deptype = 'n'\n\n        UNION ALL\n\n        -- Recursive case: Traverse dependencies for views\n        SELECT DISTINCT\n          cl.relname AS dependent_name,\n          n.nspname AS schema_name,\n          cl.oid AS dependent_oid,\n          n.oid AS schema_oid,\n          cl.relkind = 'v' AS is_view\n        FROM view_dependencies vd\n        JOIN pg_rewrite r ON vd.dependent_name = (\n          SELECT relname FROM pg_class WHERE oid = r.ev_class AND relkind = 'v'\n        )\n        JOIN pg_depend d ON r.oid = d.objid\n        JOIN pg_class cl ON d.refobjid = cl.oid\n        JOIN pg_namespace n ON cl.relnamespace = n.oid\n        WHERE d.deptype = 'n'\n      )\n      SELECT DISTINCT\n        dependent_name AS table_name,\n        schema_name,\n        dependent_oid AS table_oid,\n        schema_oid\n      FROM view_dependencies\n      WHERE NOT is_view; -- Exclude intermediate views\n    ",
+            """
+            WITH RECURSIVE view_dependencies AS (
+              -- Base case: Get the initial view's dependencies
+              SELECT DISTINCT
+                cl.relname AS dependent_name,
+                n.nspname AS schema_name,
+                cl.oid AS dependent_oid,
+                n.oid AS schema_oid,
+                cl.relkind = 'v' AS is_view
+              FROM pg_rewrite r
+              JOIN pg_depend d ON r.oid = d.objid
+              JOIN pg_class cl ON d.refobjid = cl.oid
+              JOIN pg_namespace n ON cl.relnamespace = n.oid
+              WHERE
+                r.ev_class = (
+                    SELECT oid FROM pg_class WHERE relname = $1 AND relkind = 'v'
+                )
+                AND d.deptype = 'n'
+
+              UNION ALL
+
+              -- Recursive case: Traverse dependencies for views
+              SELECT DISTINCT
+                cl.relname AS dependent_name,
+                n.nspname AS schema_name,
+                cl.oid AS dependent_oid,
+                n.oid AS schema_oid,
+                cl.relkind = 'v' AS is_view
+              FROM view_dependencies vd
+              JOIN pg_rewrite r ON vd.dependent_name = (
+                SELECT relname FROM pg_class WHERE oid = r.ev_class AND relkind = 'v'
+              )
+              JOIN pg_depend d ON r.oid = d.objid
+              JOIN pg_class cl ON d.refobjid = cl.oid
+              JOIN pg_namespace n ON cl.relnamespace = n.oid
+              WHERE d.deptype = 'n'
+            )
+            SELECT DISTINCT
+              dependent_name AS table_name,
+              schema_name,
+              dependent_oid AS table_oid,
+              schema_oid
+            FROM view_dependencies
+            WHERE NOT is_view; -- Exclude intermediate views
+            """,
             new Object[] { viewName },
             null
         ).thenApply(
             result -> {
                 var tables = new ArrayList<TableInfo>();
                 for (var rowObj : result.rows) {
-                    var row = (Map<String, Object>) rowObj;
+                    var row = (Map<?, ?>) rowObj;
                     var table = new TableInfo();
-                    table.table_name = String.valueOf(row.get("table_name"));
-                    table.schema_name = String.valueOf(row.get("schema_name"));
-                    table.table_oid = toInt(row.get("table_oid"));
-                    table.schema_oid = toInt(row.get("schema_oid"));
+                    table.table_name = (String) row.get("table_name");
+                    table.schema_name = (String) row.get("schema_name");
+                    table.table_oid = ((Number) row.get("table_oid")).intValue();
+                    table.schema_oid = ((Number) row.get("schema_oid")).intValue();
                     tables.add(table);
                 }
                 return tables;
@@ -1003,399 +1128,194 @@ public final class index {
         List<TableInfo> tables,
         Set<String> tableNotifyTriggersAdded
     ) {
-        var builder = new StringBuilder();
+        var triggers = new StringBuilder();
         for (var table : tables) {
             var key = table.schema_oid + "_" + table.table_oid;
             if (tableNotifyTriggersAdded.contains(key)) {
                 continue;
             }
-            builder.append(
-                "\n      CREATE OR REPLACE FUNCTION \"_notify_"
-                    + table.schema_oid
-                    + "_"
-                    + table.table_oid
-                    + "\"() RETURNS TRIGGER AS $$\n      BEGIN\n        PERFORM pg_notify('table_change__"
-                    + table.schema_oid
-                    + "__"
-                    + table.table_oid
-                    + "', '');\n        RETURN NULL;\n      END;\n      $$ LANGUAGE plpgsql;\n      CREATE OR REPLACE TRIGGER \"_notify_trigger_"
-                    + table.schema_oid
-                    + "_"
-                    + table.table_oid
-                    + "\"\n      AFTER INSERT OR UPDATE OR DELETE ON \""
-                    + table.schema_name
-                    + "\".\""
-                    + table.table_name
-                    + "\"\n      FOR EACH STATEMENT EXECUTE FUNCTION \"_notify_"
-                    + table.schema_oid
-                    + "_"
-                    + table.table_oid
-                    + "\"();\n      "
+            triggers.append(
+                """
+                CREATE OR REPLACE FUNCTION "_notify_%s_%s"() RETURNS TRIGGER AS $$
+                BEGIN
+                  PERFORM pg_notify('table_change__%s__%s', '');
+                  RETURN NULL;
+                END;
+                $$ LANGUAGE plpgsql;
+                CREATE OR REPLACE TRIGGER "_notify_trigger_%s_%s"
+                AFTER INSERT OR UPDATE OR DELETE ON "%s"."%s"
+                FOR EACH STATEMENT EXECUTE FUNCTION "_notify_%s_%s"();
+                """
+                    .formatted(
+                        table.schema_oid,
+                        table.table_oid,
+                        table.schema_oid,
+                        table.table_oid,
+                        table.schema_oid,
+                        table.table_oid,
+                        table.schema_name,
+                        table.table_name,
+                        table.schema_oid,
+                        table.table_oid
+                    )
             );
-            tableNotifyTriggersAdded.add(key);
         }
-        var triggers = builder.toString();
-        if (!triggers.trim().isEmpty()) {
-            return tx.exec(triggers, null).thenApply(ignored -> null);
+        for (var table : tables) {
+            tableNotifyTriggersAdded.add(table.schema_oid + "_" + table.table_oid);
+        }
+        if (!triggers.toString().trim().isEmpty()) {
+            return tx.exec(triggers.toString(), null).thenApply(ignored -> null);
         }
         return CompletableFuture.completedFuture(null);
     }
 
+    private static <T> LiveQueryResults<T> toLiveQueryResults(Results results) {
+        var liveResults = new LiveQueryResults<T>();
+        if (results != null) {
+            liveResults.rows = results.rows;
+            liveResults.fields = results.fields;
+            liveResults.affectedRows = results.affectedRows;
+            liveResults.blob = results.blob;
+        }
+        return liveResults;
+    }
+
+    private static List<Results.Field> filterChangeFields(
+        List<Results.Field> fields
+    ) {
+        var filtered = new ArrayList<Results.Field>();
+        if (fields == null) {
+            return filtered;
+        }
+        for (var field : fields) {
+            if (
+                !List.of("__after__", "__op__", "__changed_columns__")
+                    .contains(field.name)
+            ) {
+                filtered.add(field);
+            }
+        }
+        return filtered;
+    }
+
+    private static <T> List<Change<T>> castChanges(List<Object> rows) {
+        var casted = new ArrayList<Change<T>>();
+        if (rows == null) {
+            return casted;
+        }
+        for (var rowObj : rows) {
+            @SuppressWarnings("unchecked")
+            var row = (Change<T>) rowObj;
+            casted.add(row);
+        }
+        return casted;
+    }
+
+    private static String columnsForInsert(List<Map<String, Object>> columns) {
+        var parts = new ArrayList<String>();
+        for (var column : columns) {
+            var columnName = (String) column.get("column_name");
+            parts.add("curr.\"" + columnName + "\" AS \"" + columnName + "\"");
+        }
+        return String.join(",\n", parts);
+    }
+
+    private static String columnsForDelete(
+        List<Map<String, Object>> columns,
+        String key
+    ) {
+        var parts = new ArrayList<String>();
+        for (var column : columns) {
+            var columnName = (String) column.get("column_name");
+            var dataType = (String) column.get("data_type");
+            var udtName = (String) column.get("udt_name");
+            if (columnName.equals(key)) {
+                parts.add("prev.\"" + columnName + "\" AS \"" + columnName + "\"");
+            } else {
+                var cast = "USER-DEFINED".equals(dataType) && udtName != null
+                    ? "::" + udtName
+                    : "";
+                parts.add("NULL" + cast + " AS \"" + columnName + "\"");
+            }
+        }
+        return String.join(",\n", parts);
+    }
+
+    private static String columnsForUpdate(
+        List<Map<String, Object>> columns,
+        String key
+    ) {
+        var parts = new ArrayList<String>();
+        for (var column : columns) {
+            var columnName = (String) column.get("column_name");
+            var dataType = (String) column.get("data_type");
+            var udtName = (String) column.get("udt_name");
+            if (columnName.equals(key)) {
+                parts.add("curr.\"" + columnName + "\" AS \"" + columnName + "\"");
+            } else {
+                var cast = "USER-DEFINED".equals(dataType) && udtName != null
+                    ? "::" + udtName
+                    : "";
+                parts.add(
+                    """
+                    CASE
+                      WHEN curr."%s" IS DISTINCT FROM prev."%s"
+                      THEN curr."%s"
+                      ELSE NULL%s
+                      END AS "%s"
+                    """.formatted(columnName, columnName, columnName, cast, columnName).trim()
+                );
+            }
+        }
+        return String.join(",\n", parts);
+    }
+
+    private static String columnsForChanged(
+        List<Map<String, Object>> columns,
+        String key
+    ) {
+        var parts = new ArrayList<String>();
+        for (var column : columns) {
+            var columnName = (String) column.get("column_name");
+            if (columnName.equals(key)) {
+                continue;
+            }
+            parts.add(
+                """
+                CASE
+                  WHEN curr."%s" IS DISTINCT FROM prev."%s"
+                  THEN '%s'
+                  ELSE NULL
+                  END
+                """.formatted(columnName, columnName, columnName).trim()
+            );
+        }
+        return String.join(", ", parts);
+    }
+
     private static <T> void runResultCallbacks(
-        List<interface_.LiveQueryCallback<T>> callbacks,
+        List<LiveQueryCallback<T>> callbacks,
         Results results
     ) {
-        if (callbacks == null) {
-            return;
-        }
         for (var callback : callbacks) {
             callback.apply(results);
         }
     }
 
     private static <T> void runChangeCallbacks(
-        List<interface_.LiveChangesCallback<T>> callbacks,
-        List<interface_.Change<T>> changes
+        List<LiveChangesCallback<T>> callbacks,
+        List<Change<T>> changes
     ) {
-        if (callbacks == null) {
-            return;
-        }
         for (var callback : callbacks) {
             callback.apply(changes);
         }
     }
 
-    private static int toInt(Object value) {
-        if (value instanceof Number) {
-            return ((Number) value).intValue();
-        }
-        return 0;
-    }
-
-    private static CompletableFuture<String> formatQuery(
-        PGliteInterface<?> pg,
-        String query,
-        Object[] params,
-        Transaction tx
-    ) {
-        return utils.formatQuery(new FormatQueryAdapter(pg), query, params, new FormatQueryTransactionAdapter(tx));
-    }
-
-    private static String joinColumns(List<Map<String, Object>> columns, String alias) {
-        var parts = new ArrayList<String>();
-        for (var column : columns) {
-            var columnName = String.valueOf(column.get("column_name"));
-            parts.add(alias + ".\"" + columnName + "\" AS \"" + columnName + "\"");
-        }
-        return String.join(",\n", parts);
-    }
-
-    private static String joinDeleteColumns(List<Map<String, Object>> columns, String key) {
-        var parts = new ArrayList<String>();
-        for (var column : columns) {
-            var columnName = String.valueOf(column.get("column_name"));
-            var dataType = String.valueOf(column.get("data_type"));
-            var udtName = String.valueOf(column.get("udt_name"));
-            if (columnName.equals(key)) {
-                parts.add("prev.\"" + columnName + "\" AS \"" + columnName + "\"");
-            } else {
-                var suffix = "USER-DEFINED".equals(dataType) ? "::" + udtName : "";
-                parts.add("NULL" + suffix + " AS \"" + columnName + "\"");
-            }
-        }
-        return String.join(",\n", parts);
-    }
-
-    private static String joinUpdateColumns(List<Map<String, Object>> columns, String key) {
-        var parts = new ArrayList<String>();
-        for (var column : columns) {
-            var columnName = String.valueOf(column.get("column_name"));
-            var dataType = String.valueOf(column.get("data_type"));
-            var udtName = String.valueOf(column.get("udt_name"));
-            if (columnName.equals(key)) {
-                parts.add("curr.\"" + columnName + "\" AS \"" + columnName + "\"");
-            } else {
-                var suffix = "USER-DEFINED".equals(dataType) ? "::" + udtName : "";
-                parts.add(
-                    "CASE \n                              WHEN curr.\""
-                        + columnName
-                        + "\" IS DISTINCT FROM prev.\""
-                        + columnName
-                        + "\" \n                              THEN curr.\""
-                        + columnName
-                        + "\"\n                              ELSE NULL"
-                        + suffix
-                        + "\n                              END AS \""
-                        + columnName
-                        + "\""
-                );
-            }
-        }
-        return String.join(",\n", parts);
-    }
-
-    private static String joinChangedColumns(List<Map<String, Object>> columns, String key) {
-        var parts = new ArrayList<String>();
-        for (var column : columns) {
-            var columnName = String.valueOf(column.get("column_name"));
-            if (columnName.equals(key)) {
-                continue;
-            }
-            parts.add(
-                "CASE\n                              WHEN curr.\""
-                    + columnName
-                    + "\" IS DISTINCT FROM prev.\""
-                    + columnName
-                    + "\" \n                              THEN '"
-                    + columnName
-                    + "' \n                              ELSE NULL \n                              END"
-            );
-        }
-        return String.join(", ", parts);
-    }
-
-    private static <T> CompletableFuture<Void> runQueryRefresh(
-        PGliteInterface<?> pg,
-        String id,
-        boolean isWindowed,
-        List<interface_.LiveQueryCallback<T>> callbacks,
-        AtomicReference<interface_.LiveQueryResults<T>> resultsHolder,
-        Integer offset,
-        Integer limit,
-        Integer[] totalCountRef,
-        Runnable init
-    ) {
-        return CompletableFuture.runAsync(
-            () -> {
-                var runRef = new AtomicReference<Runnable>();
-                runRef.set(
-                    () -> {
-                        if (callbacks.size() == 0) {
-                            return;
-                        }
-                        try {
-                            if (isWindowed) {
-                                // For a windowed query we defer the refresh of the total count until
-                                // after we have returned the results with the old total count. This
-                                // is due to a count(*) being a fairly slow query and we want to update
-                                // the rows on screen as quickly as possible.
-                                var queryResult = pg.query(
-                                    "EXECUTE live_query_"
-                                        + id
-                                        + "_get("
-                                        + limit
-                                        + ", "
-                                        + offset
-                                        + ");",
-                                    null,
-                                    null
-                                ).join();
-                                var liveResults = new interface_.LiveQueryResults<T>();
-                                liveResults.rows = queryResult.rows;
-                                liveResults.fields = queryResult.fields;
-                                liveResults.affectedRows = queryResult.affectedRows;
-                                liveResults.blob = queryResult.blob;
-                                liveResults.offset = offset;
-                                liveResults.limit = limit;
-                                liveResults.totalCount = totalCountRef[0];
-                                resultsHolder.set(liveResults);
-                            } else {
-                                var queryResult = pg.query(
-                                    "EXECUTE live_query_"
-                                        + id
-                                        + "_get;",
-                                    null,
-                                    null
-                                ).join();
-                                var liveResults = new interface_.LiveQueryResults<T>();
-                                liveResults.rows = queryResult.rows;
-                                liveResults.fields = queryResult.fields;
-                                liveResults.affectedRows = queryResult.affectedRows;
-                                liveResults.blob = queryResult.blob;
-                                resultsHolder.set(liveResults);
-                            }
-                        } catch (RuntimeException e) {
-                            var msg = e.getMessage();
-                            if (
-                                msg != null
-                                && msg.startsWith("prepared statement \"live_query_" + id)
-                                && msg.endsWith("does not exist")
-                            ) {
-                                // If the prepared statement does not exist, reset and try again
-                                // This can happen if using the multi-tab worker
-                                init.run();
-                            } else {
-                                throw e;
-                            }
-                        }
-
-                        runResultCallbacks(callbacks, resultsHolder.get());
-
-                        // Update the total count
-                        // If the total count has changed, refresh the query
-                        if (isWindowed) {
-                            var newTotalCount = extractCount(
-                                pg.query(
-                                    "EXECUTE live_query_"
-                                        + id
-                                        + "_get_total_count;",
-                                    null,
-                                    null
-                                ).join()
-                            );
-                            if (
-                                newTotalCount != null
-                                && (totalCountRef[0] == null || !newTotalCount.equals(totalCountRef[0]))
-                            ) {
-                                // The total count has changed, refresh the query
-                                totalCountRef[0] = newTotalCount;
-                                runRef.get().run();
-                            }
-                        }
-                    }
-                );
-                runRef.get().run();
-            }
-        );
-    }
-
-    private static Integer extractCount(Results result) {
-        if (result == null || result.rows == null || result.rows.isEmpty()) {
-            return null;
-        }
-        var row = result.rows.get(0);
-        if (row instanceof Map) {
-            var map = (Map<?, ?>) row;
-            var value = map.get("count");
-            if (value instanceof Number) {
-                return ((Number) value).intValue();
-            }
-        }
-        return null;
-    }
-
-    private static class TableInfo {
-        public String table_name;
-        public String schema_name;
-        public int table_oid;
-        public int schema_oid;
-    }
-
-    private static <T> List<interface_.LiveQueryCallback<T>> filterCallbacks(
-        List<interface_.LiveQueryCallback<T>> callbacks
-    ) {
-        var next = new ArrayList<interface_.LiveQueryCallback<T>>();
-        for (var callback : callbacks) {
-            if (callback != callback) {
-                next.add(callback);
-            }
-        }
-        return next;
-    }
-
-    private static <T> List<interface_.LiveChangesCallback<T>> filterChangeCallbacks(
-        List<interface_.LiveChangesCallback<T>> callbacks
-    ) {
-        var next = new ArrayList<interface_.LiveChangesCallback<T>>();
-        for (var callback : callbacks) {
-            if (callback != callback) {
-                next.add(callback);
-            }
-        }
-        return next;
-    }
-
-    private static final class FormatQueryAdapter implements utils.PGliteInterface {
-        private final PGliteInterface<?> pg;
-
-        private FormatQueryAdapter(PGliteInterface<?> pg) {
-            this.pg = pg;
-        }
-
-        @Override
-        public CompletableFuture<utils.ExecProtocolResult> execProtocol(
-            io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array message,
-            utils.ExecProtocolOptions options
-        ) {
-            return pg.execProtocol(message, null)
-                .thenApply(
-                    result -> {
-                        var mapped = new utils.ExecProtocolResult();
-                        mapped.messages = result.messages;
-                        mapped.data = result.data;
-                        return mapped;
-                    }
-                );
-        }
-
-        @Override
-        public CompletableFuture<utils.Results> query(
-            String query,
-            Object[] params,
-            utils.QueryOptions options
-        ) {
-            return pg.query(query, params, null).thenApply(
-                result -> {
-                    var mapped = new utils.Results();
-                    var rows = new ArrayList<utils.FormatQueryRow>();
-                    if (result.rows != null) {
-                        for (var row : result.rows) {
-                            var formatRow = new utils.FormatQueryRow();
-                            if (row instanceof Map) {
-                                var map = (Map<?, ?>) row;
-                                var value = map.get("query");
-                                formatRow.query = value != null ? value.toString() : null;
-                            } else {
-                                formatRow.query = row != null ? row.toString() : null;
-                            }
-                            rows.add(formatRow);
-                        }
-                    }
-                    mapped.rows = (List) rows;
-                    return mapped;
-                }
-            );
-        }
-    }
-
-    private static final class FormatQueryTransactionAdapter implements utils.Transaction {
-        private final Transaction tx;
-
-        private FormatQueryTransactionAdapter(Transaction tx) {
-            this.tx = tx;
-        }
-
-        @Override
-        public CompletableFuture<utils.Results> query(
-            String query,
-            Object[] params,
-            utils.QueryOptions options
-        ) {
-            if (tx == null) {
-                return CompletableFuture.completedFuture(null);
-            }
-            return tx.query(query, params, null).thenApply(
-                result -> {
-                    var mapped = new utils.Results();
-                    var rows = new ArrayList<utils.FormatQueryRow>();
-                    if (result.rows != null) {
-                        for (var row : result.rows) {
-                            var formatRow = new utils.FormatQueryRow();
-                            if (row instanceof Map) {
-                                var map = (Map<?, ?>) row;
-                                var value = map.get("query");
-                                formatRow.query = value != null ? value.toString() : null;
-                            } else {
-                                formatRow.query = row != null ? row.toString() : null;
-                            }
-                            rows.add(formatRow);
-                        }
-                    }
-                    mapped.rows = (List) rows;
-                    return mapped;
-                }
-            );
-        }
+    private static final class TableInfo {
+        private String table_name;
+        private String schema_name;
+        private int table_oid;
+        private int schema_oid;
     }
 
     private index() {
