@@ -10,11 +10,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@Timeout(value = 300, unit = TimeUnit.SECONDS)
 class PgliteSmokeTest {
     private static final class ExtensionsMap
         extends HashMap<String, Object>
