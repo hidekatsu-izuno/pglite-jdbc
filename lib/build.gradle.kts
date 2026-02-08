@@ -35,6 +35,7 @@ tasks.named<Jar>("jar") {
 }
 
 tasks.withType<Test>().configureEach {
+    maxHeapSize = "2g"
     val traceIndirect = System.getProperty("pglite.trace_call_indirect")
     if (!traceIndirect.isNullOrBlank()) {
         systemProperty("pglite.trace_call_indirect", traceIndirect)

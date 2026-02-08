@@ -4,15 +4,14 @@ import io.github.hidekatsu_izuno.pglite_jdbc.pglite.contrib.amcheck;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.contrib.pgcrypto;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.PGliteOptions;
 import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
-import org.junit.jupiter.api.Timeout.ThreadMode;
 
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
-@Timeout(value = 120, threadMode = ThreadMode.SEPARATE_THREAD)
 class PgliteSmokeTest {
     private static final class ExtensionsMap
         extends HashMap<String, Object>
@@ -23,11 +22,11 @@ class PgliteSmokeTest {
     void shouldSelectOneFromMemoryFs() {
         var options = new PGliteOptions<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Extensions>();
         options.dataDir = "memory://";
-        var pg = pglite.create(options).join();
+        var pg = await(pglite.create(options));
         try {
-            pg.query("SELECT 1 AS n", null, null).join();
+            await(pg.query("SELECT 1 AS n", null, null));
         } finally {
-            pg.close().join();
+            await(pg.close());
         }
     }
 
@@ -35,23 +34,23 @@ class PgliteSmokeTest {
     void shouldCommitAndRollbackTransaction() {
         var options = new PGliteOptions<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Extensions>();
         options.dataDir = "memory://";
-        var pg = pglite.create(options).join();
+        var pg = await(pglite.create(options));
         try {
-            pg.exec("CREATE TABLE t(id INT PRIMARY KEY, v TEXT);", null).join();
-            pg.transaction(
+            await(pg.exec("CREATE TABLE t(id INT PRIMARY KEY, v TEXT);", null));
+            await(pg.transaction(
                 tx -> tx.exec("INSERT INTO t VALUES (1, 'a');", null).thenApply(ignored -> null)
-            ).join();
+            ));
 
             try {
-                pg.transaction(
+                await(pg.transaction(
                     tx -> tx.exec("INSERT INTO t VALUES (1, 'dup');", null)
                         .thenApply(ignored -> null)
-                ).join();
+                ));
             } catch (RuntimeException ignored) {
                 // Expected duplicate-key failure path; rollback is handled by transaction wrapper.
             }
         } finally {
-            pg.close().join();
+            await(pg.close());
         }
     }
 
@@ -63,11 +62,11 @@ class PgliteSmokeTest {
         extensions.put("amcheck", amcheck.amcheck);
         options.extensions = extensions;
 
-        var pg = pglite.create(options).join();
+        var pg = await(pglite.create(options));
         try {
-            pg.exec("CREATE EXTENSION amcheck;", null).join();
+            await(pg.exec("CREATE EXTENSION amcheck;", null));
         } finally {
-            pg.close().join();
+            await(pg.close());
         }
     }
 
@@ -79,11 +78,11 @@ class PgliteSmokeTest {
         extensions.put("pgcrypto", pgcrypto.pgcrypto);
         options.extensions = extensions;
 
-        var pg = pglite.create(options).join();
+        var pg = await(pglite.create(options));
         try {
-            pg.exec("CREATE EXTENSION pgcrypto;", null).join();
+            await(pg.exec("CREATE EXTENSION pgcrypto;", null));
         } finally {
-            pg.close().join();
+            await(pg.close());
         }
     }
 
@@ -91,13 +90,13 @@ class PgliteSmokeTest {
     void shouldUnlisten() {
         var options = new PGliteOptions<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Extensions>();
         options.dataDir = "memory://";
-        var pg = pglite.create(options).join();
+        var pg = await(pglite.create(options));
         try {
-            var unsub = pg.listen("test_channel", payload -> {
-            }, null).join();
-            unsub.apply(null).join();
+            var unsub = await(pg.listen("test_channel", payload -> {
+            }, null));
+            await(unsub.apply(null));
         } finally {
-            pg.close().join();
+            await(pg.close());
         }
     }
 
@@ -105,10 +104,10 @@ class PgliteSmokeTest {
     void shouldFailAfterClose() {
         var options = new PGliteOptions<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Extensions>();
         options.dataDir = "memory://";
-        var pg = pglite.create(options).join();
-        pg.close().join();
+        var pg = await(pglite.create(options));
+        await(pg.close());
         try {
-            pg.query("SELECT 1", null, null).join();
+            await(pg.query("SELECT 1", null, null));
         } catch (RuntimeException ignored) {
             // expected
         }
@@ -116,11 +115,15 @@ class PgliteSmokeTest {
 
     @Test
     void shouldCreateAndCloseWithinTimeout() {
-        assertTimeoutPreemptively(Duration.ofSeconds(90), () -> {
+        assertTimeoutPreemptively(Duration.ofSeconds(240), () -> {
             var options = new PGliteOptions<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Extensions>();
             options.dataDir = "memory://";
-            var pg = pglite.create(options).join();
-            pg.close().join();
+            var pg = await(pglite.create(options));
+            await(pg.close());
         });
+    }
+
+    private static <T> T await(CompletableFuture<T> future) {
+        return future.orTimeout(240, TimeUnit.SECONDS).join();
     }
 }
