@@ -55,6 +55,25 @@ class RuntimeEnvImportParityTest {
     }
 
     @Test
+    void shouldApplyKnownAsmConstFdBufferMaxArgument() throws Exception {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var instance = extractInstance(mod.runtime());
+        var sigPtr = 0x4600;
+        var argPtr = 0x4700;
+        instance.memory().write(sigPtr, new byte[] { (byte) 'i', 0 }, 0, 2);
+        instance.memory().writeI32(argPtr, 16384);
+
+        var ret = invokeEnv(
+            mod,
+            "emscripten_asm_const_int",
+            new long[] { 2_537_480L, sigPtr, argPtr },
+            1
+        );
+        assertEquals(0L, ret[0]);
+        assertEquals(16384, mod.FD_BUFFER_MAX());
+    }
+
+    @Test
     void shouldFailAsmConstIntInStrictMode() {
         var key = "pglite.strict_asm_const";
         var previous = System.getProperty(key);

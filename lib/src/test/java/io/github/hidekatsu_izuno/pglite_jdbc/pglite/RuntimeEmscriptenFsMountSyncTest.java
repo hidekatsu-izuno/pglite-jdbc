@@ -1,6 +1,8 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pglite;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.pglite;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -48,5 +50,22 @@ class RuntimeEmscriptenFsMountSyncTest {
         );
         assertEquals(1, callbackCount.get());
         assertNull(callbackError.get());
+    }
+
+    @Test
+    void shouldMapNodeFsMountToHostRootForReadAndWrite() throws Exception {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var fs = mod.runtime().FS();
+        var hostRoot = Files.createTempDirectory("pglite-nodefs-mount");
+        var source = hostRoot.resolve("host.txt");
+        Files.writeString(source, "from-host", StandardCharsets.UTF_8);
+        fs.mount("NODEFS", Map.of("root", hostRoot.toString()), "/mnt/node");
+
+        var loaded = fs.readFile("/mnt/node/host.txt");
+        assertEquals("from-host", new String(loaded, StandardCharsets.UTF_8));
+
+        fs.writeFile("/mnt/node/new.txt", "from-runtime".getBytes(StandardCharsets.UTF_8));
+        var written = Files.readString(hostRoot.resolve("new.txt"), StandardCharsets.UTF_8);
+        assertEquals("from-runtime", written);
     }
 }

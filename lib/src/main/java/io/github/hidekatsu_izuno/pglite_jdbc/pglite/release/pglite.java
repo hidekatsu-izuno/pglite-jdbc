@@ -35,6 +35,8 @@ import io.github.hidekatsu_izuno.pglite_jdbc.pglite.utils;
 import java.io.ByteArrayOutputStream;
 import java.net.Inet6Address;
 import java.net.InetAddress;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -1371,6 +1373,8 @@ public final class pglite {
         private final java.security.SecureRandom secureRandom = new java.security.SecureRandom();
         private String cwd = "/";
         private long tempRet0 = 0L;
+        private boolean asmConstPostMessageInstalled = false;
+        private boolean asmConstCustomMessageHandlerInstalled = false;
         private volatile boolean preloaded = false;
         private final StringBuilder stderrBuffer = new StringBuilder();
         private final StringBuilder stdoutBuffer = new StringBuilder();
@@ -1778,17 +1782,95 @@ public final class pglite {
 
         private long emscriptenAsmConstInt(long[] args) {
             var code = args.length > 0 ? args[0] : -1L;
+            var sigPtr = args.length > 1 ? (int) args[1] : 0;
+            var argBuf = args.length > 2 ? (int) args[2] : 0;
+            var asmArgs = readEmAsmArgs(sigPtr, argBuf);
+            var handled = handleKnownAsmConst(code, asmArgs);
+            if (handled) {
+                return 0L;
+            }
             var strictAsmConst = Boolean.getBoolean("pglite.strict_asm_const");
             if (strictAsmConst) {
                 throw new RuntimeBridgeException(
                     "emscripten_asm_const_int",
-                    "Unimplemented asm const code=" + code + " args=" + Arrays.toString(args)
+                    "Unimplemented asm const code=" +
+                    code +
+                    " args=" +
+                    Arrays.toString(args) +
+                    " decodedArgs=" +
+                    asmArgs
                 );
             }
             recordHostNote(
-                "emscripten_asm_const_int ignored code=" + code + " args=" + Arrays.toString(args)
+                "emscripten_asm_const_int ignored code=" +
+                code +
+                " args=" +
+                Arrays.toString(args) +
+                " decodedArgs=" +
+                asmArgs
             );
             return 0L;
+        }
+
+        private java.util.List<Object> readEmAsmArgs(int sigPtr, int argBuf) {
+            var out = new ArrayList<Object>();
+            if (sigPtr == 0) {
+                return out;
+            }
+            var mem = this.mod.instance.memory();
+            var sig = sigPtr;
+            var buf = argBuf;
+            while (true) {
+                var ch = mem.readBytes(sig, 1)[0] & 0xFF;
+                sig++;
+                if (ch == 0) {
+                    break;
+                }
+                var wide = ch != 'i' && ch != 'p';
+                if (wide && (buf % 8 != 0)) {
+                    buf += 4;
+                }
+                var value = switch (ch) {
+                    case 'p' -> Integer.toUnsignedLong((int) mem.readI32(buf));
+                    case 'j' -> readI64(buf);
+                    case 'i' -> (long) mem.readI32(buf);
+                    default -> Double.doubleToRawLongBits(readF64(buf));
+                };
+                out.add(value);
+                buf += wide ? 8 : 4;
+            }
+            return out;
+        }
+
+        private long readI64(int ptr) {
+            var bytes = this.mod.instance.memory().readBytes(ptr, 8);
+            return ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).getLong();
+        }
+
+        private double readF64(int ptr) {
+            var bytes = this.mod.instance.memory().readBytes(ptr, 8);
+            return ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).getDouble();
+        }
+
+        private boolean handleKnownAsmConst(long code, java.util.List<Object> args) {
+            if (code == 2_537_480L) {
+                if (!args.isEmpty() && args.get(0) instanceof Number number) {
+                    var value = number.intValue();
+                    if (value > 0) {
+                        this.mod.setFD_BUFFER_MAX(value);
+                    }
+                }
+                return true;
+            }
+            if (code == 2_537_652L) {
+                this.asmConstPostMessageInstalled = true;
+                return true;
+            }
+            if (code == 2_537_781L) {
+                this.asmConstCustomMessageHandlerInstalled = true;
+                return true;
+            }
+            return false;
         }
 
         private long emscriptenResizeHeap(long[] args) {
@@ -5331,7 +5413,7 @@ public final class pglite {
 
         private EmscriptenFsImpl(Path rootDir) {
             this.rootDir = rootDir;
-            this.mounts.put("/", new MountEntry("/", "MEMFS", null));
+            this.mounts.put("/", new MountEntry("/", "MEMFS", null, null));
         }
 
         @Override
@@ -5454,7 +5536,8 @@ public final class pglite {
                 );
             }
             mkdirTree(normalized);
-            this.mounts.put(normalized, new MountEntry(normalized, type, opts));
+            var hostRoot = resolveHostRoot(type, opts);
+            this.mounts.put(normalized, new MountEntry(normalized, type, opts, hostRoot));
         }
 
         @Override
@@ -5540,6 +5623,11 @@ public final class pglite {
                     if (entry == null) {
                         continue;
                     }
+                    if (entry.hostRoot != null) {
+                        Files.createDirectories(entry.hostRoot);
+                    } else {
+                        Files.createDirectories(resolve(entry.mountpoint));
+                    }
                 }
             } catch (Exception e) {
                 error = e;
@@ -5589,20 +5677,89 @@ public final class pglite {
             private final String mountpoint;
             private final Object type;
             private final Object opts;
+            private final Path hostRoot;
 
-            private MountEntry(String mountpoint, Object type, Object opts) {
+            private MountEntry(String mountpoint, Object type, Object opts, Path hostRoot) {
                 this.mountpoint = mountpoint;
                 this.type = type;
                 this.opts = opts;
+                this.hostRoot = hostRoot;
             }
         }
 
         private Path resolve(String path) {
             var normalized = normalize(path);
+            var mount = resolveMount(normalized);
+            if (mount != null && mount.hostRoot != null) {
+                if (normalized.equals(mount.mountpoint)) {
+                    return mount.hostRoot;
+                }
+                var relative = normalized.substring(mount.mountpoint.length());
+                if (relative.startsWith("/")) {
+                    relative = relative.substring(1);
+                }
+                var mapped = mount.hostRoot.resolve(relative).normalize();
+                if (!mapped.startsWith(mount.hostRoot)) {
+                    throw new RuntimeBridgeException("resolve", "path escapes mount root: " + path);
+                }
+                return mapped;
+            }
             if ("/".equals(normalized)) {
                 return this.rootDir;
             }
             return this.rootDir.resolve(normalized.substring(1)).normalize();
+        }
+
+        private MountEntry resolveMount(String normalizedPath) {
+            var best = this.mounts.get("/");
+            var bestLength = 1;
+            for (var entry : this.mounts.values()) {
+                if (entry == null || "/".equals(entry.mountpoint)) {
+                    continue;
+                }
+                var mountpoint = entry.mountpoint;
+                if (
+                    normalizedPath.equals(mountpoint) ||
+                    normalizedPath.startsWith(mountpoint + "/")
+                ) {
+                    if (mountpoint.length() > bestLength) {
+                        best = entry;
+                        bestLength = mountpoint.length();
+                    }
+                }
+            }
+            return best;
+        }
+
+        private Path resolveHostRoot(Object type, Object opts) {
+            if (!isNodeFs(type)) {
+                return null;
+            }
+            if (!(opts instanceof Map<?, ?> map)) {
+                throw new RuntimeBridgeException("mount", "NODEFS mount requires opts.root");
+            }
+            var root = map.get("root");
+            if (!(root instanceof String rootPath) || rootPath.isBlank()) {
+                throw new RuntimeBridgeException("mount", "NODEFS mount requires non-empty opts.root");
+            }
+            try {
+                var resolved = Path.of(rootPath).toAbsolutePath().normalize();
+                Files.createDirectories(resolved);
+                return resolved;
+            } catch (Exception e) {
+                throw new RuntimeBridgeException("mount", e);
+            }
+        }
+
+        private static boolean isNodeFs(Object type) {
+            if (type == null) {
+                return false;
+            }
+            if (type instanceof String text) {
+                return "NODEFS".equalsIgnoreCase(text);
+            }
+            var simpleName = type.getClass().getSimpleName();
+            return simpleName != null && simpleName.toUpperCase().contains("NODEFS");
         }
 
         private static String normalize(String path) {
