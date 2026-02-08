@@ -31,6 +31,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.extensionUtils;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.postgresMod;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.runtime.PgliteInterpreterMachine;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.utils;
 import java.io.ByteArrayOutputStream;
 import java.net.Inet6Address;
@@ -89,7 +90,9 @@ public final class pglite {
 
         var modRef = new AtomicReference<RuntimePostgresMod>();
         var imports = buildImports(module, wasi, modRef, overrides);
-        var instanceBuilder = Instance.builder(module).withImportValues(imports);
+        var instanceBuilder = Instance.builder(module)
+            .withImportValues(imports)
+            .withMachineFactory(PgliteInterpreterMachine::new);
         if (TRACE_CALL_INDIRECT || TRACE_EXEC) {
             instanceBuilder.withUnsafeExecutionListener(
                 new ExecutionListener() {

@@ -22,6 +22,14 @@ java {
     }
 }
 
+sourceSets {
+    named("main") {
+        java {
+            exclude("com/dylibso/chicory/runtime/InterpreterMachine.java")
+        }
+    }
+}
+
 testing {
     suites {
         val test by getting(JvmTestSuite::class) {

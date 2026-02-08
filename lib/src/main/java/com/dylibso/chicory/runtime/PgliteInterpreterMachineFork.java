@@ -26,7 +26,7 @@ import java.util.function.BiFunction;
  * modules registered into the main table. Keep this delta covered by runtime tests so
  * future Chicory upgrades can replace this file safely.
  */
-public class InterpreterMachine implements Machine {
+public class PgliteInterpreterMachineFork implements Machine {
 
     private final MStack stack;
 
@@ -34,7 +34,7 @@ public class InterpreterMachine implements Machine {
 
     private final Instance instance;
 
-    public InterpreterMachine(Instance instance) {
+    public PgliteInterpreterMachineFork(Instance instance) {
         this.instance = instance;
         stack = new MStack();
         this.callStack = new ArrayDeque<>();
