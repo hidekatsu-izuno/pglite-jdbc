@@ -1,5 +1,6 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pglite;
 
+import com.dylibso.chicory.runtime.Instance;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.pglite;
 import java.lang.reflect.Method;
 import org.junit.jupiter.api.Test;
@@ -12,6 +13,11 @@ class RuntimeDispatchCoverageTest {
     void shouldDispatchSocketSyscallsViaEmscriptenSwitch() throws Exception {
         var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
         var dispatch = findDispatch(mod.getClass());
+        var instance = extractInstance(mod.runtime());
+        var sockaddrPtr = 0x3300;
+        instance.memory().writeShort(sockaddrPtr, (short) 2);
+        instance.memory().writeShort(sockaddrPtr + 2, (short) 5432);
+        instance.memory().writeI32(sockaddrPtr + 4, 0x0100007f);
         var socketRet = (long[]) dispatch.invoke(
             null,
             mod,
@@ -25,7 +31,7 @@ class RuntimeDispatchCoverageTest {
             null,
             mod,
             "__syscall_bind",
-            new long[] { socketRet[0], 0, 0 },
+            new long[] { socketRet[0], sockaddrPtr, 16 },
             1
         );
         assertEquals(0L, bindRet[0]);
@@ -64,5 +70,18 @@ class RuntimeDispatchCoverageTest {
             }
         }
         throw new NoSuchMethodException("handleEnvFunction");
+    }
+
+    private static Instance extractInstance(Object runtime) {
+        try {
+            var modField = runtime.getClass().getDeclaredField("mod");
+            modField.setAccessible(true);
+            var runtimeMod = modField.get(runtime);
+            var instanceField = runtimeMod.getClass().getDeclaredField("instance");
+            instanceField.setAccessible(true);
+            return (Instance) instanceField.get(runtimeMod);
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException("Failed to extract runtime instance", e);
+        }
     }
 }

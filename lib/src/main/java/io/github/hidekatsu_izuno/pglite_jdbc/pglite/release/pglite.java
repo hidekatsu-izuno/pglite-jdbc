@@ -1314,6 +1314,7 @@ public final class pglite {
         private static final int ENODEV = 43;
         private static final int ENOENT = 44;
         private static final int ENOMEM = 48;
+        private static final int EAFNOSUPPORT = 5;
         private static final int ENOTDIR = 54;
         private static final int ENOTTY = 59;
         private static final int ENOSYS = 52;
@@ -3422,29 +3423,51 @@ public final class pglite {
         }
 
         private long syscallBind(long[] args) {
-            if (args.length < 3) {
-                return err(EINVAL);
+            try {
+                if (args.length < 3) {
+                    return err(EINVAL);
+                }
+                var fd = (int) args[0];
+                if (!this.socketTypeTable.containsKey(fd)) {
+                    return err(EBADF);
+                }
+                var sockaddr = validateSockaddrForSyscall((int) args[1], (int) args[2]);
+                if (sockaddr == null) {
+                    return err(EINVAL);
+                }
+                return 0;
+            } catch (ErrnoException e) {
+                return err(e.errno);
+            } catch (Exception e) {
+                return err(EIO);
             }
-            var fd = (int) args[0];
-            if (!this.socketTypeTable.containsKey(fd)) {
-                return err(EBADF);
-            }
-            return 0;
         }
 
         private long syscallSendto(long[] args) {
-            if (args.length < 3) {
-                return err(EINVAL);
+            try {
+                if (args.length < 3) {
+                    return err(EINVAL);
+                }
+                var fd = (int) args[0];
+                if (!this.socketTypeTable.containsKey(fd)) {
+                    return err(EBADF);
+                }
+                var len = (int) args[2];
+                if (len < 0) {
+                    return err(EINVAL);
+                }
+                if (args.length >= 6 && args[4] != 0L) {
+                    var sockaddr = validateSockaddrForSyscall((int) args[4], (int) args[5]);
+                    if (sockaddr == null) {
+                        return err(EINVAL);
+                    }
+                }
+                return len;
+            } catch (ErrnoException e) {
+                return err(e.errno);
+            } catch (Exception e) {
+                return err(EIO);
             }
-            var fd = (int) args[0];
-            if (!this.socketTypeTable.containsKey(fd)) {
-                return err(EBADF);
-            }
-            var len = (int) args[2];
-            if (len < 0) {
-                return err(EINVAL);
-            }
-            return len;
         }
 
         private long syscallRecvfrom(long[] args) {
@@ -3457,6 +3480,15 @@ public final class pglite {
             }
             // Keep parity with Emscripten SOCKFS: no queued payload returns 0.
             return 0;
+        }
+
+        private SockAddr validateSockaddrForSyscall(int sockaddrPtr, int sockaddrLen)
+            throws ErrnoException {
+            var family = Short.toUnsignedInt(this.mod.instance.memory().readShort(sockaddrPtr));
+            if (family != AF_INET && family != AF_INET6) {
+                throw new ErrnoException(EAFNOSUPPORT);
+            }
+            return readSockaddr(sockaddrPtr, sockaddrLen);
         }
 
         private long syscallRead(long[] args) {
