@@ -26,7 +26,7 @@ import java.util.function.BiFunction;
  * modules registered into the main table. Keep this delta covered by runtime tests so
  * future Chicory upgrades can replace this file safely.
  */
-public class PgliteInterpreterMachineFork implements Machine {
+public class PgliteInterpreterMachine implements Machine {
 
     private final MStack stack;
 
@@ -34,7 +34,7 @@ public class PgliteInterpreterMachineFork implements Machine {
 
     private final Instance instance;
 
-    public PgliteInterpreterMachineFork(Instance instance) {
+    public PgliteInterpreterMachine(Instance instance) {
         this.instance = instance;
         stack = new MStack();
         this.callStack = new ArrayDeque<>();
@@ -2572,26 +2572,12 @@ public class PgliteInterpreterMachineFork implements Machine {
         var typeId = (int) operands.get(0);
         int funcTableIdx = (int) stack.pop();
 
-        final int funcId;
-        try {
-            funcId = table.requiredRef(funcTableIdx);
-        } catch (ChicoryException e) {
-            throw new ChicoryException(
-                    "call_indirect failed: tableIdx="
-                            + tableIdx
-                            + ", funcTableIdx="
-                            + funcTableIdx
-                            + ", tableSize="
-                            + table.size()
-                            + ", typeId="
-                            + typeId,
-                    e);
-        }
+        int funcId = table.requiredRef(funcTableIdx);
         var refInstance = requireNonNullElse(table.instance(funcTableIdx), instance);
-        var expectedType = instance.type(typeId);
+        var type = instance.type(typeId);
 
         var callType = refInstance.type(refInstance.functionType(funcId));
-        verifyIndirectCall(callType, expectedType);
+        verifyIndirectCall(callType, type);
 
         var refMachine = refInstance.getMachine().getClass();
         if (!refInstance.equals(instance) && !refMachine.equals(instance.getMachine().getClass())) {
@@ -2600,7 +2586,7 @@ public class PgliteInterpreterMachineFork implements Machine {
                             + refMachine.getName());
         }
 
-        var args = extractArgsForParams(stack, expectedType.params());
+        var args = extractArgsForParams(stack, type.params());
 
         // optimizing when the tail call happens in the same function
         if (currentStackFrame.funcId() == funcId) {
@@ -2621,30 +2607,20 @@ public class PgliteInterpreterMachineFork implements Machine {
                 StackFrame.doControlTransfer(ctrlFrame, stack);
                 var newFrame =
                         new StackFrame(
-                            instance,
-                            funcId,
-                            args,
-                            expectedType.params(),
-                            func.localTypes(),
-                            func.instructions());
-                newFrame.pushCtrl(
-                    OpCode.CALL,
-                    0,
-                    sizeOf(expectedType.returns()),
-                    stack.size()
-                );
+                                instance,
+                                funcId,
+                                args,
+                                type.params(),
+                                func.localTypes(),
+                                func.instructions());
+                newFrame.pushCtrl(OpCode.CALL, 0, sizeOf(type.returns()), stack.size());
                 if (fromCallStack) {
                     callStack.push(newFrame);
                 }
                 return newFrame;
             } else {
                 var newFrame = new StackFrame(instance, funcId, args);
-                newFrame.pushCtrl(
-                    OpCode.CALL,
-                    0,
-                    sizeOf(expectedType.returns()),
-                    stack.size()
-                );
+                newFrame.pushCtrl(OpCode.CALL, 0, sizeOf(type.returns()), stack.size());
                 callStack.push(newFrame);
 
                 var imprt = instance.imports().function(funcId);
@@ -2717,33 +2693,19 @@ public class PgliteInterpreterMachineFork implements Machine {
         var typeId = (int) operands.get(0);
         int funcTableIdx = (int) stack.pop();
 
-        final int funcId;
-        try {
-            funcId = table.requiredRef(funcTableIdx);
-        } catch (ChicoryException e) {
-            throw new ChicoryException(
-                    "return_call_indirect failed: tableIdx="
-                            + tableIdx
-                            + ", funcTableIdx="
-                            + funcTableIdx
-                            + ", tableSize="
-                            + table.size()
-                            + ", typeId="
-                            + typeId,
-                    e);
-        }
+        int funcId = table.requiredRef(funcTableIdx);
         var refInstance = requireNonNullElse(table.instance(funcTableIdx), instance);
-        var expectedType = instance.type(typeId);
+        var type = instance.type(typeId);
 
         // given a list of param types, let's pop those params off the stack
         // and pass as args to the function call
-        var args = extractArgsForParams(stack, expectedType.params());
+        var args = extractArgsForParams(stack, type.params());
         if (useCurrentInstanceInterpreter(instance, refInstance, funcId)) {
-            call(stack, instance, callStack, funcId, args, expectedType, false);
+            call(stack, instance, callStack, funcId, args, type, false);
         } else {
             checkInterruption();
             var callType = refInstance.type(refInstance.functionType(funcId));
-            verifyIndirectCall(callType, expectedType);
+            verifyIndirectCall(callType, type);
             var results = refInstance.getMachine().call(funcId, args);
             if (results != null) {
                 for (var result : results) {
