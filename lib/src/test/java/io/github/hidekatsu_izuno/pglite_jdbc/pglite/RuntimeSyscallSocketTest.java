@@ -17,16 +17,39 @@ class RuntimeSyscallSocketTest {
         assertTrue(fd >= 3);
         assertEquals(0L, invokeLong(runtime, "syscallBind", new long[] { fd, 0, 0 }));
         assertEquals(4L, invokeLong(runtime, "syscallSendto", new long[] { fd, 0, 4, 0, 0, 0 }));
-        assertEquals(-6L, invokeLong(runtime, "syscallRecvfrom", new long[] { fd, 0, 8, 0, 0, 0 }));
+        assertEquals(0L, invokeLong(runtime, "syscallRecvfrom", new long[] { fd, 0, 8, 0, 0, 0 }));
         assertEquals(0L, invokeLong(runtime, "syscallClose", new long[] { fd }));
         assertEquals(-8L, invokeLong(runtime, "syscallSendto", new long[] { fd, 0, 1, 0, 0, 0 }));
     }
 
     @Test
-    void shouldRejectInvalidSocketDomain() {
+    void shouldAllowNonInetFamilyLikeEmscriptenSockfs() {
         var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
         var runtime = mod.runtime();
-        assertEquals(-28L, invokeLong(runtime, "syscallSocket", new long[] { 999, 1, 0 }));
+        var fd = invokeLong(runtime, "syscallSocket", new long[] { 999, 1, 0 });
+        assertTrue(fd >= 3);
+        assertEquals(0L, invokeLong(runtime, "syscallClose", new long[] { fd }));
+    }
+
+    @Test
+    void shouldRejectUnsupportedStreamProtocol() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var runtime = mod.runtime();
+        assertEquals(-66L, invokeLong(runtime, "syscallSocket", new long[] { 2, 1, 17 }));
+    }
+
+    @Test
+    void shouldMaskSocketTypeFlagsBeforeValidation() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var runtime = mod.runtime();
+        var cloexecAndNonblockStream = 0x80800 | 1;
+        var fd = invokeLong(
+            runtime,
+            "syscallSocket",
+            new long[] { 2, cloexecAndNonblockStream, 6 }
+        );
+        assertTrue(fd >= 3);
+        assertEquals(0L, invokeLong(runtime, "syscallClose", new long[] { fd }));
     }
 
     private static long invokeLong(Object target, String methodName, long[] args) {

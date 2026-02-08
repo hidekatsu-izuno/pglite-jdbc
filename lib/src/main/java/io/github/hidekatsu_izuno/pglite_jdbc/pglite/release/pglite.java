@@ -1317,6 +1317,7 @@ public final class pglite {
         private static final int ENOTDIR = 54;
         private static final int ENOTTY = 59;
         private static final int ENOSYS = 52;
+        private static final int EPROTONOSUPPORT = 66;
         private static final int ERANGE = 68;
         private static final int ESPIPE = 70;
         private static final int EMFILE = 33;
@@ -3402,17 +3403,15 @@ public final class pglite {
                 if (args.length < 3) {
                     return err(EINVAL);
                 }
-                var domain = (int) args[0];
                 var type = (int) args[1];
-                var baseType = type & 0x0F;
-                if (domain != AF_INET && domain != AF_INET6) {
-                    return err(EINVAL);
-                }
-                if (baseType != SOCK_STREAM && baseType != SOCK_DGRAM) {
-                    return err(EINVAL);
+                // Align with Emscripten SOCKFS.createSocket: mask CLOEXEC/NONBLOCK.
+                var normalizedType = type & ~0x80800;
+                var protocol = (int) args[2];
+                if (normalizedType == SOCK_STREAM && protocol != 0 && protocol != 6) {
+                    return err(EPROTONOSUPPORT);
                 }
                 var fd = allocateFd(3);
-                this.socketTypeTable.put(fd, baseType);
+                this.socketTypeTable.put(fd, normalizedType);
                 this.fdFlagsTable.put(fd, 0);
                 return fd;
             } catch (ErrnoException e) {
@@ -3456,7 +3455,8 @@ public final class pglite {
             if (!this.socketTypeTable.containsKey(fd)) {
                 return err(EBADF);
             }
-            return err(EAGAIN);
+            // Keep parity with Emscripten SOCKFS: no queued payload returns 0.
+            return 0;
         }
 
         private long syscallRead(long[] args) {
