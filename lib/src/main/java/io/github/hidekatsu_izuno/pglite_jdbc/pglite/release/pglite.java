@@ -4347,7 +4347,7 @@ public final class pglite {
                 case 21509, 21505, 21510, 21511, 21512, 21506, 21507, 21508, 21519, 21523, 21524, 21515 ->
                     hasTty ? 0 : err(ENOTTY);
                 case 21520 -> hasTty ? err(EINVAL) : err(ENOTTY);
-                case 21531 -> err(EINVAL);
+                case 21531 -> hasTty ? 0 : err(ENOTTY);
                 default -> err(EINVAL);
             };
         }

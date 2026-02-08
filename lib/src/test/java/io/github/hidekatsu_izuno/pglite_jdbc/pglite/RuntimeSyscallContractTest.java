@@ -49,6 +49,16 @@ class RuntimeSyscallContractTest {
         assertEquals(0L, result);
     }
 
+    @Test
+    void shouldHandleIoctlTiocgptpeerLikeEmscriptenContract() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var runtime = mod.runtime();
+        var ttyResult = invokeLong(runtime, "syscallIoctl", new long[] { 1, 21531, 0 });
+        var nonTtyResult = invokeLong(runtime, "syscallIoctl", new long[] { 9999, 21531, 0 });
+        assertEquals(0L, ttyResult);
+        assertEquals(-59L, nonTtyResult);
+    }
+
     private static long invokeLong(Object target, String methodName, long[] args) {
         try {
             var method = target.getClass().getDeclaredMethod(methodName, long[].class);
