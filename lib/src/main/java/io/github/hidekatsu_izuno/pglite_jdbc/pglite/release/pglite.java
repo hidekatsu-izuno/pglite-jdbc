@@ -563,6 +563,18 @@ public final class pglite {
             case "__syscall_pipe2":
                 ret = runtime != null ? runtime.syscallPipe2(args) : -1L;
                 break;
+            case "__syscall_socket":
+                ret = runtime != null ? runtime.syscallSocket(args) : -1L;
+                break;
+            case "__syscall_bind":
+                ret = runtime != null ? runtime.syscallBind(args) : -1L;
+                break;
+            case "__syscall_sendto":
+                ret = runtime != null ? runtime.syscallSendto(args) : -1L;
+                break;
+            case "__syscall_recvfrom":
+                ret = runtime != null ? runtime.syscallRecvfrom(args) : -1L;
+                break;
             case "__syscall_read":
             case "__syscall_pread64":
                 ret = runtime != null ? runtime.syscallRead(args) : -1L;
@@ -593,12 +605,24 @@ public final class pglite {
             case "__syscall_mkdirat":
                 ret = runtime != null ? runtime.syscallMkdirAt(args) : -1L;
                 break;
+            case "__syscall_symlinkat":
+                ret = runtime != null ? runtime.syscallSymlinkAt(args) : -1L;
+                break;
             case "__syscall_unlinkat":
             case "__syscall_rmdir":
                 ret = runtime != null ? runtime.syscallUnlinkAt(args) : -1L;
                 break;
             case "__syscall_renameat":
                 ret = runtime != null ? runtime.syscallRenameAt(args) : -1L;
+                break;
+            case "__syscall_fadvise64":
+                ret = runtime != null ? runtime.syscallFadvise64(args) : -1L;
+                break;
+            case "__syscall_fallocate":
+                ret = runtime != null ? runtime.syscallFallocate(args) : -1L;
+                break;
+            case "__syscall__newselect":
+                ret = runtime != null ? runtime.syscallNewselect(args) : -1L;
                 break;
             case "__syscall_fcntl64":
                 ret = runtime != null ? runtime.syscallFcntl64(args) : -1L;
@@ -720,6 +744,7 @@ public final class pglite {
             case "fd_read" -> runtime.wasiFdRead(args);
             case "fd_seek" -> runtime.wasiFdSeek(args);
             case "fd_sync" -> runtime.wasiFdSync(args);
+            case "fd_datasync" -> runtime.wasiFdSync(args);
             case "fd_write" -> runtime.wasiFdWrite(args);
             default -> ENOSYS_WASI;
         };
@@ -1252,6 +1277,7 @@ public final class pglite {
         private final Map<Integer, Integer> fdDevicePosition = new ConcurrentHashMap<>();
         private final Map<Integer, PipeState> pipeReadTable = new ConcurrentHashMap<>();
         private final Map<Integer, PipeState> pipeWriteTable = new ConcurrentHashMap<>();
+        private final Map<Integer, Integer> socketTypeTable = new ConcurrentHashMap<>();
         private final Map<Integer, java.util.List<String>> dirEntries = new ConcurrentHashMap<>();
         private final Map<Integer, Integer> dirCursor = new ConcurrentHashMap<>();
         private final Map<Integer, MmapRegion> mmapRegions = new ConcurrentHashMap<>();
@@ -1275,6 +1301,7 @@ public final class pglite {
         private static final int AT_FDCWD = -100;
         private static final int AT_SYMLINK_NOFOLLOW = 0x100;
         private static final int AT_EACCESS = 0x200;
+        private static final int AT_REMOVEDIR = 0x200;
         private static final int AT_EMPTY_PATH = 0x1000;
         private static final int EACCES = 2;
         private static final int EAGAIN = 6;
@@ -1295,6 +1322,8 @@ public final class pglite {
         private static final int EMFILE = 33;
         private static final int AF_INET = 2;
         private static final int AF_INET6 = 10;
+        private static final int SOCK_STREAM = 1;
+        private static final int SOCK_DGRAM = 2;
         private static final int MAX_OPEN_FDS = 4096;
 
         private EmscriptenRuntimeImpl(
@@ -3368,6 +3397,68 @@ public final class pglite {
             return syscallPipe(new long[] { args[0] });
         }
 
+        private long syscallSocket(long[] args) {
+            try {
+                if (args.length < 3) {
+                    return err(EINVAL);
+                }
+                var domain = (int) args[0];
+                var type = (int) args[1];
+                var baseType = type & 0x0F;
+                if (domain != AF_INET && domain != AF_INET6) {
+                    return err(EINVAL);
+                }
+                if (baseType != SOCK_STREAM && baseType != SOCK_DGRAM) {
+                    return err(EINVAL);
+                }
+                var fd = allocateFd(3);
+                this.socketTypeTable.put(fd, baseType);
+                this.fdFlagsTable.put(fd, 0);
+                return fd;
+            } catch (ErrnoException e) {
+                return err(e.errno);
+            } catch (Exception e) {
+                return err(EIO);
+            }
+        }
+
+        private long syscallBind(long[] args) {
+            if (args.length < 3) {
+                return err(EINVAL);
+            }
+            var fd = (int) args[0];
+            if (!this.socketTypeTable.containsKey(fd)) {
+                return err(EBADF);
+            }
+            return 0;
+        }
+
+        private long syscallSendto(long[] args) {
+            if (args.length < 3) {
+                return err(EINVAL);
+            }
+            var fd = (int) args[0];
+            if (!this.socketTypeTable.containsKey(fd)) {
+                return err(EBADF);
+            }
+            var len = (int) args[2];
+            if (len < 0) {
+                return err(EINVAL);
+            }
+            return len;
+        }
+
+        private long syscallRecvfrom(long[] args) {
+            if (args.length < 3) {
+                return err(EINVAL);
+            }
+            var fd = (int) args[0];
+            if (!this.socketTypeTable.containsKey(fd)) {
+                return err(EBADF);
+            }
+            return err(EAGAIN);
+        }
+
         private long syscallRead(long[] args) {
             try {
                 if (args.length < 3) {
@@ -4019,17 +4110,84 @@ public final class pglite {
             }
         }
 
-        private long syscallUnlinkAt(long[] args) {
+        private long syscallSymlinkAt(long[] args) {
             try {
-                if (args.length < 2) {
+                if (args.length < 3) {
                     return err(EINVAL);
                 }
-                var dirfd = (int) args[0];
-                var path = calculateAt(dirfd, readCString((int) args[1]), false);
-                Files.deleteIfExists(resolve(path));
+                var target = readCString((int) args[0]);
+                var newdirfd = (int) args[1];
+                var linkPath = calculateAt(newdirfd, readCString((int) args[2]), false);
+                var resolvedLink = resolve(linkPath);
+                var parent = resolvedLink.getParent();
+                if (parent != null) {
+                    Files.createDirectories(parent);
+                }
+                Files.deleteIfExists(resolvedLink);
+                var targetPath = target.startsWith("/")
+                    ? resolve(target)
+                    : java.nio.file.Path.of(target);
+                Files.createSymbolicLink(resolvedLink, targetPath);
                 return 0;
             } catch (ErrnoException e) {
                 return err(e.errno);
+            } catch (java.nio.file.FileAlreadyExistsException e) {
+                return err(EEXIST);
+            } catch (java.nio.file.AccessDeniedException e) {
+                return err(EACCES);
+            } catch (java.nio.file.NoSuchFileException e) {
+                return err(ENOENT);
+            } catch (Exception e) {
+                return err(EIO);
+            }
+        }
+
+        private long syscallUnlinkAt(long[] args) {
+            try {
+                if (args.length < 1) {
+                    return err(EINVAL);
+                }
+                var dirfd = AT_FDCWD;
+                var pathPtr = 0;
+                var flags = 0;
+                if (args.length == 1) {
+                    // __syscall_rmdir compatibility path: only path pointer is supplied.
+                    pathPtr = (int) args[0];
+                    flags = AT_REMOVEDIR;
+                } else if (args.length == 2) {
+                    dirfd = (int) args[0];
+                    pathPtr = (int) args[1];
+                } else {
+                    dirfd = (int) args[0];
+                    pathPtr = (int) args[1];
+                    flags = (int) args[2];
+                }
+                if ((flags & ~AT_REMOVEDIR) != 0) {
+                    return err(EINVAL);
+                }
+                var path = calculateAt(dirfd, readCString(pathPtr), false);
+                var resolved = resolve(path);
+                var removeDir = (flags & AT_REMOVEDIR) != 0;
+                if (!Files.exists(resolved, LinkOption.NOFOLLOW_LINKS)) {
+                    return err(ENOENT);
+                }
+                if (removeDir) {
+                    if (!Files.isDirectory(resolved, LinkOption.NOFOLLOW_LINKS)) {
+                        return err(ENOTDIR);
+                    }
+                } else if (Files.isDirectory(resolved, LinkOption.NOFOLLOW_LINKS)) {
+                    return err(EISDIR);
+                }
+                Files.delete(resolved);
+                return 0;
+            } catch (ErrnoException e) {
+                return err(e.errno);
+            } catch (java.nio.file.NoSuchFileException e) {
+                return err(ENOENT);
+            } catch (java.nio.file.NotDirectoryException e) {
+                return err(ENOTDIR);
+            } catch (java.nio.file.AccessDeniedException e) {
+                return err(EACCES);
             } catch (Exception e) {
                 return err(EIO);
             }
@@ -4053,6 +4211,46 @@ public final class pglite {
             } catch (Exception e) {
                 return err(EIO);
             }
+        }
+
+        private long syscallFadvise64(long[] args) {
+            try {
+                if (args.length < 2) {
+                    return err(EINVAL);
+                }
+                var fd = (int) args[0];
+                if (!descriptorExists(fd)) {
+                    return err(EBADF);
+                }
+                // posix_fadvise is advisory only; success without side effects is acceptable.
+                return 0;
+            } catch (Exception e) {
+                return err(EIO);
+            }
+        }
+
+        private long syscallFallocate(long[] args) {
+            try {
+                if (args.length < 2) {
+                    return err(EINVAL);
+                }
+                var fd = (int) args[0];
+                if (!descriptorExists(fd)) {
+                    return err(EBADF);
+                }
+                // Keep behavior conservative: treat fallocate as best-effort success.
+                return 0;
+            } catch (Exception e) {
+                return err(EIO);
+            }
+        }
+
+        private long syscallNewselect(long[] args) {
+            if (args.length < 1) {
+                return err(EINVAL);
+            }
+            // Minimal compatibility: no ready descriptors reported.
+            return 0;
         }
 
         private long syscallFcntl64(long[] args) {
@@ -4584,7 +4782,8 @@ public final class pglite {
             this.fdDeviceTable.containsKey(fd) ||
             this.dirEntries.containsKey(fd) ||
             this.pipeReadTable.containsKey(fd) ||
-            this.pipeWriteTable.containsKey(fd);
+            this.pipeWriteTable.containsKey(fd) ||
+            this.socketTypeTable.containsKey(fd);
         }
 
         private int resolveStdioFd(int fd) {
@@ -4624,6 +4823,11 @@ public final class pglite {
             } else {
                 this.dirEntries.remove(newFd);
                 this.dirCursor.remove(newFd);
+            }
+            if (this.socketTypeTable.containsKey(oldFd)) {
+                this.socketTypeTable.put(newFd, this.socketTypeTable.get(oldFd));
+            } else {
+                this.socketTypeTable.remove(newFd);
             }
             var readPipe = this.pipeReadTable.get(oldFd);
             if (readPipe != null) {
@@ -4671,6 +4875,7 @@ public final class pglite {
             if (writePipe != null) {
                 releasePipe(writePipe);
             }
+            this.socketTypeTable.remove(fd);
             this.stdioAliases.remove(fd);
         }
 
