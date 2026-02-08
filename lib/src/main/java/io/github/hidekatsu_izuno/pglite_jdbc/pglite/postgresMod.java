@@ -24,7 +24,28 @@ public final class postgresMod {
         void _set_read_write_cbs(int read_cb, int write_cb);
         int addFunction(ReadWriteCallback cb, String signature);
         void removeFunction(int f);
+        void copyFromHeap(int ptr, byte[] dest, int destOffset, int length);
+        void copyToHeap(int ptr, byte[] src, int srcOffset, int length);
+        EmscriptenRuntime runtime();
         extensionUtils.EmscriptenFS FS();
+    }
+
+    public interface EmscriptenRuntime {
+        extensionUtils.EmscriptenFS FS();
+        byte[] getPreloadedPackage(String name, int size);
+        void addRunDependency(String key);
+        void removeRunDependency(String key);
+        void preRun();
+        void postRun();
+        int makedev(int major, int minor);
+        void registerDevice(int devId, DeviceOps ops);
+        void mkdev(String path, int devId);
+    }
+
+    public interface DeviceOps {
+        int read(byte[] buffer, int offset, int length, int position);
+        int write(byte[] buffer, int offset, int length, int position);
+        int llseek(int offset, int whence, int position);
     }
 
     @FunctionalInterface

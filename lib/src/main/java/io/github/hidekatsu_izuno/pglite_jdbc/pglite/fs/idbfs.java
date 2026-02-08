@@ -42,6 +42,9 @@ public final class idbfs {
 
         @Override
         public CompletableFuture<Void> initialSyncFs() {
+            if (this.pg == null || this.pg.Module == null || this.pg.Module.FS == null) {
+                return CompletableFuture.completedFuture(null);
+            }
             var future = new CompletableFuture<Void>();
             this.pg.Module.FS.syncfs(
                 true,
@@ -58,6 +61,9 @@ public final class idbfs {
 
         @Override
         public CompletableFuture<Void> syncToFs(Boolean _relaxedDurability) {
+            if (this.pg == null || this.pg.Module == null || this.pg.Module.FS == null) {
+                return CompletableFuture.completedFuture(null);
+            }
             var future = new CompletableFuture<Void>();
             this.pg.Module.FS.syncfs(
                 false,
@@ -74,6 +80,9 @@ public final class idbfs {
 
         @Override
         public CompletableFuture<Void> closeFs() {
+            if (this.pg == null || this.pg.Module == null || this.pg.Module.FS == null) {
+                return CompletableFuture.completedFuture(null);
+            }
             // IDBDatabase.close() method is essentially async, but returns immediately,
             // the database will be closed when all transactions are complete.
             // This needs to be handled in application code if you want to delete the

@@ -1,17 +1,18 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pglite;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.contrib.amcheck;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.contrib.pgcrypto;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.PGliteOptions;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.Timeout.ThreadMode;
 
-/**
- * Smoke scenarios from the migration plan.
- * Enable this class after the Wasm host in release/pglite.java is implemented.
- */
-@Disabled("Wasm host factory wiring in release/pglite.java is not implemented yet")
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
+
+@Timeout(value = 120, threadMode = ThreadMode.SEPARATE_THREAD)
 class PgliteSmokeTest {
     private static final class ExtensionsMap
         extends HashMap<String, Object>
@@ -71,6 +72,22 @@ class PgliteSmokeTest {
     }
 
     @Test
+    void shouldLoadSecondExtensionBundle() {
+        var options = new PGliteOptions<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Extensions>();
+        options.dataDir = "memory://";
+        var extensions = new ExtensionsMap();
+        extensions.put("pgcrypto", pgcrypto.pgcrypto);
+        options.extensions = extensions;
+
+        var pg = pglite.create(options).join();
+        try {
+            pg.exec("CREATE EXTENSION pgcrypto;", null).join();
+        } finally {
+            pg.close().join();
+        }
+    }
+
+    @Test
     void shouldUnlisten() {
         var options = new PGliteOptions<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Extensions>();
         options.dataDir = "memory://";
@@ -95,5 +112,15 @@ class PgliteSmokeTest {
         } catch (RuntimeException ignored) {
             // expected
         }
+    }
+
+    @Test
+    void shouldCreateAndCloseWithinTimeout() {
+        assertTimeoutPreemptively(Duration.ofSeconds(90), () -> {
+            var options = new PGliteOptions<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Extensions>();
+            options.dataDir = "memory://";
+            var pg = pglite.create(options).join();
+            pg.close().join();
+        });
     }
 }

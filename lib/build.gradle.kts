@@ -33,3 +33,26 @@ testing {
 tasks.named<Jar>("jar") {
     archiveBaseName.set("pglite-jdbc")
 }
+
+tasks.withType<Test>().configureEach {
+    val traceIndirect = System.getProperty("pglite.trace_call_indirect")
+    if (!traceIndirect.isNullOrBlank()) {
+        systemProperty("pglite.trace_call_indirect", traceIndirect)
+    }
+    val traceInvoke = System.getProperty("pglite.trace_invoke")
+    if (!traceInvoke.isNullOrBlank()) {
+        systemProperty("pglite.trace_invoke", traceInvoke)
+    }
+    val traceExec = System.getProperty("pglite.trace_exec")
+    if (!traceExec.isNullOrBlank()) {
+        systemProperty("pglite.trace_exec", traceExec)
+    }
+    val traceHostCalls = System.getProperty("pglite.trace_host_calls")
+    if (!traceHostCalls.isNullOrBlank()) {
+        systemProperty("pglite.trace_host_calls", traceHostCalls)
+    }
+    val traceWasmStdio = System.getProperty("pglite.trace_wasm_stdio")
+    if (!traceWasmStdio.isNullOrBlank()) {
+        systemProperty("pglite.trace_wasm_stdio", traceWasmStdio)
+    }
+}

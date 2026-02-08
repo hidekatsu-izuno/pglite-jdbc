@@ -10,7 +10,9 @@ public final class memoryfs {
 
         @Override
         public CompletableFuture<Void> closeFs() {
-            this.pg.Module.FS.quit();
+            if (this.pg != null && this.pg.Module != null && this.pg.Module.FS != null) {
+                this.pg.Module.FS.quit();
+            }
             return CompletableFuture.completedFuture(null);
         }
     }

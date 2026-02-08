@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 
@@ -33,6 +34,17 @@ public final class extensionUtils {
     }
 
     public static interface EmscriptenFS {
+        void createPath(String parent, String path, boolean canRead, boolean canWrite);
+
+        void createDataFile(
+            String path,
+            String name,
+            Object data,
+            boolean canRead,
+            boolean canWrite,
+            boolean canOwn
+        );
+
         void createPreloadedFile(
             String parent,
             String name,
@@ -49,10 +61,41 @@ public final class extensionUtils {
         void mkdirTree(String path);
 
         void writeFile(String path, byte[] data);
+
+        byte[] readFile(String path);
+
+        void mount(Object type, Object opts, String mountpoint);
+
+        void unmount(String mountpoint);
+
+        void symlink(String target, String path);
+
+        FsStat stat(String path);
+
+        String[] readdir(String path);
+
+        void syncfs(boolean populate, SyncfsCallback done);
+
+        void registerDevice(int devId, Object ops);
+
+        int makedev(int major, int minor);
+
+        void mkdev(String path, int dev);
+    }
+
+    @FunctionalInterface
+    public interface SyncfsCallback {
+        void apply(Exception err);
     }
 
     public static final class AnalyzePathResult {
         public boolean exists;
+    }
+
+    public static final class FsStat {
+        public long size;
+        public long mtimeMs;
+        public boolean directory;
     }
 
     private static final class ByteArrayBlob implements ExtensionBlob {
@@ -79,11 +122,11 @@ public final class extensionUtils {
     }
 
     public static ExtensionBlob loadExtensionBundle(String bundlePath) {
-        return new ByteArrayBlob(utils.readFile(bundlePath));
+        return new ByteArrayBlob(maybeGunzip(utils.readFile(bundlePath)));
     }
 
     public static ExtensionBlob loadExtensionBundle(URL bundlePath) {
-        return new ByteArrayBlob(utils.readFile(bundlePath));
+        return new ByteArrayBlob(maybeGunzip(utils.readFile(bundlePath)));
     }
 
     public static void loadExtensions(
@@ -200,6 +243,24 @@ public final class extensionUtils {
             throw new CompletionException(e);
         }
         return entries;
+    }
+
+    private static byte[] maybeGunzip(byte[] data) {
+        if (
+            data.length >= 2 &&
+            (data[0] & 0xFF) == 0x1F &&
+            (data[1] & 0xFF) == 0x8B
+        ) {
+            try (
+                var input = new ByteArrayInputStream(data);
+                var gzip = new GzipCompressorInputStream(input)
+            ) {
+                return gzip.readAllBytes();
+            } catch (IOException e) {
+                throw new CompletionException(e);
+            }
+        }
+        return data;
     }
 
     private static byte[] readTarEntryBytes(InputStream input, long size)
