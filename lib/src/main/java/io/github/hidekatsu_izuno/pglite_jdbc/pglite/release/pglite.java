@@ -27,6 +27,7 @@ import com.dylibso.chicory.wasm.types.Table;
 import com.dylibso.chicory.wasm.types.TableImport;
 import com.dylibso.chicory.wasm.types.UnknownCustomSection;
 import com.dylibso.chicory.wasm.types.ValType;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.extensionUtils;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.postgresMod;
@@ -61,8 +62,16 @@ public final class pglite {
     );
     private static final boolean TRACE_INVOKE = Boolean.getBoolean("pglite.trace_invoke");
     private static final boolean TRACE_EXEC = Boolean.getBoolean("pglite.trace_exec");
+    private static final boolean MANIFEST_FALLBACK = Boolean.getBoolean("pglite.manifest.fallback");
+    private static final String MANIFEST_RESOURCE = "pglite.data.manifest.json";
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final java.util.concurrent.ConcurrentLinkedDeque<String> EXEC_TRACE =
         new java.util.concurrent.ConcurrentLinkedDeque<>();
+    private static final ThreadLocal<Integer> INVOKE_DEPTH = ThreadLocal.withInitial(() -> 0);
+    private static final int INVOKE_DEPTH_LIMIT = Integer.getInteger(
+        "pglite.invoke_depth_limit",
+        4096
+    );
 
     public static CompletableFuture<postgresMod.PostgresMod> PostgresModFactory(
         postgresMod.PartialPostgresMod moduleOverrides
@@ -545,6 +554,28 @@ public final class pglite {
             case "getnameinfo":
                 ret = runtime != null ? runtime.getnameinfo(args) : -2L;
                 break;
+            case "__call_sighandler":
+                if (runtime == null) {
+                    throw new RuntimeBridgeException(
+                        "__call_sighandler",
+                        "Runtime is not initialized"
+                    );
+                }
+                runtime.callSigHandler(args);
+                ret = 0L;
+                break;
+            case "setTempRet0":
+                if (runtime != null) {
+                    runtime.setTempRet0(args);
+                }
+                ret = 0L;
+                break;
+            case "getTempRet0":
+                ret = runtime != null ? runtime.getTempRet0(args) : 0L;
+                break;
+            case "emscripten_asm_const_int":
+                ret = runtime != null ? runtime.emscriptenAsmConstInt(args) : 0L;
+                break;
             case "__syscall_openat":
                 ret = runtime != null ? runtime.syscallOpenAt(args) : -1L;
                 break;
@@ -710,8 +741,10 @@ public final class pglite {
                     ret = -52L; // ENOSYS
                     break;
                 }
-                ret = 0L;
-                break;
+                throw new RuntimeBridgeException(
+                    "handleEnvFunction",
+                    "Unknown env import: " + name + " args=" + Arrays.toString(args)
+                );
         }
         if (returnCount <= 0) {
             if (runtime != null) {
@@ -755,77 +788,51 @@ public final class pglite {
     private static final long ENOSYS_WASI = 52L;
 
     private static long[] invokeCallback(RuntimePostgresMod mod, String name, long[] args) {
-        if (mod == null) {
-            throw new RuntimeBridgeException(
-                "invokeCallback",
-                "Wasm callback invoked before module initialization"
-            );
-        }
-        if (args.length == 0) {
-            return new long[] {};
-        }
-
-        var tableIndex = (int) args[0];
-        var callback = mod.callback(tableIndex);
-        if (callback != null) {
-            var ptr = args.length > 1 ? (int) args[1] : 0;
-            var len = args.length > 2 ? (int) args[2] : 0;
-            var ret = callback.apply(ptr, len);
-            if (
-                "invoke_v".equals(name) ||
-                "invoke_vi".equals(name) ||
-                "invoke_vii".equals(name)
-            ) {
-                return new long[] {};
-            }
-            return new long[] { ret };
-        }
+        var depth = INVOKE_DEPTH.get() + 1;
+        INVOKE_DEPTH.set(depth);
         try {
-            // Emscripten invoke_* uses function table index as the first argument.
-            var table = mod.instance.table(0);
-            if (tableIndex < 0 || tableIndex >= table.size()) {
+            if (mod == null) {
                 throw new RuntimeBridgeException(
                     "invokeCallback",
-                    "table index out of range: index=" +
+                    "Wasm callback invoked before module initialization"
+                );
+            }
+            if (args.length == 0) {
+                return new long[] {};
+            }
+
+            var tableIndex = (int) args[0];
+            if (depth > INVOKE_DEPTH_LIMIT) {
+                var table = mod.instance.table(0);
+                var tableSize = table.size();
+                var funcRef = (tableIndex >= 0 && tableIndex < tableSize)
+                    ? table.ref(tableIndex)
+                    : -1;
+                var owner = (tableIndex >= 0 && tableIndex < tableSize)
+                    ? table.instance(tableIndex)
+                    : null;
+                throw new RuntimeBridgeException(
+                    "invokeCallback",
+                    "invoke recursion depth exceeded: depth=" +
+                    depth +
+                    ", name=" +
+                    name +
+                    ", tableIndex=" +
                     tableIndex +
-                    ", tableSize=" +
-                    table.size() +
-                    ", args=" +
-                    Arrays.toString(args) +
+                    ", funcRef=" +
+                    funcRef +
+                    ", ownerHash=" +
+                    (owner != null ? Integer.toHexString(System.identityHashCode(owner)) : "null") +
                     ", callbackKeys=" +
                     mod.callbackKeysSnapshot()
                 );
             }
-            var funcRef = mod.instance.table(0).requiredRef(tableIndex);
-            var callArgs = new long[Math.max(0, args.length - 1)];
-            if (callArgs.length > 0) {
-                System.arraycopy(args, 1, callArgs, 0, callArgs.length);
-            }
-            if (TRACE_INVOKE) {
-                appendTrace(
-                    "[pglite-invoke] " + name +
-                    " tableIndex=" + tableIndex +
-                    " funcRef=" + funcRef +
-                    " argc=" + callArgs.length
-                );
-            }
-            var result = mod.instance.getMachine().call(funcRef, callArgs);
-            if (
-                "invoke_v".equals(name) ||
-                "invoke_vi".equals(name) ||
-                "invoke_vii".equals(name)
-            ) {
-                return new long[] {};
-            }
-            return result;
-        } catch (RuntimeException tableDispatchError) {
-            if (tableDispatchError instanceof TrapException) {
-                if (mod.hasExport("setThrew")) {
-                    try {
-                        mod.instance.export("setThrew").apply(1, 0);
-                    } catch (RuntimeException ignored) {
-                    }
-                }
+
+            var callback = mod.callback(tableIndex);
+            if (callback != null) {
+                var ptr = args.length > 1 ? (int) args[1] : 0;
+                var len = args.length > 2 ? (int) args[2] : 0;
+                var ret = callback.apply(ptr, len);
                 if (
                     "invoke_v".equals(name) ||
                     "invoke_vi".equals(name) ||
@@ -833,17 +840,88 @@ public final class pglite {
                 ) {
                     return new long[] {};
                 }
-                return new long[] { 0L };
+                return new long[] { ret };
             }
-            if (TRACE_INVOKE) {
-                appendTrace(
-                    "[pglite-invoke] dispatch-failed " + name +
-                    " tableIndex=" + tableIndex +
-                    " err=" + tableDispatchError.getClass().getSimpleName() +
-                    ": " + tableDispatchError.getMessage()
-                );
+
+            try {
+                // Emscripten invoke_* uses function table index as the first argument.
+                var table = mod.instance.table(0);
+                if (tableIndex < 0 || tableIndex >= table.size()) {
+                    throw new RuntimeBridgeException(
+                        "invokeCallback",
+                        "table index out of range: index=" +
+                        tableIndex +
+                        ", tableSize=" +
+                        table.size() +
+                        ", args=" +
+                        Arrays.toString(args) +
+                        ", callbackKeys=" +
+                        mod.callbackKeysSnapshot()
+                    );
+                }
+                var funcRef = mod.instance.table(0).requiredRef(tableIndex);
+                var owner = table.instance(tableIndex);
+                if (owner == null) {
+                    throw new RuntimeBridgeException(
+                        "invokeCallback",
+                        "table owner is null: index=" +
+                        tableIndex +
+                        ", funcRef=" +
+                        funcRef +
+                        ", args=" +
+                        Arrays.toString(args)
+                    );
+                }
+                var callArgs = new long[Math.max(0, args.length - 1)];
+                if (callArgs.length > 0) {
+                    System.arraycopy(args, 1, callArgs, 0, callArgs.length);
+                }
+                if (TRACE_INVOKE) {
+                    appendTrace(
+                        "[pglite-invoke] " + name +
+                        " tableIndex=" + tableIndex +
+                        " funcRef=" + funcRef +
+                        " argc=" + callArgs.length
+                    );
+                }
+                var result = owner.getMachine().call(funcRef, callArgs);
+                if (
+                    "invoke_v".equals(name) ||
+                    "invoke_vi".equals(name) ||
+                    "invoke_vii".equals(name)
+                ) {
+                    return new long[] {};
+                }
+                return result;
+            } catch (RuntimeException tableDispatchError) {
+                if (tableDispatchError instanceof TrapException) {
+                    if (mod.hasExport("setThrew")) {
+                        try {
+                            mod.instance.export("setThrew").apply(1, 0);
+                        } catch (RuntimeException ignored) {
+                        }
+                    }
+                    if (
+                        "invoke_v".equals(name) ||
+                        "invoke_vi".equals(name) ||
+                        "invoke_vii".equals(name)
+                    ) {
+                        return new long[] {};
+                    }
+                    return new long[] { 0L };
+                }
+                if (TRACE_INVOKE) {
+                    appendTrace(
+                        "[pglite-invoke] dispatch-failed " + name +
+                        " tableIndex=" + tableIndex +
+                        " err=" + tableDispatchError.getClass().getSimpleName() +
+                        ": " + tableDispatchError.getMessage()
+                    );
+                }
+                throw tableDispatchError;
             }
-            throw tableDispatchError;
+        } finally {
+            INVOKE_DEPTH.set(Math.max(0, depth - 1));
         }
     }
 
@@ -1193,10 +1271,11 @@ public final class pglite {
                 )
                 .build();
             var tableSize = this.instance.table(0).size();
+            var tableBase = (int) readLongProperty("pglite.table_base", 1L);
             var slot = this.runtime.ensureFunctionTableSlot(
                 callbackInstance,
                 0,
-                tableSize,
+                Math.max(0, tableBase),
                 tableSize
             );
             this.callbacks.put(slot, cb);
@@ -1291,6 +1370,7 @@ public final class pglite {
         private final String wasmPostgresVersion;
         private final java.security.SecureRandom secureRandom = new java.security.SecureRandom();
         private String cwd = "/";
+        private long tempRet0 = 0L;
         private volatile boolean preloaded = false;
         private final StringBuilder stderrBuffer = new StringBuilder();
         private final StringBuilder stdoutBuffer = new StringBuilder();
@@ -1652,6 +1732,63 @@ public final class pglite {
             // Emscripten uses HEAPU8.copyWithin, which clamps out-of-range indexes.
             var bytes = mem.readBytes((int) clampedSrc, (int) copyLen);
             mem.write((int) clampedDest, bytes, 0, (int) copyLen);
+        }
+
+        private void callSigHandler(long[] args) {
+            if (args.length < 2) {
+                throw new RuntimeBridgeException(
+                    "__call_sighandler",
+                    "expected (fp, sig), got " + Arrays.toString(args)
+                );
+            }
+            var fp = (int) args[0];
+            var sig = (int) args[1];
+            var table = this.mod.instance.table(0);
+            if (fp < 0 || fp >= table.size()) {
+                throw new RuntimeBridgeException(
+                    "__call_sighandler",
+                    "table index out of range: " + fp + " size=" + table.size()
+                );
+            }
+            var functionIndex = table.ref(fp);
+            var owner = table.instance(fp);
+            if (functionIndex < 0 || owner == null) {
+                throw new RuntimeBridgeException(
+                    "__call_sighandler",
+                    "empty table slot: " + fp
+                );
+            }
+            try {
+                owner.getMachine().call(functionIndex, new long[] { sig });
+            } catch (RuntimeException e) {
+                throw new RuntimeBridgeException(
+                    "__call_sighandler",
+                    new RuntimeException("dispatch failed: fp=" + fp + " sig=" + sig, e)
+                );
+            }
+        }
+
+        private void setTempRet0(long[] args) {
+            this.tempRet0 = args.length > 0 ? (int) args[0] : 0L;
+        }
+
+        private long getTempRet0(long[] args) {
+            return this.tempRet0;
+        }
+
+        private long emscriptenAsmConstInt(long[] args) {
+            var code = args.length > 0 ? args[0] : -1L;
+            var strictAsmConst = Boolean.getBoolean("pglite.strict_asm_const");
+            if (strictAsmConst) {
+                throw new RuntimeBridgeException(
+                    "emscripten_asm_const_int",
+                    "Unimplemented asm const code=" + code + " args=" + Arrays.toString(args)
+                );
+            }
+            recordHostNote(
+                "emscripten_asm_const_int ignored code=" + code + " args=" + Arrays.toString(args)
+            );
+            return 0L;
         }
 
         private long emscriptenResizeHeap(long[] args) {
@@ -2046,12 +2183,6 @@ public final class pglite {
                 }
             }
             for (var i = lower; i < table.size(); i++) {
-                if (isEmptyTableSlot(table, i)) {
-                    table.setRef(i, functionIndex, owner);
-                    return i;
-                }
-            }
-            for (var i = 0; i < lower; i++) {
                 if (isEmptyTableSlot(table, i)) {
                     table.setRef(i, functionIndex, owner);
                     return i;
@@ -3151,6 +3282,55 @@ public final class pglite {
         }
 
         private java.util.List<ManifestEntry> loadPgliteDataManifest() {
+            var classpathManifest = loadManifestFromClasspath();
+            if (!classpathManifest.isEmpty()) {
+                return classpathManifest;
+            }
+            if (!MANIFEST_FALLBACK) {
+                throw new RuntimeBridgeException(
+                    "loadPgliteDataManifest",
+                    "Classpath manifest not found: " +
+                    MANIFEST_RESOURCE +
+                    " (set -Dpglite.manifest.fallback=true to parse pglite.js)"
+                );
+            }
+            return loadPgliteDataManifestFromSource();
+        }
+
+        private java.util.List<ManifestEntry> loadManifestFromClasspath() {
+            try (var input = pglite.class.getClassLoader().getResourceAsStream(MANIFEST_RESOURCE)) {
+                if (input == null) {
+                    return Collections.emptyList();
+                }
+                var payload = OBJECT_MAPPER.readValue(input, ManifestFile.class);
+                if (payload == null || payload.files == null || payload.files.isEmpty()) {
+                    throw new RuntimeBridgeException(
+                        "loadPgliteDataManifest",
+                        "Manifest has no file entries: " + MANIFEST_RESOURCE
+                    );
+                }
+                var out = new ArrayList<ManifestEntry>(payload.files.size());
+                for (var entry : payload.files) {
+                    if (entry == null || entry.filename == null) {
+                        continue;
+                    }
+                    out.add(entry);
+                }
+                if (out.isEmpty()) {
+                    throw new RuntimeBridgeException(
+                        "loadPgliteDataManifest",
+                        "Manifest has no valid entries: " + MANIFEST_RESOURCE
+                    );
+                }
+                return out;
+            } catch (RuntimeBridgeException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new RuntimeBridgeException("loadPgliteDataManifest", e);
+            }
+        }
+
+        private java.util.List<ManifestEntry> loadPgliteDataManifestFromSource() {
             try {
                 var sourcePath = resolveManifestSource();
                 var js = Files.readString(sourcePath);
@@ -3210,9 +3390,13 @@ public final class pglite {
         }
 
         private static final class ManifestEntry {
-            private String filename;
-            private int start;
-            private int end;
+            public String filename;
+            public int start;
+            public int end;
+        }
+
+        private static final class ManifestFile {
+            public java.util.List<ManifestEntry> files = new ArrayList<>();
         }
 
         private long syscallOpenAt(long[] args) {
@@ -5141,9 +5325,13 @@ public final class pglite {
 
     private static final class EmscriptenFsImpl implements extensionUtils.EmscriptenFS {
         private final Path rootDir;
+        private final Map<String, MountEntry> mounts = new ConcurrentHashMap<>();
+        private final Map<Integer, Object> devices = new ConcurrentHashMap<>();
+        private final Map<String, Integer> deviceNodes = new ConcurrentHashMap<>();
 
         private EmscriptenFsImpl(Path rootDir) {
             this.rootDir = rootDir;
+            this.mounts.put("/", new MountEntry("/", "MEMFS", null));
         }
 
         @Override
@@ -5258,11 +5446,30 @@ public final class pglite {
 
         @Override
         public void mount(Object type, Object opts, String mountpoint) {
-            mkdirTree(mountpoint);
+            var normalized = normalize(mountpoint);
+            if (this.mounts.containsKey(normalized)) {
+                throw new RuntimeBridgeException(
+                    "mount",
+                    "mountpoint already mounted: " + normalized
+                );
+            }
+            mkdirTree(normalized);
+            this.mounts.put(normalized, new MountEntry(normalized, type, opts));
         }
 
         @Override
         public void unmount(String mountpoint) {
+            var normalized = normalize(mountpoint);
+            if ("/".equals(normalized)) {
+                throw new RuntimeBridgeException("unmount", "cannot unmount root");
+            }
+            var removed = this.mounts.remove(normalized);
+            if (removed == null) {
+                throw new RuntimeBridgeException(
+                    "unmount",
+                    "mountpoint is not mounted: " + normalized
+                );
+            }
         }
 
         @Override
@@ -5323,11 +5530,35 @@ public final class pglite {
 
         @Override
         public void syncfs(boolean populate, extensionUtils.SyncfsCallback done) {
-            done.apply(null);
+            if (done == null) {
+                return;
+            }
+            Exception error = null;
+            try {
+                // Keep callback contract with Emscripten: complete once after all mounts.
+                for (var entry : this.mounts.values()) {
+                    if (entry == null) {
+                        continue;
+                    }
+                }
+            } catch (Exception e) {
+                error = e;
+            }
+            done.apply(error);
         }
 
         @Override
         public void registerDevice(int devId, Object ops) {
+            if (ops == null) {
+                throw new RuntimeBridgeException("registerDevice", "device ops is null");
+            }
+            var prev = this.devices.putIfAbsent(devId, ops);
+            if (prev != null) {
+                throw new RuntimeBridgeException(
+                    "registerDevice",
+                    "device id already registered: " + devId
+                );
+            }
         }
 
         @Override
@@ -5337,7 +5568,33 @@ public final class pglite {
 
         @Override
         public void mkdev(String path, int dev) {
-            writeFile(path, new byte[0]);
+            if (!this.devices.containsKey(dev)) {
+                throw new RuntimeBridgeException(
+                    "mkdev",
+                    "device id is not registered: " + dev
+                );
+            }
+            var normalized = normalize(path);
+            var prev = this.deviceNodes.putIfAbsent(normalized, dev);
+            if (prev != null) {
+                throw new RuntimeBridgeException(
+                    "mkdev",
+                    "device node already exists: " + normalized
+                );
+            }
+            writeFile(normalized, new byte[0]);
+        }
+
+        private static final class MountEntry {
+            private final String mountpoint;
+            private final Object type;
+            private final Object opts;
+
+            private MountEntry(String mountpoint, Object type, Object opts) {
+                this.mountpoint = mountpoint;
+                this.type = type;
+                this.opts = opts;
+            }
         }
 
         private Path resolve(String path) {
