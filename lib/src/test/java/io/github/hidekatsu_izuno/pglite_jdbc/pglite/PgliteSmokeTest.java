@@ -7,10 +7,13 @@ import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PgliteSmokeTest {
     private static final class ExtensionsMap
@@ -49,6 +52,9 @@ class PgliteSmokeTest {
             } catch (RuntimeException ignored) {
                 // Expected duplicate-key failure path; rollback is handled by transaction wrapper.
             }
+            var rows = await(pg.query("SELECT COUNT(*) AS c FROM t", null, null)).rows;
+            var count = number(rows, "c");
+            assertTrue(count == 1L);
         } finally {
             await(pg.close());
         }
@@ -106,11 +112,11 @@ class PgliteSmokeTest {
         options.dataDir = "memory://";
         var pg = await(pglite.create(options));
         await(pg.close());
-        try {
-            await(pg.query("SELECT 1", null, null));
-        } catch (RuntimeException ignored) {
-            // expected
-        }
+        var error = assertThrows(
+            RuntimeException.class,
+            () -> await(pg.query("SELECT 1", null, null))
+        );
+        assertTrue(error.getMessage().contains("closed"));
     }
 
     @Test
@@ -125,5 +131,14 @@ class PgliteSmokeTest {
 
     private static <T> T await(CompletableFuture<T> future) {
         return future.orTimeout(240, TimeUnit.SECONDS).join();
+    }
+
+    private static long number(List<Object> rows, String key) {
+        var row = (Map<?, ?>) rows.get(0);
+        var value = row.get(key);
+        if (value instanceof Number) {
+            return ((Number) value).longValue();
+        }
+        throw new IllegalStateException("Expected numeric field: " + key);
     }
 }
