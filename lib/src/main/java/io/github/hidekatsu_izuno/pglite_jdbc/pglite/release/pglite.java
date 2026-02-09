@@ -5034,7 +5034,7 @@ public final class pglite {
                     case RuntimeIoctlContract.TIOCSPGRP_ALT -> hasTty ? err(EINVAL) : err(ENOTTY);
                     case RuntimeIoctlContract.TIOCGPTPEER -> {
                         resolveIoctlArgPointer(args);
-                        yield hasTty ? 0 : err(ENOTTY);
+                        yield this.socketTypeTable.containsKey(fd) ? 0 : err(ENOTTY);
                     }
                     case RuntimeIoctlContract.TIOCGWINSZ -> {
                         if (!hasTty) {
