@@ -5883,7 +5883,11 @@ public final class pglite {
             if ("/".equals(normalized)) {
                 return this.rootDir;
             }
-            return this.rootDir.resolve(normalized.substring(1)).normalize();
+            var mapped = this.rootDir.resolve(normalized.substring(1)).normalize();
+            if (!mapped.startsWith(this.rootDir)) {
+                throw new RuntimeBridgeException("resolve", "path escapes runtime fs root: " + path);
+            }
+            return mapped;
         }
 
         private String normalizeResolvedPath(String path) {
@@ -5900,13 +5904,24 @@ public final class pglite {
                 var base = this.cwd == null || this.cwd.isBlank() ? "/" : this.cwd;
                 p = (base.endsWith("/") ? base : base + "/") + p;
             }
-            while (p.contains("//")) {
-                p = p.replace("//", "/");
+            var parts = p.split("/");
+            var stack = new ArrayDeque<String>();
+            for (var part : parts) {
+                if (part == null || part.isEmpty() || ".".equals(part)) {
+                    continue;
+                }
+                if ("..".equals(part)) {
+                    if (!stack.isEmpty()) {
+                        stack.removeLast();
+                    }
+                    continue;
+                }
+                stack.addLast(part);
             }
-            if (p.length() > 1 && p.endsWith("/")) {
-                p = p.substring(0, p.length() - 1);
+            if (stack.isEmpty()) {
+                return "/";
             }
-            return p;
+            return "/" + String.join("/", stack);
         }
 
         private String toVirtualPath(Path target) {

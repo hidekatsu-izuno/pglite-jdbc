@@ -59,6 +59,42 @@ class RuntimeSyscallPathResolutionTest {
         assertEquals(-28L, result);
     }
 
+    @Test
+    void shouldNormalizeParentSegmentsFromRoot() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var runtime = mod.runtime();
+        runtime.FS().mkdirTree("/tmp");
+        runtime.FS().writeFile("/tmp/parent.txt", "ok".getBytes(StandardCharsets.UTF_8));
+        var instance = extractInstance(runtime);
+        var pathPtr = writeCString(instance, 0x2300, "/../../tmp/parent.txt");
+
+        var result = invokeLong(
+            runtime,
+            "syscallFaccessAt",
+            new long[] { AT_FDCWD, pathPtr, 0, 0 }
+        );
+        assertEquals(0L, result);
+    }
+
+    @Test
+    void shouldResolveParentSegmentsAgainstCurrentDirectory() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var runtime = mod.runtime();
+        runtime.FS().mkdirTree("/tmp/base/sub");
+        runtime.FS().writeFile("/tmp/base/target.txt", "ok".getBytes(StandardCharsets.UTF_8));
+        var instance = extractInstance(runtime);
+        var chdirPtr = writeCString(instance, 0x2400, "/tmp/base/sub");
+        assertEquals(0L, invokeLong(runtime, "syscallChdir", new long[] { chdirPtr }));
+
+        var pathPtr = writeCString(instance, 0x2500, "../target.txt");
+        var result = invokeLong(
+            runtime,
+            "syscallFaccessAt",
+            new long[] { AT_FDCWD, pathPtr, 0, 0 }
+        );
+        assertEquals(0L, result);
+    }
+
     private static Instance extractInstance(Object runtime) {
         try {
             var modField = runtime.getClass().getDeclaredField("mod");
