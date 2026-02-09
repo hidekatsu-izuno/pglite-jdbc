@@ -21,6 +21,19 @@ class RuntimeDynamicLinkParityTest {
     }
 
     @Test
+    void shouldCaptureDlopenEmptyPathReason() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var runtime = mod.runtime();
+        var instance = extractInstance(runtime);
+        var handlePtr = 0x7900;
+        instance.memory().writeByte(handlePtr + 36, (byte) 0);
+
+        var ret = invokeLong(runtime, "dlopenJs", new long[] { handlePtr });
+        assertEquals(0L, ret);
+        assertTrue(readDlError(runtime).contains("library path is empty"));
+    }
+
+    @Test
     void shouldCaptureDlsymFailureReason() {
         var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
         var runtime = mod.runtime();
@@ -30,6 +43,18 @@ class RuntimeDynamicLinkParityTest {
         var ret = invokeLong(runtime, "dlsymJs", new long[] { 0, symbolPtr, 0 });
         assertEquals(0L, ret);
         assertTrue(readDlError(runtime).contains("symbol not found"));
+    }
+
+    @Test
+    void shouldCaptureDlsymUnknownHandleReason() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var runtime = mod.runtime();
+        var instance = extractInstance(runtime);
+        var symbolPtr = writeCString(instance, 0x7E00, "malloc");
+
+        var ret = invokeLong(runtime, "dlsymJs", new long[] { 12345, symbolPtr, 0 });
+        assertEquals(0L, ret);
+        assertTrue(readDlError(runtime).contains("library handle not found"));
     }
 
     @Test
