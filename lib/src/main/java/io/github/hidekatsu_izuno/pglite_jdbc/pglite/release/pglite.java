@@ -689,6 +689,12 @@ public final class pglite {
                 throw new RuntimeBridgeException(name, "Wasm requested abort");
             default:
                 if (name.startsWith("__syscall_")) {
+                    if (Boolean.getBoolean("pglite.strict_syscall")) {
+                        throw new RuntimeBridgeException(
+                            "handleEnvFunction",
+                            "Unknown syscall import: " + name + " args=" + Arrays.toString(args)
+                        );
+                    }
                     ret = -52L; // ENOSYS
                     break;
                 }

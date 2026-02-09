@@ -129,6 +129,27 @@ class RuntimeEnvImportParityTest {
     }
 
     @Test
+    void shouldFailUnknownSyscallImportInStrictMode() {
+        var key = "pglite.strict_syscall";
+        var previous = System.getProperty(key);
+        try {
+            System.setProperty(key, "true");
+            var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+            var error = assertThrows(
+                RuntimeException.class,
+                () -> invokeEnvUnchecked(mod, "__syscall_nonexistent", new long[] { 1L }, 1)
+            );
+            assertTrue(containsInCauseChain(error, "__syscall_nonexistent"));
+        } finally {
+            if (previous == null) {
+                System.clearProperty(key);
+            } else {
+                System.setProperty(key, previous);
+            }
+        }
+    }
+
+    @Test
     void shouldReturnEnosysForNonEmptyEmscriptenSystemCommand() throws Exception {
         var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
         var instance = extractInstance(mod.runtime());
