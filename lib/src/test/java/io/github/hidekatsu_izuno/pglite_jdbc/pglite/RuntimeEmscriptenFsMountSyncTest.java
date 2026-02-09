@@ -70,12 +70,11 @@ class RuntimeEmscriptenFsMountSyncTest {
     }
 
     @Test
-    void shouldRejectEscapingRootByParentSegments() {
+    void shouldNormalizeParentSegmentsAtRoot() {
         var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
         var fs = mod.runtime().FS();
-        assertThrows(
-            RuntimeException.class,
-            () -> fs.writeFile("/../../outside.bin", "x".getBytes(StandardCharsets.UTF_8))
-        );
+        fs.writeFile("/../../outside.bin", "x".getBytes(StandardCharsets.UTF_8));
+        assertTrue(fs.analyzePath("/outside.bin").exists);
+        assertEquals("x", new String(fs.readFile("/outside.bin"), StandardCharsets.UTF_8));
     }
 }

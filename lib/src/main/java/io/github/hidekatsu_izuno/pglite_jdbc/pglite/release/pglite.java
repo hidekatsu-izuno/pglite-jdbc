@@ -45,6 +45,7 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.channels.SeekableByteChannel;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumSet;
@@ -3324,17 +3325,28 @@ public final class pglite {
             if (path == null || path.isBlank() || "/".equals(path)) {
                 return "/";
             }
-            var p = path.replace('\\', '/');
-            if (!p.startsWith("/")) {
-                p = "/" + p;
+            var value = path.replace('\\', '/');
+            if (!value.startsWith("/")) {
+                value = "/" + value;
             }
-            while (p.contains("//")) {
-                p = p.replace("//", "/");
+            var parts = value.split("/");
+            var stack = new ArrayDeque<String>();
+            for (var part : parts) {
+                if (part == null || part.isEmpty() || ".".equals(part)) {
+                    continue;
+                }
+                if ("..".equals(part)) {
+                    if (!stack.isEmpty()) {
+                        stack.removeLast();
+                    }
+                    continue;
+                }
+                stack.addLast(part);
             }
-            if (p.length() > 1 && p.endsWith("/")) {
-                p = p.substring(0, p.length() - 1);
+            if (stack.isEmpty()) {
+                return "/";
             }
-            return p;
+            return "/" + String.join("/", stack);
         }
 
         private void preloadPgliteData() {
@@ -6086,13 +6098,24 @@ public final class pglite {
             if (!value.startsWith("/")) {
                 value = "/" + value;
             }
-            while (value.contains("//")) {
-                value = value.replace("//", "/");
+            var parts = value.split("/");
+            var stack = new ArrayDeque<String>();
+            for (var part : parts) {
+                if (part == null || part.isEmpty() || ".".equals(part)) {
+                    continue;
+                }
+                if ("..".equals(part)) {
+                    if (!stack.isEmpty()) {
+                        stack.removeLast();
+                    }
+                    continue;
+                }
+                stack.addLast(part);
             }
-            if (value.length() > 1 && value.endsWith("/")) {
-                value = value.substring(0, value.length() - 1);
+            if (stack.isEmpty()) {
+                return "/";
             }
-            return value;
+            return "/" + String.join("/", stack);
         }
     }
 
@@ -6518,17 +6541,28 @@ public final class pglite {
             if (path == null || path.isBlank() || "/".equals(path)) {
                 return "/";
             }
-            var p = path.replace('\\', '/');
-            if (!p.startsWith("/")) {
-                p = "/" + p;
+            var value = path.replace('\\', '/');
+            if (!value.startsWith("/")) {
+                value = "/" + value;
             }
-            while (p.contains("//")) {
-                p = p.replace("//", "/");
+            var parts = value.split("/");
+            var stack = new ArrayDeque<String>();
+            for (var part : parts) {
+                if (part == null || part.isEmpty() || ".".equals(part)) {
+                    continue;
+                }
+                if ("..".equals(part)) {
+                    if (!stack.isEmpty()) {
+                        stack.removeLast();
+                    }
+                    continue;
+                }
+                stack.addLast(part);
             }
-            if (p.length() > 1 && p.endsWith("/")) {
-                p = p.substring(0, p.length() - 1);
+            if (stack.isEmpty()) {
+                return "/";
             }
-            return p;
+            return "/" + String.join("/", stack);
         }
 
         private static byte[] toBytes(Object data) {
