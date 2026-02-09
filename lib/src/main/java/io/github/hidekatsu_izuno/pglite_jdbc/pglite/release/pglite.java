@@ -4980,75 +4980,89 @@ public final class pglite {
         }
 
         private long syscallIoctl(long[] args) {
-            if (args.length < 2) {
-                return err(EINVAL);
-            }
-            var fd = (int) args[0];
-            if (!descriptorExists(fd)) {
-                return err(EBADF);
-            }
-            var op = (int) args[1];
-            var argp = 0;
-            if (args.length >= 3) {
-                var varargsPtr = (int) args[2];
-                if (varargsPtr != 0) {
-                    try {
-                        argp = (int) this.mod.instance.memory().readI32(varargsPtr);
-                    } catch (RuntimeException e) {
-                        return err(EFAULT);
-                    }
+            try {
+                if (args.length < 2) {
+                    return err(EINVAL);
                 }
-            }
-            var hasTty = resolveStdioFd(fd) >= 0 && !this.fdTable.containsKey(fd);
-            return switch (op) {
-                case RuntimeIoctlContract.TCSETS,
-                    RuntimeIoctlContract.TCSETSW,
-                    RuntimeIoctlContract.TCSETSF,
-                    RuntimeIoctlContract.TIOCSPGRP,
-                    RuntimeIoctlContract.TCFLSH -> hasTty ? 0 : err(ENOTTY);
-                case RuntimeIoctlContract.TCGETS -> {
-                    if (!hasTty) {
-                        yield err(ENOTTY);
-                    }
-                    if (argp != 0) {
-                        this.mod.instance.memory().writeI32(argp, 0);
-                        this.mod.instance.memory().writeI32(argp + 4, 0);
-                        this.mod.instance.memory().writeI32(argp + 8, 0);
-                        this.mod.instance.memory().writeI32(argp + 12, 0);
-                        for (var i = 0; i < 32; i++) {
-                            this.mod.instance.memory().writeByte(argp + 17 + i, (byte) 0);
+                var fd = (int) args[0];
+                if (!descriptorExists(fd)) {
+                    return err(EBADF);
+                }
+                var op = (int) args[1];
+                var hasTty = resolveStdioFd(fd) >= 0 && !this.fdTable.containsKey(fd);
+                return switch (op) {
+                    case RuntimeIoctlContract.TCSETS,
+                        RuntimeIoctlContract.TCSETSW,
+                        RuntimeIoctlContract.TCSETSF,
+                        RuntimeIoctlContract.TIOCSPGRP,
+                        RuntimeIoctlContract.TCFLSH -> hasTty ? 0 : err(ENOTTY);
+                    case RuntimeIoctlContract.TCGETS -> {
+                        if (!hasTty) {
+                            yield err(ENOTTY);
                         }
+                        var argp = resolveIoctlArgPointer(args);
+                        if (argp != 0) {
+                            this.mod.instance.memory().writeI32(argp, 0);
+                            this.mod.instance.memory().writeI32(argp + 4, 0);
+                            this.mod.instance.memory().writeI32(argp + 8, 0);
+                            this.mod.instance.memory().writeI32(argp + 12, 0);
+                            for (var i = 0; i < 32; i++) {
+                                this.mod.instance.memory().writeByte(argp + 17 + i, (byte) 0);
+                            }
+                        }
+                        yield 0;
                     }
-                    yield 0;
-                }
-                case RuntimeIoctlContract.TCSETA,
-                    RuntimeIoctlContract.TCSETAW,
-                    RuntimeIoctlContract.TCSETAF -> hasTty ? 0 : err(ENOTTY);
-                case RuntimeIoctlContract.TIOCGPGRP -> {
-                    if (!hasTty) {
-                        yield err(ENOTTY);
+                    case RuntimeIoctlContract.TCSETA,
+                        RuntimeIoctlContract.TCSETAW,
+                        RuntimeIoctlContract.TCSETAF -> hasTty ? 0 : err(ENOTTY);
+                    case RuntimeIoctlContract.TIOCGPGRP -> {
+                        if (!hasTty) {
+                            yield err(ENOTTY);
+                        }
+                        var argp = resolveIoctlArgPointer(args);
+                        if (argp != 0) {
+                            this.mod.instance.memory().writeI32(argp, 0);
+                        }
+                        yield 0;
                     }
-                    if (argp != 0) {
-                        this.mod.instance.memory().writeI32(argp, 0);
+                    case RuntimeIoctlContract.TIOCSPGRP_ALT -> hasTty ? err(EINVAL) : err(ENOTTY);
+                    case RuntimeIoctlContract.TIOCGPTPEER -> {
+                        resolveIoctlArgPointer(args);
+                        yield hasTty ? 0 : err(ENOTTY);
                     }
-                    yield 0;
-                }
-                case RuntimeIoctlContract.TIOCSPGRP_ALT -> hasTty ? err(EINVAL) : err(ENOTTY);
-                case RuntimeIoctlContract.TIOCGPTPEER -> hasTty ? 0 : err(ENOTTY);
-                case RuntimeIoctlContract.TIOCGWINSZ -> {
-                    if (!hasTty) {
-                        yield err(ENOTTY);
+                    case RuntimeIoctlContract.TIOCGWINSZ -> {
+                        if (!hasTty) {
+                            yield err(ENOTTY);
+                        }
+                        var argp = resolveIoctlArgPointer(args);
+                        if (argp != 0) {
+                            this.mod.instance.memory().writeShort(argp, (short) 24);
+                            this.mod.instance.memory().writeShort(argp + 2, (short) 80);
+                            this.mod.instance.memory().writeShort(argp + 4, (short) 0);
+                            this.mod.instance.memory().writeShort(argp + 6, (short) 0);
+                        }
+                        yield 0;
                     }
-                    if (argp != 0) {
-                        this.mod.instance.memory().writeShort(argp, (short) 24);
-                        this.mod.instance.memory().writeShort(argp + 2, (short) 80);
-                        this.mod.instance.memory().writeShort(argp + 4, (short) 0);
-                        this.mod.instance.memory().writeShort(argp + 6, (short) 0);
-                    }
-                    yield 0;
-                }
-                default -> RuntimeIoctlContract.defaultErrno(hasTty, op, ENOTTY, EINVAL);
-            };
+                    default -> RuntimeIoctlContract.defaultErrno(hasTty, op, ENOTTY, EINVAL);
+                };
+            } catch (ErrnoException e) {
+                return err(e.errno);
+            }
+        }
+
+        private int resolveIoctlArgPointer(long[] args) throws ErrnoException {
+            if (args.length < 3) {
+                return 0;
+            }
+            var varargsPtr = (int) args[2];
+            if (varargsPtr == 0) {
+                return 0;
+            }
+            try {
+                return (int) this.mod.instance.memory().readI32(varargsPtr);
+            } catch (RuntimeException e) {
+                throw new ErrnoException(EFAULT);
+            }
         }
 
         private long syscallGetdents64(long[] args) {

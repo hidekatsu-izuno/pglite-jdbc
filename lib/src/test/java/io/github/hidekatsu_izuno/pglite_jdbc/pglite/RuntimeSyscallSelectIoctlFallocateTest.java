@@ -151,6 +151,7 @@ class RuntimeSyscallSelectIoctlFallocateTest {
         assertEquals(0, instance.memory().readI32(argPtr));
         assertEquals(-8L, invokeLong(runtime, "syscallIoctl", new long[] { 9999, 21519, varargsPtr }));
         assertEquals(-28L, invokeLong(runtime, "syscallIoctl", new long[] { 1, 12345, varargsPtr }));
+        assertEquals(-28L, invokeLong(runtime, "syscallIoctl", new long[] { 1, 12345, 0x7FFF_FFF0L }));
         assertEquals(-8L, invokeLong(runtime, "syscallIoctl", new long[] { 9999, 12345, varargsPtr }));
 
         runtime.FS().mkdirTree("/tmp/readlink");
