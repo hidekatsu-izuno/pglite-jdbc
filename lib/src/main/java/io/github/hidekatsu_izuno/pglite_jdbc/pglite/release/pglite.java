@@ -1784,11 +1784,47 @@ public final class pglite {
         }
 
         private void setDlError(String context, String detail) {
-            this.dlErrorState.set(context + ": " + detail);
+            var message = context + ": " + detail;
+            this.dlErrorState.set(message);
+            writeDlErrorToWasm(message);
         }
 
         private String lastDlError() {
             return this.dlErrorState.get();
+        }
+
+        private void clearDlError() {
+            this.dlErrorState.clear();
+            writeDlErrorToWasm("");
+        }
+
+        private void writeDlErrorToWasm(String message) {
+            if (!this.mod.hasExport("__dl_seterr")) {
+                return;
+            }
+            var ptr = 0;
+            try {
+                if (message != null && !message.isEmpty()) {
+                    var payload = (message + "\0").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    var mallocRet = this.mod.instance.export("malloc").apply(payload.length);
+                    if (mallocRet.length == 0 || mallocRet[0] == 0L) {
+                        recordHostNote("__dl_seterr skipped: malloc failed");
+                        return;
+                    }
+                    ptr = (int) mallocRet[0];
+                    this.mod.instance.memory().write(ptr, payload, 0, payload.length);
+                }
+                this.mod.instance.export("__dl_seterr").apply(ptr, 0);
+            } catch (RuntimeException e) {
+                recordHostNote("__dl_seterr failed: " + e.getMessage());
+            } finally {
+                if (ptr != 0 && this.mod.hasExport("free")) {
+                    try {
+                        this.mod.instance.export("free").apply(ptr);
+                    } catch (RuntimeException ignored) {
+                    }
+                }
+            }
         }
 
         private long emscriptenAsmConstInt(long[] args) {
@@ -1952,7 +1988,7 @@ public final class pglite {
                 }
                 var flags = this.mod.instance.memory().readInt(handlePtr + 4);
                 loadDynamicLibrary(filename, handlePtr, flags);
-                this.dlErrorState.clear();
+                clearDlError();
                 return 1L;
             } catch (RuntimeBridgeException e) {
                 setDlError("_dlopen_js", e.getMessage());
@@ -2014,11 +2050,11 @@ public final class pglite {
                         targetLib.tableBase + Math.max(0, targetLib.tableSize)
                     )
                 );
-                this.dlErrorState.clear();
+                clearDlError();
                 return pointer;
             }
             if (export.exportType() == ExternalType.GLOBAL) {
-                this.dlErrorState.clear();
+                clearDlError();
                 return (int) lib.instance.global(export.index()).getValueLow();
             }
             setDlError(
@@ -4750,20 +4786,13 @@ public final class pglite {
                 var writeSet = new RuntimeSelectState(memory, (int) args[2], nfds);
                 var exceptSet = new RuntimeSelectState(memory, (int) args[3], nfds);
                 var timeoutPtr = (int) args[4];
-                var total = computeSelectReady(nfds, readSet, writeSet, exceptSet);
-                if (total == 0 && timeoutPtr != 0) {
+                if (timeoutPtr != 0) {
                     var timeoutMs = selectTimeoutMillis(timeoutPtr);
                     if (timeoutMs < 0) {
                         return err(EINVAL);
                     }
-                    if (timeoutMs > 0) {
-                        java.util.concurrent.locks.LockSupport.parkNanos(timeoutMs * 1_000_000L);
-                        total = computeSelectReady(nfds, readSet, writeSet, exceptSet);
-                    }
-                    this.mod.instance.memory().writeI32(timeoutPtr, 0);
-                    this.mod.instance.memory().writeI32(timeoutPtr + 4, 0);
                 }
-                return total;
+                return computeSelectReady(nfds, readSet, writeSet, exceptSet);
             } catch (ErrnoException e) {
                 return err(e.errno);
             } catch (Exception e) {
@@ -5026,19 +5055,18 @@ public final class pglite {
                 var path = resolve(calculateAt(dirfd, readCString((int) args[1]), false));
                 var bufPtr = (int) args[2];
                 var bufSize = (int) args[3];
-                if (bufSize < 0) {
+                if (bufSize <= 0) {
                     return err(EINVAL);
                 }
                 if (!Files.isSymbolicLink(path)) {
                     return err(EINVAL);
                 }
-                if (bufSize == 0) {
-                    return 0;
-                }
                 var link = Files.readSymbolicLink(path).toString()
                     .getBytes(java.nio.charset.StandardCharsets.UTF_8);
-                var writeLen = Math.min(link.length, Math.max(0, bufSize));
+                var writeLen = Math.min(link.length, bufSize);
+                var endChar = this.mod.instance.memory().read(bufPtr + writeLen);
                 this.mod.instance.memory().write(bufPtr, link, 0, writeLen);
+                this.mod.instance.memory().writeByte(bufPtr + writeLen, endChar);
                 return writeLen;
             } catch (ErrnoException e) {
                 return err(e.errno);

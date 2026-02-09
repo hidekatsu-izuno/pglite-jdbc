@@ -82,7 +82,7 @@ class RuntimeSyscallSelectIoctlFallocateTest {
     }
 
     @Test
-    void shouldHonorSelectTimeoutAndClearTimeval() {
+    void shouldHonorSelectTimeoutWithoutBlocking() {
         var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
         var runtime = mod.runtime();
         var instance = extractInstance(runtime);
@@ -98,9 +98,9 @@ class RuntimeSyscallSelectIoctlFallocateTest {
         );
         var elapsedMs = (System.nanoTime() - start) / 1_000_000L;
         assertEquals(0L, ready);
-        assertTrue(elapsedMs >= 30L, "select timeout should block for a short interval");
+        assertTrue(elapsedMs < 30L, "select should not block in the emscripten compatibility path");
         assertEquals(0, instance.memory().readI32(timeoutPtr));
-        assertEquals(0, instance.memory().readI32(timeoutPtr + 4));
+        assertEquals(50_000, instance.memory().readI32(timeoutPtr + 4));
     }
 
     @Test
@@ -165,6 +165,10 @@ class RuntimeSyscallSelectIoctlFallocateTest {
             -28L,
             invokeLong(runtime, "syscallReadlinkAt", new long[] { AT_FDCWD, regularPathPtr, 0x3700, 32 })
         );
+        assertEquals(
+            -28L,
+            invokeLong(runtime, "syscallReadlinkAt", new long[] { AT_FDCWD, linkPtr, 0x3700, 0 })
+        );
 
         var truncated = invokeLong(
             runtime,
@@ -172,8 +176,11 @@ class RuntimeSyscallSelectIoctlFallocateTest {
             new long[] { AT_FDCWD, linkPtr, 0x3700, 4 }
         );
         assertEquals(4L, truncated);
+        instance.memory().writeByte(0x3704, (byte) 'X');
+        invokeLong(runtime, "syscallReadlinkAt", new long[] { AT_FDCWD, linkPtr, 0x3700, 4 });
         var bytes = instance.memory().readBytes(0x3700, 4);
         assertEquals("targ", new String(bytes, StandardCharsets.UTF_8));
+        assertEquals('X', instance.memory().read(0x3704) & 0xFF);
     }
 
     private static Instance extractInstance(Object runtime) {

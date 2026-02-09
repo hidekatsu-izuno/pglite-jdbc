@@ -128,6 +128,22 @@ class RuntimeEnvImportParityTest {
     }
 
     @Test
+    void shouldReturnEnosysForNonEmptyEmscriptenSystemCommand() throws Exception {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var instance = extractInstance(mod.runtime());
+        var commandPtr = writeCString(instance, 0x4800, "echo test");
+        var ret = invokeEnv(mod, "_emscripten_system", new long[] { commandPtr }, 1);
+        assertEquals(-52L, ret[0]);
+    }
+
+    @Test
+    void shouldReturnZeroForEmptyEmscriptenSystemCommand() throws Exception {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var ret = invokeEnv(mod, "_emscripten_system", new long[] { 0L }, 1);
+        assertEquals(0L, ret[0]);
+    }
+
+    @Test
     void shouldDispatchInvokeViaTableOwnerWhenCallbackMapEntryIsMissing() throws Exception {
         var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
         var slot = mod.addFunction((ptr, len) -> ptr + len, "iii");
@@ -258,6 +274,12 @@ class RuntimeEnvImportParityTest {
         } catch (ReflectiveOperationException e) {
             throw new RuntimeException("Failed to extract runtime module", e);
         }
+    }
+
+    private static int writeCString(Instance instance, int ptr, String value) {
+        var data = (value + "\0").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        instance.memory().write(ptr, data, 0, data.length);
+        return ptr;
     }
 
     private static int findExportFunctionIndex(Instance instance, String exportName) {

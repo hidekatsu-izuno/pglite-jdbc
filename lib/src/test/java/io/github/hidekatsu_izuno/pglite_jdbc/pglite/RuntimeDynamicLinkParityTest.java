@@ -43,6 +43,7 @@ class RuntimeDynamicLinkParityTest {
         var ret = invokeLong(runtime, "dlsymJs", new long[] { 0, symbolPtr, 0 });
         assertEquals(0L, ret);
         assertTrue(readDlError(runtime).contains("symbol not found"));
+        assertDlerrorContains(instance, "symbol not found");
     }
 
     @Test
@@ -55,6 +56,7 @@ class RuntimeDynamicLinkParityTest {
         var ret = invokeLong(runtime, "dlsymJs", new long[] { 12345, symbolPtr, 0 });
         assertEquals(0L, ret);
         assertTrue(readDlError(runtime).contains("library handle not found"));
+        assertDlerrorContains(instance, "library handle not found");
     }
 
     @Test
@@ -71,6 +73,7 @@ class RuntimeDynamicLinkParityTest {
         var ret = invokeLong(runtime, "dlsymJs", new long[] { 0, symbolPtr, symbolIndexPtr });
         assertNotEquals(0L, ret);
         assertEquals("", readDlError(runtime));
+        assertDlerrorCleared(instance);
     }
 
     private static String readDlError(Object runtime) {
@@ -100,6 +103,51 @@ class RuntimeDynamicLinkParityTest {
         var data = (value + "\0").getBytes(java.nio.charset.StandardCharsets.UTF_8);
         instance.memory().write(ptr, data, 0, data.length);
         return ptr;
+    }
+
+    private static void assertDlerrorContains(Instance instance, String token) {
+        if (!hasExport(instance, "dlerror")) {
+            return;
+        }
+        var ret = instance.export("dlerror").apply();
+        if (ret.length == 0 || ret[0] == 0L) {
+            return;
+        }
+        var message = readCString(instance, (int) ret[0]);
+        assertTrue(message.contains(token));
+    }
+
+    private static void assertDlerrorCleared(Instance instance) {
+        if (!hasExport(instance, "dlerror")) {
+            return;
+        }
+        var ret = instance.export("dlerror").apply();
+        assertTrue(ret.length == 0 || ret[0] == 0L);
+    }
+
+    private static String readCString(Instance instance, int ptr) {
+        var out = new StringBuilder();
+        var offset = 0;
+        while (offset < 4096) {
+            var value = instance.memory().readBytes(ptr + offset, 1)[0] & 0xFF;
+            if (value == 0) {
+                break;
+            }
+            out.append((char) value);
+            offset++;
+        }
+        return out.toString();
+    }
+
+    private static boolean hasExport(Instance instance, String name) {
+        var section = instance.module().exportSection();
+        for (var i = 0; i < section.exportCount(); i++) {
+            var export = section.getExport(i);
+            if (name.equals(export.name())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static long invokeLong(Object target, String methodName, long[] args) {
