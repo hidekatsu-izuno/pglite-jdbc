@@ -68,4 +68,14 @@ class RuntimeEmscriptenFsMountSyncTest {
         var written = Files.readString(hostRoot.resolve("new.txt"), StandardCharsets.UTF_8);
         assertEquals("from-runtime", written);
     }
+
+    @Test
+    void shouldRejectEscapingRootByParentSegments() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var fs = mod.runtime().FS();
+        assertThrows(
+            RuntimeException.class,
+            () -> fs.writeFile("/../../outside.bin", "x".getBytes(StandardCharsets.UTF_8))
+        );
+    }
 }

@@ -6455,7 +6455,11 @@ public final class pglite {
             if ("/".equals(normalized)) {
                 return this.rootDir;
             }
-            return this.rootDir.resolve(normalized.substring(1)).normalize();
+            var mapped = this.rootDir.resolve(normalized.substring(1)).normalize();
+            if (!mapped.startsWith(this.rootDir)) {
+                throw new RuntimeBridgeException("resolve", "path escapes fs root: " + path);
+            }
+            return mapped;
         }
 
         private MountEntry resolveMount(String normalizedPath) {
