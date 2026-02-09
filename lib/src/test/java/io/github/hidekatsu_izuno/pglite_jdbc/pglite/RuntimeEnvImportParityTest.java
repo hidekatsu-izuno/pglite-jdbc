@@ -7,6 +7,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -163,6 +164,34 @@ class RuntimeEnvImportParityTest {
         }
     }
 
+    @Test
+    void shouldShortCircuitRecursiveInvokeCallback() throws Exception {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var slotRef = new int[1];
+        var maxDepth = new AtomicInteger(0);
+        slotRef[0] = mod.addFunction((ptr, len) -> {
+            var depth = maxDepth.incrementAndGet();
+            try {
+                if (depth < 200) {
+                    var ret = invokeCallbackUnchecked(mod, "invoke_ii", new long[] { slotRef[0], ptr, len });
+                    return ret.length == 0 ? 0 : (int) ret[0];
+                }
+                return ptr + len;
+            } finally {
+                maxDepth.decrementAndGet();
+            }
+        }, "iii");
+
+        try {
+            assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
+                var ret = invokeCallback(mod, "invoke_ii", new long[] { slotRef[0], 3L, 4L });
+                assertEquals(0L, ret[0]);
+            });
+        } finally {
+            mod.removeFunction(slotRef[0]);
+        }
+    }
+
     private static long[] invokeEnv(
         postgresMod.PostgresMod mod,
         String name,
@@ -209,6 +238,18 @@ class RuntimeEnvImportParityTest {
                 throw (RuntimeException) cause;
             }
             throw new RuntimeException(cause);
+        }
+    }
+
+    private static long[] invokeCallbackUnchecked(
+        postgresMod.PostgresMod mod,
+        String name,
+        long[] args
+    ) {
+        try {
+            return invokeCallback(mod, name, args);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 

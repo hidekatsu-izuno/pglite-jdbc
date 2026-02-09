@@ -5047,6 +5047,8 @@ public final class pglite {
                 };
             } catch (ErrnoException e) {
                 return err(e.errno);
+            } catch (RuntimeException e) {
+                return err(EFAULT);
             }
         }
 
@@ -5150,6 +5152,8 @@ public final class pglite {
                 return writeLen;
             } catch (ErrnoException e) {
                 return err(e.errno);
+            } catch (RuntimeException e) {
+                return err(EFAULT);
             } catch (java.nio.file.NotLinkException e) {
                 return err(EINVAL);
             } catch (java.nio.file.NoSuchFileException e) {
