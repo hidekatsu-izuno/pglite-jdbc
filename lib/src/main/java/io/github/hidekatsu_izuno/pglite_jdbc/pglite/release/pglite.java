@@ -2058,66 +2058,72 @@ public final class pglite {
         }
 
         private long dlsymJs(long[] args) {
-            if (args.length < 3) {
-                setDlError("_dlsym_js", "invalid argument count: " + args.length);
-                return 0L;
-            }
-            var handlePtr = (int) args[0];
-            var symbol = readCString((int) args[1]);
-            var symbolIndexPtr = (int) args[2];
-            if (symbol == null || symbol.isEmpty()) {
-                setDlError("_dlsym_js", "symbol is empty");
-                return 0L;
-            }
+            try {
+                if (args.length < 3) {
+                    setDlError("_dlsym_js", "invalid argument count: " + args.length);
+                    return 0L;
+                }
+                var handlePtr = (int) args[0];
+                var symbol = readCString((int) args[1]);
+                var symbolIndexPtr = (int) args[2];
+                if (symbol == null || symbol.isEmpty()) {
+                    setDlError("_dlsym_js", "symbol is empty");
+                    return 0L;
+                }
 
-            var lib = handlePtr == 0
-                ? this.loadedLibsByHandle.get(0)
-                : this.loadedLibsByHandle.get(handlePtr);
-            if (lib == null && handlePtr != 0) {
-                setDlError("_dlsym_js", "library handle not found: " + handlePtr);
-                return 0L;
-            }
-            if (lib == null) {
-                setDlError("_dlsym_js", "main library not initialized");
-                return 0L;
-            }
+                var lib = handlePtr == 0
+                    ? this.loadedLibsByHandle.get(0)
+                    : this.loadedLibsByHandle.get(handlePtr);
+                if (lib == null && handlePtr != 0) {
+                    setDlError("_dlsym_js", "library handle not found: " + handlePtr);
+                    return 0L;
+                }
+                if (lib == null) {
+                    setDlError("_dlsym_js", "main library not initialized");
+                    return 0L;
+                }
 
-            var export = lib.exports.get(symbol);
-            if (export == null) {
-                setDlError("_dlsym_js", "symbol not found: " + symbol + " in " + lib.name);
-                recordHostNote("_dlsym_js unknown symbol \"" + symbol + "\" in " + lib.name);
-                return 0L;
-            }
+                var export = lib.exports.get(symbol);
+                if (export == null) {
+                    setDlError("_dlsym_js", "symbol not found: " + symbol + " in " + lib.name);
+                    recordHostNote("_dlsym_js unknown symbol \"" + symbol + "\" in " + lib.name);
+                    return 0L;
+                }
 
-            if (symbolIndexPtr != 0) {
-                this.mod.instance.memory().writeI32(
-                    symbolIndexPtr,
-                    lib.exportOrder.indexOf(symbol)
+                if (symbolIndexPtr != 0) {
+                    this.mod.instance.memory().writeI32(
+                        symbolIndexPtr,
+                        lib.exportOrder.indexOf(symbol)
+                    );
+                }
+
+                if (export.exportType() == ExternalType.FUNCTION) {
+                    var targetLib = lib;
+                    var pointer = lib.functionPointers.computeIfAbsent(symbol, ignored ->
+                        ensureFunctionTableSlot(
+                            targetLib.instance,
+                            export.index(),
+                            targetLib.tableBase,
+                            targetLib.tableBase + Math.max(0, targetLib.tableSize)
+                        )
+                    );
+                    clearDlError();
+                    return pointer;
+                }
+                if (export.exportType() == ExternalType.GLOBAL) {
+                    clearDlError();
+                    return (int) lib.instance.global(export.index()).getValueLow();
+                }
+                setDlError(
+                    "_dlsym_js",
+                    "unsupported export type for symbol " + symbol + ": " + export.exportType()
                 );
+                return 0L;
+            } catch (RuntimeException e) {
+                setDlError("_dlsym_js", e.getClass().getSimpleName() + ": " + e.getMessage());
+                recordHostNote("_dlsym_js failed: " + e.getMessage());
+                return 0L;
             }
-
-            if (export.exportType() == ExternalType.FUNCTION) {
-                var targetLib = lib;
-                var pointer = lib.functionPointers.computeIfAbsent(symbol, ignored ->
-                    ensureFunctionTableSlot(
-                        targetLib.instance,
-                        export.index(),
-                        targetLib.tableBase,
-                        targetLib.tableBase + Math.max(0, targetLib.tableSize)
-                    )
-                );
-                clearDlError();
-                return pointer;
-            }
-            if (export.exportType() == ExternalType.GLOBAL) {
-                clearDlError();
-                return (int) lib.instance.global(export.index()).getValueLow();
-            }
-            setDlError(
-                "_dlsym_js",
-                "unsupported export type for symbol " + symbol + ": " + export.exportType()
-            );
-            return 0L;
         }
 
         private DynamicLibrary loadDynamicLibrary(String rawName, int handlePtr, int flags)

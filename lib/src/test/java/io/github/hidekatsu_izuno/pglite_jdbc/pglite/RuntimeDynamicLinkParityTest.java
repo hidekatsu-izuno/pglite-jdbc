@@ -76,6 +76,18 @@ class RuntimeDynamicLinkParityTest {
         assertDlerrorCleared(instance);
     }
 
+    @Test
+    void shouldCaptureDlsymUnexpectedPointerFailureReason() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var runtime = mod.runtime();
+        var instance = extractInstance(runtime);
+        var symbolPtr = writeCString(instance, 0x7F00, "malloc");
+
+        var ret = invokeLong(runtime, "dlsymJs", new long[] { 0, symbolPtr, 0x7FFF_FFF0L });
+        assertEquals(0L, ret);
+        assertTrue(readDlError(runtime).contains("Exception"));
+    }
+
     private static String readDlError(Object runtime) {
         try {
             var method = runtime.getClass().getDeclaredMethod("lastDlError");
