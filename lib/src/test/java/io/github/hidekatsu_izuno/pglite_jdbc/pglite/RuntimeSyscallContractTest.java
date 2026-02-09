@@ -59,6 +59,14 @@ class RuntimeSyscallContractTest {
         assertEquals(-59L, nonTtyResult);
     }
 
+    @Test
+    void shouldKeepEnosysForEmscriptenSystemCommandExecution() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var runtime = mod.runtime();
+        var result = invokeLong(runtime, "emscriptenSystem", new long[] { 1024 });
+        assertEquals(-52L, result);
+    }
+
     private static long invokeLong(Object target, String methodName, long[] args) {
         try {
             var method = target.getClass().getDeclaredMethod(methodName, long[].class);

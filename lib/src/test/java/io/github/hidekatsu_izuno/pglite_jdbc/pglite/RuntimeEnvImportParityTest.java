@@ -48,10 +48,28 @@ class RuntimeEnvImportParityTest {
     }
 
     @Test
-    void shouldReturnZeroForAsmConstIntByDefault() throws Exception {
+    void shouldReturnEinvalForUnknownAsmConstIntByDefault() throws Exception {
         var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
         var ret = invokeEnv(mod, "emscripten_asm_const_int", new long[] { 9L, 0L, 0L }, 1);
-        assertEquals(0L, ret[0]);
+        assertEquals(-28L, ret[0]);
+    }
+
+    @Test
+    void shouldKeepAsmConstCompatModeWhenEnabled() throws Exception {
+        var key = "pglite.asm_const_compat";
+        var previous = System.getProperty(key);
+        try {
+            System.setProperty(key, "true");
+            var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+            var ret = invokeEnv(mod, "emscripten_asm_const_int", new long[] { 9L, 0L, 0L }, 1);
+            assertEquals(0L, ret[0]);
+        } finally {
+            if (previous == null) {
+                System.clearProperty(key);
+            } else {
+                System.setProperty(key, previous);
+            }
+        }
     }
 
     @Test

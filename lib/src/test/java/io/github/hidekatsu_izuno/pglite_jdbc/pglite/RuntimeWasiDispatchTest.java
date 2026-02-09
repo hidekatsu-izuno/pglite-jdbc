@@ -94,10 +94,32 @@ class RuntimeWasiDispatchTest {
 
     @Test
     void shouldKeepEnosysForUnknownWasiFunction() throws Exception {
+        var key = "pglite.wasi.lenient";
+        var previous = System.getProperty(key);
+        try {
+            System.setProperty(key, "true");
+            var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+            var dispatch = findWasiDispatch(mod.getClass());
+            var ret = (long[]) dispatch.invoke(null, mod, "fd_unknown", new long[] {});
+            assertEquals(52L, ret[0]);
+        } finally {
+            if (previous == null) {
+                System.clearProperty(key);
+            } else {
+                System.setProperty(key, previous);
+            }
+        }
+    }
+
+    @Test
+    void shouldFailFastForUnknownWasiFunctionByDefault() throws Exception {
         var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
         var dispatch = findWasiDispatch(mod.getClass());
-        var ret = (long[]) dispatch.invoke(null, mod, "fd_unknown", new long[] {});
-        assertEquals(52L, ret[0]);
+        var error = assertThrows(
+            InvocationTargetException.class,
+            () -> dispatch.invoke(null, mod, "fd_unknown", new long[] {})
+        );
+        assertTrue(error.getCause().getMessage().contains("Unknown wasi import"));
     }
 
     private static Method findWasiDispatch(Class<?> runtimeModClass) throws Exception {

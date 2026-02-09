@@ -62,6 +62,26 @@ class RuntimeSyscallSelectIoctlFallocateTest {
     }
 
     @Test
+    void shouldCountReadyDescriptorsAcrossReadAndWriteSets() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var runtime = mod.runtime();
+        var instance = extractInstance(runtime);
+        var readSetPtr = 0x3230;
+        var writeSetPtr = 0x3240;
+        instance.memory().writeI32(readSetPtr, 1); // fd 0
+        instance.memory().writeI32(writeSetPtr, 1 << 1); // fd 1
+
+        var ready = invokeLong(
+            runtime,
+            "syscallNewselect",
+            new long[] { 3, readSetPtr, writeSetPtr, 0, 0 }
+        );
+        assertEquals(2L, ready);
+        assertEquals(1, instance.memory().readI32(readSetPtr));
+        assertEquals(1 << 1, instance.memory().readI32(writeSetPtr));
+    }
+
+    @Test
     void shouldHonorSelectTimeoutAndClearTimeval() {
         var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
         var runtime = mod.runtime();
@@ -128,6 +148,8 @@ class RuntimeSyscallSelectIoctlFallocateTest {
         assertEquals(0L, invokeLong(runtime, "syscallIoctl", new long[] { 1, 21519, argPtr }));
         assertEquals(0, instance.memory().readI32(argPtr));
         assertEquals(-59L, invokeLong(runtime, "syscallIoctl", new long[] { 9999, 21519, argPtr }));
+        assertEquals(-28L, invokeLong(runtime, "syscallIoctl", new long[] { 1, 12345, argPtr }));
+        assertEquals(-59L, invokeLong(runtime, "syscallIoctl", new long[] { 9999, 12345, argPtr }));
 
         runtime.FS().mkdirTree("/tmp/readlink");
         runtime.FS().writeFile("/tmp/readlink/target.txt", "ok".getBytes(StandardCharsets.UTF_8));

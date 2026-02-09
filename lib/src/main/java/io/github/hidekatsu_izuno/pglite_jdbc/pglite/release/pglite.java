@@ -711,6 +711,15 @@ public final class pglite {
                 "Wasm runtime not initialized for " + name
             );
         }
+        if (!RuntimeWasiContract.isSupported(name)) {
+            if (Boolean.getBoolean("pglite.wasi.lenient")) {
+                return new long[] { ENOSYS_WASI };
+            }
+            throw new RuntimeBridgeException(
+                "handleWasiFunction",
+                "Unknown wasi import: " + name + " args=" + Arrays.toString(args)
+            );
+        }
         var runtime = mod.runtimeImpl();
         runtime.recordHostNote("wasi." + name + " enter args=" + Arrays.toString(args));
         var ret = switch (name) {
@@ -727,7 +736,10 @@ public final class pglite {
             case "fd_sync" -> runtime.wasiFdSync(args);
             case "fd_datasync" -> runtime.wasiFdSync(args);
             case "fd_write" -> runtime.wasiFdWrite(args);
-            default -> ENOSYS_WASI;
+            default -> throw new RuntimeBridgeException(
+                "handleWasiFunction",
+                "Unhandled supported wasi import: " + name
+            );
         };
         runtime.recordHostCall("wasi." + name, args, ret);
         return new long[] { ret };
@@ -1320,6 +1332,8 @@ public final class pglite {
         private final Map<String, Integer> mainFunctionTableSlots = new ConcurrentHashMap<>();
         private final AtomicInteger dnsAddressId = new AtomicInteger(1);
         private final String wasmPostgresVersion;
+        private final RuntimeDlErrorState dlErrorState = new RuntimeDlErrorState();
+        private final RuntimeAsmConstRegistry asmConstRegistry = RuntimeAsmConstRegistry.create();
         private final java.security.SecureRandom secureRandom = new java.security.SecureRandom();
         private String cwd = "/";
         private long tempRet0 = 0L;
@@ -1751,12 +1765,38 @@ public final class pglite {
             return this.tempRet0;
         }
 
+        private void applyFdBufferMaxAsmConst(java.util.List<Object> args) {
+            if (args.isEmpty() || !(args.get(0) instanceof Number number)) {
+                return;
+            }
+            var value = number.intValue();
+            if (value > 0) {
+                this.mod.setFD_BUFFER_MAX(value);
+            }
+        }
+
+        private void markPostMessageAsmConst(java.util.List<Object> args) {
+            this.asmConstPostMessageInstalled = true;
+        }
+
+        private void markCustomMessageHandlerAsmConst(java.util.List<Object> args) {
+            this.asmConstCustomMessageHandlerInstalled = true;
+        }
+
+        private void setDlError(String context, String detail) {
+            this.dlErrorState.set(context + ": " + detail);
+        }
+
+        private String lastDlError() {
+            return this.dlErrorState.get();
+        }
+
         private long emscriptenAsmConstInt(long[] args) {
             var code = args.length > 0 ? args[0] : -1L;
             var sigPtr = args.length > 1 ? (int) args[1] : 0;
             var argBuf = args.length > 2 ? (int) args[2] : 0;
             var asmArgs = readEmAsmArgs(sigPtr, argBuf);
-            var handled = handleKnownAsmConst(code, asmArgs);
+            var handled = this.asmConstRegistry.dispatch(this, code, asmArgs);
             if (handled) {
                 return 0L;
             }
@@ -1772,15 +1812,26 @@ public final class pglite {
                     asmArgs
                 );
             }
+            if (Boolean.getBoolean("pglite.asm_const_compat")) {
+                recordHostNote(
+                    "emscripten_asm_const_int compat ignored code=" +
+                    code +
+                    " args=" +
+                    Arrays.toString(args) +
+                    " decodedArgs=" +
+                    asmArgs
+                );
+                return 0L;
+            }
             recordHostNote(
-                "emscripten_asm_const_int ignored code=" +
+                "emscripten_asm_const_int unknown code=" +
                 code +
                 " args=" +
                 Arrays.toString(args) +
                 " decodedArgs=" +
                 asmArgs
             );
-            return 0L;
+            return err(EINVAL);
         }
 
         private java.util.List<Object> readEmAsmArgs(int sigPtr, int argBuf) {
@@ -1821,27 +1872,6 @@ public final class pglite {
         private double readF64(int ptr) {
             var bytes = this.mod.instance.memory().readBytes(ptr, 8);
             return ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).getDouble();
-        }
-
-        private boolean handleKnownAsmConst(long code, java.util.List<Object> args) {
-            if (code == 2_537_480L) {
-                if (!args.isEmpty() && args.get(0) instanceof Number number) {
-                    var value = number.intValue();
-                    if (value > 0) {
-                        this.mod.setFD_BUFFER_MAX(value);
-                    }
-                }
-                return true;
-            }
-            if (code == 2_537_652L) {
-                this.asmConstPostMessageInstalled = true;
-                return true;
-            }
-            if (code == 2_537_781L) {
-                this.asmConstCustomMessageHandlerInstalled = true;
-                return true;
-            }
-            return false;
         }
 
         private long emscriptenResizeHeap(long[] args) {
@@ -1906,18 +1936,30 @@ public final class pglite {
 
         private long dlopenJs(long[] args) {
             if (args.length < 1) {
+                setDlError("_dlopen_js", "missing handle pointer");
                 return 0L;
             }
             var handlePtr = (int) args[0];
             if (handlePtr == 0) {
+                setDlError("_dlopen_js", "handle pointer is null");
                 return 0L;
             }
             try {
                 var filename = readCString(handlePtr + 36);
+                if (filename == null || filename.isBlank()) {
+                    setDlError("_dlopen_js", "library path is empty");
+                    return 0L;
+                }
                 var flags = this.mod.instance.memory().readInt(handlePtr + 4);
                 loadDynamicLibrary(filename, handlePtr, flags);
+                this.dlErrorState.clear();
                 return 1L;
+            } catch (RuntimeBridgeException e) {
+                setDlError("_dlopen_js", e.getMessage());
+                recordHostNote("_dlopen_js failed: " + e.getMessage());
+                return 0L;
             } catch (Exception e) {
+                setDlError("_dlopen_js", e.getClass().getSimpleName() + ": " + e.getMessage());
                 recordHostNote("_dlopen_js failed: " + e.getMessage());
                 return 0L;
             }
@@ -1925,25 +1967,32 @@ public final class pglite {
 
         private long dlsymJs(long[] args) {
             if (args.length < 3) {
+                setDlError("_dlsym_js", "invalid argument count: " + args.length);
                 return 0L;
             }
             var handlePtr = (int) args[0];
             var symbol = readCString((int) args[1]);
             var symbolIndexPtr = (int) args[2];
             if (symbol == null || symbol.isEmpty()) {
+                setDlError("_dlsym_js", "symbol is empty");
                 return 0L;
             }
 
-            var lib = this.loadedLibsByHandle.get(handlePtr);
-            if (lib == null) {
-                lib = this.loadedLibsByHandle.get(0);
+            var lib = handlePtr == 0
+                ? this.loadedLibsByHandle.get(0)
+                : this.loadedLibsByHandle.get(handlePtr);
+            if (lib == null && handlePtr != 0) {
+                setDlError("_dlsym_js", "library handle not found: " + handlePtr);
+                return 0L;
             }
             if (lib == null) {
+                setDlError("_dlsym_js", "main library not initialized");
                 return 0L;
             }
 
             var export = lib.exports.get(symbol);
             if (export == null) {
+                setDlError("_dlsym_js", "symbol not found: " + symbol + " in " + lib.name);
                 recordHostNote("_dlsym_js unknown symbol \"" + symbol + "\" in " + lib.name);
                 return 0L;
             }
@@ -1957,7 +2006,7 @@ public final class pglite {
 
             if (export.exportType() == ExternalType.FUNCTION) {
                 var targetLib = lib;
-                return lib.functionPointers.computeIfAbsent(symbol, ignored ->
+                var pointer = lib.functionPointers.computeIfAbsent(symbol, ignored ->
                     ensureFunctionTableSlot(
                         targetLib.instance,
                         export.index(),
@@ -1965,10 +2014,17 @@ public final class pglite {
                         targetLib.tableBase + Math.max(0, targetLib.tableSize)
                     )
                 );
+                this.dlErrorState.clear();
+                return pointer;
             }
             if (export.exportType() == ExternalType.GLOBAL) {
+                this.dlErrorState.clear();
                 return (int) lib.instance.global(export.index()).getValueLow();
             }
+            setDlError(
+                "_dlsym_js",
+                "unsupported export type for symbol " + symbol + ": " + export.exportType()
+            );
             return 0L;
         }
 
@@ -4694,32 +4750,7 @@ public final class pglite {
                 var writeSet = new RuntimeSelectState(memory, (int) args[2], nfds);
                 var exceptSet = new RuntimeSelectState(memory, (int) args[3], nfds);
                 var timeoutPtr = (int) args[4];
-                readSet.clearOutput();
-                writeSet.clearOutput();
-                exceptSet.clearOutput();
-                var total = 0;
-                for (var fd = 0; fd < nfds; fd++) {
-                    if (
-                        !readSet.isSelected(fd) &&
-                        !writeSet.isSelected(fd) &&
-                        !exceptSet.isSelected(fd)
-                    ) {
-                        continue;
-                    }
-                    var pollMask = pollFdMask(fd);
-                    if ((pollMask & 1) != 0 && readSet.isSelected(fd)) {
-                        readSet.markReady(fd);
-                        total++;
-                    }
-                    if ((pollMask & 4) != 0 && writeSet.isSelected(fd)) {
-                        writeSet.markReady(fd);
-                        total++;
-                    }
-                    if ((pollMask & 2) != 0 && exceptSet.isSelected(fd)) {
-                        exceptSet.markReady(fd);
-                        total++;
-                    }
-                }
+                var total = computeSelectReady(nfds, readSet, writeSet, exceptSet);
                 if (total == 0 && timeoutPtr != 0) {
                     var timeoutMs = selectTimeoutMillis(timeoutPtr);
                     if (timeoutMs < 0) {
@@ -4727,6 +4758,7 @@ public final class pglite {
                     }
                     if (timeoutMs > 0) {
                         java.util.concurrent.locks.LockSupport.parkNanos(timeoutMs * 1_000_000L);
+                        total = computeSelectReady(nfds, readSet, writeSet, exceptSet);
                     }
                     this.mod.instance.memory().writeI32(timeoutPtr, 0);
                     this.mod.instance.memory().writeI32(timeoutPtr + 4, 0);
@@ -4737,6 +4769,37 @@ public final class pglite {
             } catch (Exception e) {
                 return err(EIO);
             }
+        }
+
+        private int computeSelectReady(
+            int nfds,
+            RuntimeSelectState readSet,
+            RuntimeSelectState writeSet,
+            RuntimeSelectState exceptSet
+        ) throws ErrnoException {
+            readSet.clearOutput();
+            writeSet.clearOutput();
+            exceptSet.clearOutput();
+            var total = 0;
+            for (var fd = 0; fd < nfds; fd++) {
+                if (!readSet.isSelected(fd) && !writeSet.isSelected(fd) && !exceptSet.isSelected(fd)) {
+                    continue;
+                }
+                var pollMask = pollFdMask(fd);
+                if ((pollMask & RuntimeSelectState.READ_READY) != 0 && readSet.isSelected(fd)) {
+                    readSet.markReady(fd);
+                    total++;
+                }
+                if ((pollMask & RuntimeSelectState.WRITE_READY) != 0 && writeSet.isSelected(fd)) {
+                    writeSet.markReady(fd);
+                    total++;
+                }
+                if ((pollMask & RuntimeSelectState.EXCEPT_READY) != 0 && exceptSet.isSelected(fd)) {
+                    exceptSet.markReady(fd);
+                    total++;
+                }
+            }
+            return total;
         }
 
         private long selectTimeoutMillis(int timeoutPtr) {
@@ -4840,8 +4903,12 @@ public final class pglite {
             var argp = args.length >= 3 ? (int) args[2] : 0;
             var hasTty = resolveStdioFd(fd) >= 0 && !this.fdTable.containsKey(fd);
             return switch (op) {
-                case 21509, 21510, 21511, 21512, 21524, 21515 -> hasTty ? 0 : err(ENOTTY);
-                case 21505 -> {
+                case RuntimeIoctlContract.TCSETS,
+                    RuntimeIoctlContract.TCSETSW,
+                    RuntimeIoctlContract.TCSETSF,
+                    RuntimeIoctlContract.TIOCSPGRP,
+                    RuntimeIoctlContract.TCFLSH -> hasTty ? 0 : err(ENOTTY);
+                case RuntimeIoctlContract.TCGETS -> {
                     if (!hasTty) {
                         yield err(ENOTTY);
                     }
@@ -4856,8 +4923,10 @@ public final class pglite {
                     }
                     yield 0;
                 }
-                case 21506, 21507, 21508 -> hasTty ? 0 : err(ENOTTY);
-                case 21519 -> {
+                case RuntimeIoctlContract.TCSETA,
+                    RuntimeIoctlContract.TCSETAW,
+                    RuntimeIoctlContract.TCSETAF -> hasTty ? 0 : err(ENOTTY);
+                case RuntimeIoctlContract.TIOCGPGRP -> {
                     if (!hasTty) {
                         yield err(ENOTTY);
                     }
@@ -4866,9 +4935,9 @@ public final class pglite {
                     }
                     yield 0;
                 }
-                case 21520 -> hasTty ? err(EINVAL) : err(ENOTTY);
-                case 21531 -> hasTty ? 0 : err(ENOTTY);
-                case 21523 -> {
+                case RuntimeIoctlContract.TIOCSPGRP_ALT -> hasTty ? err(EINVAL) : err(ENOTTY);
+                case RuntimeIoctlContract.TIOCGPTPEER -> hasTty ? 0 : err(ENOTTY);
+                case RuntimeIoctlContract.TIOCGWINSZ -> {
                     if (!hasTty) {
                         yield err(ENOTTY);
                     }
@@ -4880,7 +4949,7 @@ public final class pglite {
                     }
                     yield 0;
                 }
-                default -> err(EINVAL);
+                default -> RuntimeIoctlContract.defaultErrno(hasTty, op, ENOTTY, EINVAL);
             };
         }
 
@@ -5493,6 +5562,9 @@ public final class pglite {
         }
 
         private static final class RuntimeSelectState {
+            private static final int READ_READY = 1;
+            private static final int EXCEPT_READY = 2;
+            private static final int WRITE_READY = 4;
             private final Memory memory;
             private final int ptr;
             private final boolean[] selected;
@@ -5734,6 +5806,108 @@ public final class pglite {
                 set.add(StandardOpenOption.APPEND);
             }
             return set;
+        }
+    }
+
+    private static final class RuntimeDlErrorState {
+        private volatile String lastError = "";
+
+        private void set(String message) {
+            this.lastError = message != null ? message : "";
+        }
+
+        private void clear() {
+            this.lastError = "";
+        }
+
+        private String get() {
+            return this.lastError;
+        }
+    }
+
+    private static final class RuntimeAsmConstRegistry {
+        private final Map<Long, java.util.function.BiConsumer<EmscriptenRuntimeImpl, java.util.List<Object>>> handlers =
+            new HashMap<>();
+
+        private static RuntimeAsmConstRegistry create() {
+            var registry = new RuntimeAsmConstRegistry();
+            registry.register(2_537_480L, EmscriptenRuntimeImpl::applyFdBufferMaxAsmConst);
+            registry.register(2_537_652L, EmscriptenRuntimeImpl::markPostMessageAsmConst);
+            registry.register(
+                2_537_781L,
+                EmscriptenRuntimeImpl::markCustomMessageHandlerAsmConst
+            );
+            return registry;
+        }
+
+        private void register(
+            long code,
+            java.util.function.BiConsumer<EmscriptenRuntimeImpl, java.util.List<Object>> handler
+        ) {
+            this.handlers.put(code, handler);
+        }
+
+        private boolean dispatch(
+            EmscriptenRuntimeImpl runtime,
+            long code,
+            java.util.List<Object> args
+        ) {
+            var handler = this.handlers.get(code);
+            if (handler == null) {
+                return false;
+            }
+            handler.accept(runtime, args);
+            return true;
+        }
+    }
+
+    private static final class RuntimeWasiContract {
+        private static final Set<String> SUPPORTED = Set.of(
+            "environ_get",
+            "environ_sizes_get",
+            "clock_time_get",
+            "proc_exit",
+            "fd_close",
+            "fd_fdstat_get",
+            "fd_pread",
+            "fd_pwrite",
+            "fd_read",
+            "fd_seek",
+            "fd_sync",
+            "fd_datasync",
+            "fd_write"
+        );
+
+        private static boolean isSupported(String name) {
+            return SUPPORTED.contains(name);
+        }
+    }
+
+    private static final class RuntimeIoctlContract {
+        private static final int TCGETS = 21505;
+        private static final int TCSETS = 21506;
+        private static final int TCSETSW = 21507;
+        private static final int TCSETSF = 21508;
+        private static final int TCSETA = 21509;
+        private static final int TCSETAW = 21510;
+        private static final int TCSETAF = 21511;
+        private static final int TCFLSH = 21515;
+        private static final int TIOCGPGRP = 21519;
+        private static final int TIOCSPGRP_ALT = 21520;
+        private static final int TIOCGWINSZ = 21523;
+        private static final int TIOCSPGRP = 21524;
+        private static final int TIOCGPTPEER = 21531;
+
+        private static long defaultErrno(
+            boolean hasTty,
+            int opcode,
+            int notty,
+            int invalid
+        ) {
+            if (!hasTty) {
+                return -notty;
+            }
+            return -invalid;
         }
     }
 
