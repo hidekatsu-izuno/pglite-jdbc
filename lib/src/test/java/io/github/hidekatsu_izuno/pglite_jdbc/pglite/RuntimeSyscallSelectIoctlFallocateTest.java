@@ -144,12 +144,14 @@ class RuntimeSyscallSelectIoctlFallocateTest {
         var instance = extractInstance(runtime);
 
         var argPtr = 0x3300;
+        var varargsPtr = 0x3380;
         instance.memory().writeI32(argPtr, 1234);
-        assertEquals(0L, invokeLong(runtime, "syscallIoctl", new long[] { 1, 21519, argPtr }));
+        instance.memory().writeI32(varargsPtr, argPtr);
+        assertEquals(0L, invokeLong(runtime, "syscallIoctl", new long[] { 1, 21519, varargsPtr }));
         assertEquals(0, instance.memory().readI32(argPtr));
-        assertEquals(-8L, invokeLong(runtime, "syscallIoctl", new long[] { 9999, 21519, argPtr }));
-        assertEquals(-28L, invokeLong(runtime, "syscallIoctl", new long[] { 1, 12345, argPtr }));
-        assertEquals(-8L, invokeLong(runtime, "syscallIoctl", new long[] { 9999, 12345, argPtr }));
+        assertEquals(-8L, invokeLong(runtime, "syscallIoctl", new long[] { 9999, 21519, varargsPtr }));
+        assertEquals(-28L, invokeLong(runtime, "syscallIoctl", new long[] { 1, 12345, varargsPtr }));
+        assertEquals(-8L, invokeLong(runtime, "syscallIoctl", new long[] { 9999, 12345, varargsPtr }));
 
         runtime.FS().mkdirTree("/tmp/readlink");
         runtime.FS().writeFile("/tmp/readlink/target.txt", "ok".getBytes(StandardCharsets.UTF_8));

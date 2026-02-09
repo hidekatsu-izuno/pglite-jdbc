@@ -75,9 +75,15 @@ public final class pglite {
     private static final java.util.concurrent.ConcurrentLinkedDeque<String> EXEC_TRACE =
         new java.util.concurrent.ConcurrentLinkedDeque<>();
     private static final ThreadLocal<Integer> INVOKE_DEPTH = ThreadLocal.withInitial(() -> 0);
+    private static final ThreadLocal<Map<Integer, Integer>> INVOKE_REENTRY_COUNTS =
+        ThreadLocal.withInitial(HashMap::new);
     private static final int INVOKE_DEPTH_LIMIT = Integer.getInteger(
         "pglite.invoke_depth_limit",
-        4096
+        512
+    );
+    private static final int INVOKE_REENTRY_LIMIT = Integer.getInteger(
+        "pglite.invoke_reentry_limit",
+        64
     );
     private static final ScheduledExecutorService TIMER_EXECUTOR = Executors.newSingleThreadScheduledExecutor(
         runnable -> {
@@ -750,6 +756,7 @@ public final class pglite {
     private static long[] invokeCallback(RuntimePostgresMod mod, String name, long[] args) {
         var depth = INVOKE_DEPTH.get() + 1;
         INVOKE_DEPTH.set(depth);
+        var tableIndex = Integer.MIN_VALUE;
         try {
             if (mod == null) {
                 throw new RuntimeBridgeException(
@@ -761,7 +768,33 @@ public final class pglite {
                 return new long[] {};
             }
 
-            var tableIndex = (int) args[0];
+            tableIndex = (int) args[0];
+            var reentryCounts = INVOKE_REENTRY_COUNTS.get();
+            var reentryDepth = reentryCounts.getOrDefault(tableIndex, 0) + 1;
+            reentryCounts.put(tableIndex, reentryDepth);
+            if (reentryDepth > INVOKE_REENTRY_LIMIT) {
+                if (TRACE_INVOKE) {
+                    appendTrace(
+                        "[pglite-invoke] reentry-limit " + name +
+                        " tableIndex=" + tableIndex +
+                        " depth=" + reentryDepth
+                    );
+                }
+                if (mod.hasExport("setThrew")) {
+                    try {
+                        mod.instance.export("setThrew").apply(1, 0);
+                    } catch (RuntimeException ignored) {
+                    }
+                }
+                if (
+                    "invoke_v".equals(name) ||
+                    "invoke_vi".equals(name) ||
+                    "invoke_vii".equals(name)
+                ) {
+                    return new long[] {};
+                }
+                return new long[] { 0L };
+            }
             if (depth > INVOKE_DEPTH_LIMIT) {
                 var table = mod.instance.table(0);
                 var tableSize = table.size();
@@ -771,9 +804,7 @@ public final class pglite {
                 var owner = (tableIndex >= 0 && tableIndex < tableSize)
                     ? table.instance(tableIndex)
                     : null;
-                throw new RuntimeBridgeException(
-                    "invokeCallback",
-                    "invoke recursion depth exceeded: depth=" +
+                var message = "invoke recursion depth exceeded: depth=" +
                     depth +
                     ", name=" +
                     name +
@@ -784,8 +815,24 @@ public final class pglite {
                     ", ownerHash=" +
                     (owner != null ? Integer.toHexString(System.identityHashCode(owner)) : "null") +
                     ", callbackKeys=" +
-                    mod.callbackKeysSnapshot()
-                );
+                    mod.callbackKeysSnapshot();
+                if (TRACE_INVOKE) {
+                    appendTrace("[pglite-invoke] depth-limit " + message);
+                }
+                if (mod.hasExport("setThrew")) {
+                    try {
+                        mod.instance.export("setThrew").apply(1, 0);
+                    } catch (RuntimeException ignored) {
+                    }
+                }
+                if (
+                    "invoke_v".equals(name) ||
+                    "invoke_vi".equals(name) ||
+                    "invoke_vii".equals(name)
+                ) {
+                    return new long[] {};
+                }
+                return new long[] { 0L };
             }
 
             var callback = mod.callback(tableIndex);
@@ -884,6 +931,15 @@ public final class pglite {
                 throw tableDispatchError;
             }
         } finally {
+            if (tableIndex != Integer.MIN_VALUE) {
+                var reentryCounts = INVOKE_REENTRY_COUNTS.get();
+                var current = reentryCounts.getOrDefault(tableIndex, 0);
+                if (current <= 1) {
+                    reentryCounts.remove(tableIndex);
+                } else {
+                    reentryCounts.put(tableIndex, current - 1);
+                }
+            }
             INVOKE_DEPTH.set(Math.max(0, depth - 1));
         }
     }
@@ -4932,7 +4988,17 @@ public final class pglite {
                 return err(EBADF);
             }
             var op = (int) args[1];
-            var argp = args.length >= 3 ? (int) args[2] : 0;
+            var argp = 0;
+            if (args.length >= 3) {
+                var varargsPtr = (int) args[2];
+                if (varargsPtr != 0) {
+                    try {
+                        argp = (int) this.mod.instance.memory().readI32(varargsPtr);
+                    } catch (RuntimeException e) {
+                        return err(EFAULT);
+                    }
+                }
+            }
             var hasTty = resolveStdioFd(fd) >= 0 && !this.fdTable.containsKey(fd);
             return switch (op) {
                 case RuntimeIoctlContract.TCSETS,
