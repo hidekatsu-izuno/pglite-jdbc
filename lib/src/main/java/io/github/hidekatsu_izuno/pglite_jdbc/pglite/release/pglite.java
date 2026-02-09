@@ -2074,7 +2074,16 @@ public final class pglite {
                     return 0L;
                 }
                 var handlePtr = (int) args[0];
-                var symbol = readCString((int) args[1]);
+                String symbol;
+                try {
+                    symbol = readCString((int) args[1]);
+                } catch (RuntimeException e) {
+                    if (isMemoryAccessFault(e)) {
+                        setDlError("_dlsym_js", "symbol pointer fault: " + e.getMessage());
+                        return 0L;
+                    }
+                    throw e;
+                }
                 var symbolIndexPtr = (int) args[2];
                 if (symbol == null || symbol.isEmpty()) {
                     setDlError("_dlsym_js", "symbol is empty");
@@ -2100,34 +2109,23 @@ public final class pglite {
                     return 0L;
                 }
 
-                if (symbolIndexPtr != 0) {
-                    try {
-                        this.mod.instance.memory().writeI32(
-                            symbolIndexPtr,
-                            lib.exportOrder.indexOf(symbol)
-                        );
-                    } catch (RuntimeException e) {
-                        if (isMemoryAccessFault(e)) {
-                            setDlError(
-                                "_dlsym_js",
-                                "symbol index pointer fault: " + e.getMessage()
-                            );
-                            return 0L;
-                        }
-                        throw e;
-                    }
-                }
-
                 if (export.exportType() == ExternalType.FUNCTION) {
                     var targetLib = lib;
-                    var pointer = lib.functionPointers.computeIfAbsent(symbol, ignored ->
-                        ensureFunctionTableSlot(
+                    var pointer = lib.functionPointers.get(symbol);
+                    if (pointer == null) {
+                        var resolved = ensureFunctionTableSlot(
                             targetLib.instance,
                             export.index(),
                             targetLib.tableBase,
                             targetLib.tableBase + Math.max(0, targetLib.tableSize)
-                        )
-                    );
+                        );
+                        var symbolIndex = lib.exportOrder.indexOf(symbol);
+                        if (!writeDlsymSymbolIndex(symbolIndexPtr, symbolIndex)) {
+                            return 0L;
+                        }
+                        var existing = lib.functionPointers.putIfAbsent(symbol, resolved);
+                        pointer = existing != null ? existing : resolved;
+                    }
                     clearDlError();
                     return pointer;
                 }
@@ -2144,6 +2142,22 @@ public final class pglite {
                 setDlError("_dlsym_js", e.getClass().getSimpleName() + ": " + e.getMessage());
                 recordHostNote("_dlsym_js failed: " + e.getMessage());
                 return 0L;
+            }
+        }
+
+        private boolean writeDlsymSymbolIndex(int symbolIndexPtr, int symbolIndex) {
+            if (symbolIndexPtr == 0) {
+                return true;
+            }
+            try {
+                this.mod.instance.memory().writeI32(symbolIndexPtr, symbolIndex);
+                return true;
+            } catch (RuntimeException e) {
+                if (isMemoryAccessFault(e)) {
+                    setDlError("_dlsym_js", "symbol index pointer fault: " + e.getMessage());
+                    return false;
+                }
+                throw e;
             }
         }
 

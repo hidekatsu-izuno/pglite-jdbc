@@ -47,6 +47,25 @@ class RuntimeDynamicLinkParityTest {
     }
 
     @Test
+    void shouldWriteSymbolIndexOnlyWhenFunctionSlotIsFirstResolved() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var runtime = mod.runtime();
+        var instance = extractInstance(runtime);
+        var symbolPtr = writeCString(instance, 0x7A80, "malloc");
+        var symbolIndexPtr = 0x7A90;
+
+        instance.memory().writeI32(symbolIndexPtr, 0x1234);
+        var firstRet = invokeLong(runtime, "dlsymJs", new long[] { 0, symbolPtr, symbolIndexPtr });
+        assertNotEquals(0L, firstRet);
+        assertNotEquals(0x1234, instance.memory().readI32(symbolIndexPtr));
+
+        instance.memory().writeI32(symbolIndexPtr, 0x5678);
+        var secondRet = invokeLong(runtime, "dlsymJs", new long[] { 0, symbolPtr, symbolIndexPtr });
+        assertEquals(firstRet, secondRet);
+        assertEquals(0x5678, instance.memory().readI32(symbolIndexPtr));
+    }
+
+    @Test
     void shouldCaptureDlsymUnknownHandleReason() {
         var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
         var runtime = mod.runtime();
@@ -96,6 +115,16 @@ class RuntimeDynamicLinkParityTest {
         var ret = invokeLong(runtime, "dlopenJs", new long[] { 0x7FFF_FFF0L });
         assertEquals(0L, ret);
         assertTrue(readDlError(runtime).contains("handle pointer fault"));
+    }
+
+    @Test
+    void shouldCaptureDlsymSymbolPointerFaultReason() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var runtime = mod.runtime();
+
+        var ret = invokeLong(runtime, "dlsymJs", new long[] { 0, 0x7FFF_FFF0L, 0 });
+        assertEquals(0L, ret);
+        assertTrue(readDlError(runtime).contains("symbol pointer fault"));
     }
 
     private static String readDlError(Object runtime) {
