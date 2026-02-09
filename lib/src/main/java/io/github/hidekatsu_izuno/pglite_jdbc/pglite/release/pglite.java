@@ -2051,6 +2051,15 @@ public final class pglite {
                 setDlError("_dlopen_js", e.getMessage());
                 recordHostNote("_dlopen_js failed: " + e.getMessage());
                 return 0L;
+            } catch (RuntimeException e) {
+                if (isMemoryAccessFault(e)) {
+                    setDlError("_dlopen_js", "handle pointer fault: " + e.getMessage());
+                    recordHostNote("_dlopen_js failed: " + e.getMessage());
+                    return 0L;
+                }
+                setDlError("_dlopen_js", e.getClass().getSimpleName() + ": " + e.getMessage());
+                recordHostNote("_dlopen_js failed: " + e.getMessage());
+                return 0L;
             } catch (Exception e) {
                 setDlError("_dlopen_js", e.getClass().getSimpleName() + ": " + e.getMessage());
                 recordHostNote("_dlopen_js failed: " + e.getMessage());
@@ -2092,10 +2101,21 @@ public final class pglite {
                 }
 
                 if (symbolIndexPtr != 0) {
-                    this.mod.instance.memory().writeI32(
-                        symbolIndexPtr,
-                        lib.exportOrder.indexOf(symbol)
-                    );
+                    try {
+                        this.mod.instance.memory().writeI32(
+                            symbolIndexPtr,
+                            lib.exportOrder.indexOf(symbol)
+                        );
+                    } catch (RuntimeException e) {
+                        if (isMemoryAccessFault(e)) {
+                            setDlError(
+                                "_dlsym_js",
+                                "symbol index pointer fault: " + e.getMessage()
+                            );
+                            return 0L;
+                        }
+                        throw e;
+                    }
                 }
 
                 if (export.exportType() == ExternalType.FUNCTION) {
@@ -2125,6 +2145,17 @@ public final class pglite {
                 recordHostNote("_dlsym_js failed: " + e.getMessage());
                 return 0L;
             }
+        }
+
+        private static boolean isMemoryAccessFault(RuntimeException e) {
+            var message = e.getMessage();
+            if (message == null) {
+                return false;
+            }
+            var lower = message.toLowerCase(java.util.Locale.ROOT);
+            return lower.contains("out of bounds") ||
+                lower.contains("outside memory") ||
+                lower.contains("memory");
         }
 
         private DynamicLibrary loadDynamicLibrary(String rawName, int handlePtr, int flags)

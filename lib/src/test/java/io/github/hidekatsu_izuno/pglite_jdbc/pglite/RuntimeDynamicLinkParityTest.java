@@ -85,7 +85,17 @@ class RuntimeDynamicLinkParityTest {
 
         var ret = invokeLong(runtime, "dlsymJs", new long[] { 0, symbolPtr, 0x7FFF_FFF0L });
         assertEquals(0L, ret);
-        assertTrue(readDlError(runtime).contains("Exception"));
+        assertTrue(readDlError(runtime).contains("symbol index pointer fault"));
+    }
+
+    @Test
+    void shouldCaptureDlopenHandlePointerFaultReason() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var runtime = mod.runtime();
+
+        var ret = invokeLong(runtime, "dlopenJs", new long[] { 0x7FFF_FFF0L });
+        assertEquals(0L, ret);
+        assertTrue(readDlError(runtime).contains("handle pointer fault"));
     }
 
     private static String readDlError(Object runtime) {
