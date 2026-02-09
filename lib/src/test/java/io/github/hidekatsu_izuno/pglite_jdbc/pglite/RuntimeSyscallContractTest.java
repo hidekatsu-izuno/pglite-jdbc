@@ -56,7 +56,7 @@ class RuntimeSyscallContractTest {
         var ttyResult = invokeLong(runtime, "syscallIoctl", new long[] { 1, 21531, 0 });
         var nonTtyResult = invokeLong(runtime, "syscallIoctl", new long[] { 9999, 21531, 0 });
         assertEquals(0L, ttyResult);
-        assertEquals(-59L, nonTtyResult);
+        assertEquals(-8L, nonTtyResult);
     }
 
     @Test

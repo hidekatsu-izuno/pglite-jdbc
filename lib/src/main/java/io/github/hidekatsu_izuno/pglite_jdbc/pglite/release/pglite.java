@@ -4899,6 +4899,9 @@ public final class pglite {
                 return err(EINVAL);
             }
             var fd = (int) args[0];
+            if (!descriptorExists(fd)) {
+                return err(EBADF);
+            }
             var op = (int) args[1];
             var argp = args.length >= 3 ? (int) args[2] : 0;
             var hasTty = resolveStdioFd(fd) >= 0 && !this.fdTable.containsKey(fd);
