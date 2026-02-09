@@ -86,12 +86,7 @@ class RuntimeDispatchCoverageTest {
             }
             if ("wasi_snapshot_preview1".equals(importDecl.module())) {
                 var name = importDecl.name();
-                if (
-                    "environ_get".equals(name) ||
-                    "environ_sizes_get".equals(name) ||
-                    "clock_time_get".equals(name) ||
-                    "proc_exit".equals(name)
-                ) {
+                if ("proc_exit".equals(name)) {
                     continue;
                 }
                 var ret = (long[]) wasiDispatch.invoke(null, mod, name, new long[] {});

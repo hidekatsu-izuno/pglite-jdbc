@@ -194,8 +194,6 @@ public final class pglite {
         for (var fn : wasi.toHostFunctions()) {
             wasiFunctions.put(fn.module() + "." + fn.name(), fn);
         }
-        var environEntries = buildEnvironEntries(overrides);
-
         var unsupportedImports = new ArrayList<String>();
         for (var i = 0; i < module.importSection().importCount(); i++) {
             var importDecl = module.importSection().getImport(i);
@@ -225,37 +223,11 @@ public final class pglite {
                     }
                     var fnImport = (FunctionImport) importDecl;
                     var fnType = module.typeSection().getType(fnImport.typeIndex());
-                    if ("environ_sizes_get".equals(importDecl.name())) {
-                        builder.addFunction(
-                            new HostFunction(
-                                importDecl.module(),
-                                importDecl.name(),
-                                fnType,
-                                (instance, args) -> handleEnvironSizesGet(
-                                    instance,
-                                    args,
-                                    environEntries
-                                )
-                            )
-                        );
-                        continue;
-                    }
-                    if ("environ_get".equals(importDecl.name())) {
-                        builder.addFunction(
-                            new HostFunction(
-                                importDecl.module(),
-                                importDecl.name(),
-                                fnType,
-                                (instance, args) -> handleEnvironGet(
-                                    instance,
-                                    args,
-                                    environEntries
-                                )
-                            )
-                        );
-                        continue;
-                    }
                     if (
+                        "environ_get".equals(importDecl.name()) ||
+                        "environ_sizes_get".equals(importDecl.name()) ||
+                        "clock_time_get".equals(importDecl.name()) ||
+                        "proc_exit".equals(importDecl.name()) ||
                         "fd_close".equals(importDecl.name()) ||
                         "fd_fdstat_get".equals(importDecl.name()) ||
                         "fd_pread".equals(importDecl.name()) ||
@@ -263,6 +235,7 @@ public final class pglite {
                         "fd_read".equals(importDecl.name()) ||
                         "fd_seek".equals(importDecl.name()) ||
                         "fd_sync".equals(importDecl.name()) ||
+                        "fd_datasync".equals(importDecl.name()) ||
                         "fd_write".equals(importDecl.name())
                     ) {
                         builder.addFunction(
@@ -461,51 +434,6 @@ public final class pglite {
             out.add(entry.getKey() + "=" + entry.getValue());
         }
         return out;
-    }
-
-    private static long[] handleEnvironSizesGet(
-        Instance instance,
-        long[] args,
-        java.util.List<String> environEntries
-    ) {
-        if (args.length < 2) {
-            return new long[] { -28L };
-        }
-        var countPtr = (int) args[0];
-        var sizePtr = (int) args[1];
-        var totalBytes = 0;
-        for (var entry : environEntries) {
-            totalBytes += entry.getBytes(java.nio.charset.StandardCharsets.UTF_8).length + 1;
-        }
-        if (countPtr != 0) {
-            instance.memory().writeI32(countPtr, environEntries.size());
-        }
-        if (sizePtr != 0) {
-            instance.memory().writeI32(sizePtr, totalBytes);
-        }
-        return new long[] { 0L };
-    }
-
-    private static long[] handleEnvironGet(
-        Instance instance,
-        long[] args,
-        java.util.List<String> environEntries
-    ) {
-        if (args.length < 2) {
-            return new long[] { -28L };
-        }
-        var environPtr = (int) args[0];
-        var environBufPtr = (int) args[1];
-        var offset = 0;
-        for (var i = 0; i < environEntries.size(); i++) {
-            var bytes = environEntries.get(i).getBytes(java.nio.charset.StandardCharsets.UTF_8);
-            var ptr = environBufPtr + offset;
-            instance.memory().writeI32(environPtr + (i * 4), ptr);
-            instance.memory().write(ptr, bytes, 0, bytes.length);
-            instance.memory().writeByte(ptr + bytes.length, (byte) 0);
-            offset += bytes.length + 1;
-        }
-        return new long[] { 0L };
     }
 
     private static void appendTrace(String line) {
@@ -786,6 +714,10 @@ public final class pglite {
         var runtime = mod.runtimeImpl();
         runtime.recordHostNote("wasi." + name + " enter args=" + Arrays.toString(args));
         var ret = switch (name) {
+            case "environ_get" -> runtime.wasiEnvironGet(args);
+            case "environ_sizes_get" -> runtime.wasiEnvironSizesGet(args);
+            case "clock_time_get" -> runtime.wasiClockTimeGet(args);
+            case "proc_exit" -> runtime.wasiProcExit(args);
             case "fd_close" -> runtime.wasiFdClose(args);
             case "fd_fdstat_get" -> runtime.wasiFdFdstatGet(args);
             case "fd_pread" -> runtime.wasiFdPread(args);
@@ -1367,6 +1299,7 @@ public final class pglite {
         private final RuntimeDeviceRegistry deviceRegistry = new RuntimeDeviceRegistry();
         private final java.util.List<java.util.function.Consumer<postgresMod.PostgresMod>> preRun;
         private final java.util.List<java.util.function.Consumer<postgresMod.PostgresMod>> postRun;
+        private final java.util.List<String> environmentEntries;
         private final RuntimeTimerRegistry timerRegistry = new RuntimeTimerRegistry(this::recordHostNote);
         private final Map<Integer, SeekableByteChannel> fdTable = new ConcurrentHashMap<>();
         private final Map<Integer, Path> fdPathTable = new ConcurrentHashMap<>();
@@ -1446,6 +1379,7 @@ public final class pglite {
             this.postRun = overrides != null && overrides.postRun != null
                 ? new ArrayList<>(overrides.postRun)
                 : new ArrayList<>();
+            this.environmentEntries = buildEnvironEntries(overrides);
             this.wasmPostgresVersion = detectWasmPostgresVersion();
             this.stdioAliases.put(0, 0);
             this.stdioAliases.put(1, 1);
@@ -3898,6 +3832,88 @@ public final class pglite {
             } catch (Exception e) {
                 return err(EIO);
             }
+        }
+
+        private long wasiEnvironSizesGet(long[] args) {
+            try {
+                if (args.length < 2) {
+                    return EINVAL;
+                }
+                var countPtr = (int) args[0];
+                var sizePtr = (int) args[1];
+                var totalBytes = 0;
+                for (var entry : this.environmentEntries) {
+                    totalBytes += entry.getBytes(java.nio.charset.StandardCharsets.UTF_8).length + 1;
+                }
+                if (countPtr != 0) {
+                    this.mod.instance.memory().writeI32(countPtr, this.environmentEntries.size());
+                }
+                if (sizePtr != 0) {
+                    this.mod.instance.memory().writeI32(sizePtr, totalBytes);
+                }
+                return 0;
+            } catch (Exception e) {
+                return EIO;
+            }
+        }
+
+        private long wasiEnvironGet(long[] args) {
+            try {
+                if (args.length < 2) {
+                    return EINVAL;
+                }
+                var environPtr = (int) args[0];
+                var environBufPtr = (int) args[1];
+                var offset = 0;
+                for (var i = 0; i < this.environmentEntries.size(); i++) {
+                    var bytes = this.environmentEntries
+                        .get(i)
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    var ptr = environBufPtr + offset;
+                    this.mod.instance.memory().writeI32(environPtr + (i * 4), ptr);
+                    this.mod.instance.memory().write(ptr, bytes, 0, bytes.length);
+                    this.mod.instance.memory().writeByte(ptr + bytes.length, (byte) 0);
+                    offset += bytes.length + 1;
+                }
+                return 0;
+            } catch (Exception e) {
+                return EIO;
+            }
+        }
+
+        private long wasiClockTimeGet(long[] args) {
+            try {
+                if (args.length < 3) {
+                    return EINVAL;
+                }
+                var clockId = (int) args[0];
+                var timePtr = (int) args[2];
+                if (timePtr == 0) {
+                    return EFAULT;
+                }
+                long now;
+                switch (clockId) {
+                    case 0:
+                        now = System.currentTimeMillis() * 1_000_000L;
+                        break;
+                    case 1:
+                    case 2:
+                    case 3:
+                        now = System.nanoTime();
+                        break;
+                    default:
+                        return EINVAL;
+                }
+                this.mod.instance.memory().writeLong(timePtr, now);
+                return 0;
+            } catch (Exception e) {
+                return EIO;
+            }
+        }
+
+        private long wasiProcExit(long[] args) {
+            var code = args.length > 0 ? (int) args[0] : 0;
+            throw new ExitStatusException("proc_exit", code);
         }
 
         private long wasiFdClose(long[] args) {
