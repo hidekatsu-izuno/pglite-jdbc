@@ -4693,6 +4693,7 @@ public final class pglite {
                 var readSet = new RuntimeSelectState(memory, (int) args[1], nfds);
                 var writeSet = new RuntimeSelectState(memory, (int) args[2], nfds);
                 var exceptSet = new RuntimeSelectState(memory, (int) args[3], nfds);
+                var timeoutPtr = (int) args[4];
                 readSet.clearOutput();
                 writeSet.clearOutput();
                 exceptSet.clearOutput();
@@ -4719,12 +4720,37 @@ public final class pglite {
                         total++;
                     }
                 }
+                if (total == 0 && timeoutPtr != 0) {
+                    var timeoutMs = selectTimeoutMillis(timeoutPtr);
+                    if (timeoutMs < 0) {
+                        return err(EINVAL);
+                    }
+                    if (timeoutMs > 0) {
+                        java.util.concurrent.locks.LockSupport.parkNanos(timeoutMs * 1_000_000L);
+                    }
+                    this.mod.instance.memory().writeI32(timeoutPtr, 0);
+                    this.mod.instance.memory().writeI32(timeoutPtr + 4, 0);
+                }
                 return total;
             } catch (ErrnoException e) {
                 return err(e.errno);
             } catch (Exception e) {
                 return err(EIO);
             }
+        }
+
+        private long selectTimeoutMillis(int timeoutPtr) {
+            if (timeoutPtr == 0) {
+                return 0;
+            }
+            var sec = this.mod.instance.memory().readI32(timeoutPtr);
+            var usec = this.mod.instance.memory().readI32(timeoutPtr + 4);
+            if (sec < 0 || usec < 0 || usec >= 1_000_000) {
+                return -1;
+            }
+            var millisFromSec = sec * 1000L;
+            var millisFromUsec = usec / 1000L;
+            return Math.max(0L, millisFromSec + millisFromUsec);
         }
 
         private int pollFdMask(int fd) throws ErrnoException {

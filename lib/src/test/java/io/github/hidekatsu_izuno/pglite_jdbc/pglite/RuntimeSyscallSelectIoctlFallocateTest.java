@@ -62,6 +62,62 @@ class RuntimeSyscallSelectIoctlFallocateTest {
     }
 
     @Test
+    void shouldHonorSelectTimeoutAndClearTimeval() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var runtime = mod.runtime();
+        var instance = extractInstance(runtime);
+        var timeoutPtr = 0x3280;
+        instance.memory().writeI32(timeoutPtr, 0);
+        instance.memory().writeI32(timeoutPtr + 4, 50_000);
+
+        var start = System.nanoTime();
+        var ready = invokeLong(
+            runtime,
+            "syscallNewselect",
+            new long[] { 0, 0, 0, 0, timeoutPtr }
+        );
+        var elapsedMs = (System.nanoTime() - start) / 1_000_000L;
+        assertEquals(0L, ready);
+        assertTrue(elapsedMs >= 30L, "select timeout should block for a short interval");
+        assertEquals(0, instance.memory().readI32(timeoutPtr));
+        assertEquals(0, instance.memory().readI32(timeoutPtr + 4));
+    }
+
+    @Test
+    void shouldRejectNegativeSelectTimeout() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var runtime = mod.runtime();
+        var instance = extractInstance(runtime);
+        var timeoutPtr = 0x3290;
+        instance.memory().writeI32(timeoutPtr, -1);
+        instance.memory().writeI32(timeoutPtr + 4, 0);
+
+        var result = invokeLong(
+            runtime,
+            "syscallNewselect",
+            new long[] { 0, 0, 0, 0, timeoutPtr }
+        );
+        assertEquals(-28L, result);
+    }
+
+    @Test
+    void shouldRejectOutOfRangeSelectUsec() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var runtime = mod.runtime();
+        var instance = extractInstance(runtime);
+        var timeoutPtr = 0x32A0;
+        instance.memory().writeI32(timeoutPtr, 0);
+        instance.memory().writeI32(timeoutPtr + 4, 1_000_000);
+
+        var result = invokeLong(
+            runtime,
+            "syscallNewselect",
+            new long[] { 0, 0, 0, 0, timeoutPtr }
+        );
+        assertEquals(-28L, result);
+    }
+
+    @Test
     void shouldHandleIoctlAndReadlinkContracts() {
         var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
         var runtime = mod.runtime();
