@@ -138,6 +138,18 @@ class RuntimeSyscallSelectIoctlFallocateTest {
     }
 
     @Test
+    void shouldMapSelectInvalidSetPointerToEfault() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var runtime = mod.runtime();
+        var result = invokeLong(
+            runtime,
+            "syscallNewselect",
+            new long[] { 32, 0, 0x7FFF_FFF0L, 0, 0 }
+        );
+        assertEquals(-21L, result);
+    }
+
+    @Test
     void shouldHandleIoctlAndReadlinkContracts() {
         var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
         var runtime = mod.runtime();

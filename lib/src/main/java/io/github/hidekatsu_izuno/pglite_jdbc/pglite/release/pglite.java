@@ -4869,6 +4869,8 @@ public final class pglite {
                 return computeSelectReady(nfds, readSet, writeSet, exceptSet);
             } catch (ErrnoException e) {
                 return err(e.errno);
+            } catch (RuntimeException e) {
+                return err(EFAULT);
             } catch (Exception e) {
                 return err(EIO);
             }
