@@ -1,7 +1,9 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pglite;
 
 import com.dylibso.chicory.runtime.Instance;
+import com.dylibso.chicory.wasm.types.ExternalType;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.pglite;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import org.junit.jupiter.api.Test;
 
@@ -51,6 +53,53 @@ class RuntimeDispatchCoverageTest {
         assertEquals(-52L, ret[0]);
     }
 
+    @Test
+    void shouldCoverWasmFunctionImportsByRuntimeDispatchers() throws Exception {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var envDispatch = findDispatch(mod.getClass());
+        var wasiDispatch = findWasiDispatch(mod.getClass());
+        var instance = extractInstance(mod.runtime());
+        var section = instance.module().importSection();
+        for (var i = 0; i < section.importCount(); i++) {
+            var importDecl = section.getImport(i);
+            if (importDecl.importType() != ExternalType.FUNCTION) {
+                continue;
+            }
+            if ("env".equals(importDecl.module())) {
+                var name = importDecl.name();
+                if (name.startsWith("invoke_")) {
+                    continue;
+                }
+                try {
+                    envDispatch.invoke(null, mod, name, new long[] {}, 1);
+                } catch (InvocationTargetException e) {
+                    var cause = e.getCause();
+                    if (
+                        cause != null &&
+                        cause.getMessage() != null &&
+                        cause.getMessage().contains("Unknown env import")
+                    ) {
+                        throw new AssertionError("Unhandled env import: " + name, cause);
+                    }
+                }
+                continue;
+            }
+            if ("wasi_snapshot_preview1".equals(importDecl.module())) {
+                var name = importDecl.name();
+                if (
+                    "environ_get".equals(name) ||
+                    "environ_sizes_get".equals(name) ||
+                    "clock_time_get".equals(name) ||
+                    "proc_exit".equals(name)
+                ) {
+                    continue;
+                }
+                var ret = (long[]) wasiDispatch.invoke(null, mod, name, new long[] {});
+                assertEquals(1, ret.length);
+            }
+        }
+    }
+
     private static Method findDispatch(Class<?> runtimeModClass) throws Exception {
         for (var method : pglite.class.getDeclaredMethods()) {
             if (
@@ -70,6 +119,17 @@ class RuntimeDispatchCoverageTest {
             }
         }
         throw new NoSuchMethodException("handleEnvFunction");
+    }
+
+    private static Method findWasiDispatch(Class<?> runtimeModClass) throws Exception {
+        var method = pglite.class.getDeclaredMethod(
+            "handleWasiFunction",
+            runtimeModClass,
+            String.class,
+            long[].class
+        );
+        method.setAccessible(true);
+        return method;
     }
 
     private static Instance extractInstance(Object runtime) {

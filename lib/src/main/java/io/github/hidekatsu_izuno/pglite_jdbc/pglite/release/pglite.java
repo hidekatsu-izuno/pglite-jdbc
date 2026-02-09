@@ -54,6 +54,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
@@ -74,6 +78,13 @@ public final class pglite {
     private static final int INVOKE_DEPTH_LIMIT = Integer.getInteger(
         "pglite.invoke_depth_limit",
         4096
+    );
+    private static final ScheduledExecutorService TIMER_EXECUTOR = Executors.newSingleThreadScheduledExecutor(
+        runnable -> {
+            var thread = new Thread(runnable, "pglite-runtime-timer");
+            thread.setDaemon(true);
+            return thread;
+        }
     );
 
     public static CompletableFuture<postgresMod.PostgresMod> PostgresModFactory(
@@ -899,7 +910,10 @@ public final class pglite {
                 }
                 return result;
             } catch (RuntimeException tableDispatchError) {
-                if (tableDispatchError instanceof TrapException) {
+                if (
+                    tableDispatchError instanceof TrapException ||
+                    tableDispatchError instanceof RuntimeLongjmpException
+                ) {
                     if (mod.hasExport("setThrew")) {
                         try {
                             mod.instance.export("setThrew").apply(1, 0);
@@ -1350,10 +1364,10 @@ public final class pglite {
         private final extensionUtils.EmscriptenFS fs;
         private final Set<String> runDependencies = ConcurrentHashMap.newKeySet();
         private final AtomicInteger pendingRuns = new AtomicInteger(0);
-        private final Map<Integer, postgresMod.DeviceOps> devices = new ConcurrentHashMap<>();
-        private final Map<String, Integer> deviceNodes = new ConcurrentHashMap<>();
+        private final RuntimeDeviceRegistry deviceRegistry = new RuntimeDeviceRegistry();
         private final java.util.List<java.util.function.Consumer<postgresMod.PostgresMod>> preRun;
         private final java.util.List<java.util.function.Consumer<postgresMod.PostgresMod>> postRun;
+        private final RuntimeTimerRegistry timerRegistry = new RuntimeTimerRegistry(this::recordHostNote);
         private final Map<Integer, SeekableByteChannel> fdTable = new ConcurrentHashMap<>();
         private final Map<Integer, Path> fdPathTable = new ConcurrentHashMap<>();
         private final Map<Integer, Integer> fdFlagsTable = new ConcurrentHashMap<>();
@@ -1425,7 +1439,7 @@ public final class pglite {
             } catch (Exception e) {
                 throw new RuntimeBridgeException("EmscriptenRuntimeImpl", e);
             }
-            this.fs = new EmscriptenFsImpl(this.rootDir);
+            this.fs = new EmscriptenFsImpl(this.rootDir, this.deviceRegistry);
             this.preRun = overrides != null && overrides.preRun != null
                 ? new ArrayList<>(overrides.preRun)
                 : new ArrayList<>();
@@ -1466,14 +1480,18 @@ public final class pglite {
 
         @Override
         public void addRunDependency(String key) {
-            this.runDependencies.add(key);
-            this.pendingRuns.incrementAndGet();
+            if (key == null || key.isBlank()) {
+                throw new RuntimeBridgeException("addRunDependency", "dependency key is empty");
+            }
+            if (this.runDependencies.add(key)) {
+                this.pendingRuns.incrementAndGet();
+            }
         }
 
         @Override
         public void removeRunDependency(String key) {
             if (this.runDependencies.remove(key)) {
-                this.pendingRuns.decrementAndGet();
+                this.pendingRuns.updateAndGet(current -> Math.max(0, current - 1));
             }
         }
 
@@ -1486,6 +1504,7 @@ public final class pglite {
             for (var fn : this.preRun) {
                 fn.accept(this.mod);
             }
+            ensureRunDependenciesSettled("preRun");
         }
 
         @Override
@@ -1493,6 +1512,20 @@ public final class pglite {
             for (var fn : this.postRun) {
                 fn.accept(this.mod);
             }
+            ensureRunDependenciesSettled("postRun");
+        }
+
+        private void ensureRunDependenciesSettled(String phase) {
+            if (this.pendingRuns.get() == 0 && this.runDependencies.isEmpty()) {
+                return;
+            }
+            throw new RuntimeBridgeException(
+                phase,
+                "pending run dependencies: count=" +
+                this.pendingRuns.get() +
+                " keys=" +
+                this.runDependencies
+            );
         }
 
         @Override
@@ -1502,12 +1535,13 @@ public final class pglite {
 
         @Override
         public void registerDevice(int devId, postgresMod.DeviceOps ops) {
-            this.devices.put(devId, ops);
+            this.deviceRegistry.registerDevice(devId, ops, "runtime.registerDevice");
         }
 
         @Override
         public void mkdev(String path, int devId) {
-            this.deviceNodes.put(normalize(path), devId);
+            this.deviceRegistry.mkdev(path, devId, "runtime.mkdev");
+            this.fs.writeFile(normalize(path), new byte[0]);
         }
 
         private void registerBuiltinDevices() {
@@ -1568,7 +1602,7 @@ public final class pglite {
             if (devId == null) {
                 return null;
             }
-            return this.devices.get(devId);
+            return this.deviceRegistry.runtimeDeviceOps(devId);
         }
 
         private int readDevice(int fd, byte[] buffer, int offset, int length)
@@ -2438,10 +2472,54 @@ public final class pglite {
         }
 
         private void emscriptenRuntimeKeepaliveClear(long[] args) {
+            this.timerRegistry.clearAll();
+        }
+
+        private int activeTimerCount() {
+            return this.timerRegistry.activeTimerCount();
+        }
+
+        private int keepaliveCount() {
+            return this.timerRegistry.keepaliveCount();
         }
 
         private long setitimerJs(long[] args) {
+            if (args.length < 2) {
+                return 0L;
+            }
+            var which = (int) args[0];
+            var timeoutMs = decodeTimeoutMillis(args[1]);
+            this.timerRegistry.setTimeout(which, timeoutMs, () -> fireEmscriptenTimeout(which));
             return 0L;
+        }
+
+        private static long decodeTimeoutMillis(long rawValue) {
+            var asDouble = Double.longBitsToDouble(rawValue);
+            if (Double.isFinite(asDouble)) {
+                var rounded = (long) Math.ceil(asDouble);
+                if (rounded == 0L && rawValue > 0L && rawValue <= Integer.MAX_VALUE) {
+                    return rawValue;
+                }
+                return Math.max(0L, rounded);
+            }
+            return Math.max(0L, rawValue);
+        }
+
+        private void fireEmscriptenTimeout(int which) {
+            if (!this.mod.hasExport("__emscripten_timeout")) {
+                return;
+            }
+            try {
+                var nowMs = System.nanoTime() / 1_000_000.0;
+                this.mod.instance.export("__emscripten_timeout").apply(
+                    which,
+                    Double.doubleToRawLongBits(nowMs)
+                );
+            } catch (RuntimeLongjmpException longjmp) {
+                recordHostNote("__emscripten_timeout raised longjmp for timer " + which);
+            } catch (RuntimeException e) {
+                recordHostNote("__emscripten_timeout failed: " + e.getMessage());
+            }
         }
 
         private long emscriptenThrowLongjmp(long[] args) {
@@ -2451,7 +2529,10 @@ public final class pglite {
                 } catch (RuntimeException ignored) {
                 }
             }
-            return 0L;
+            throw new RuntimeLongjmpException(
+                "_emscripten_throw_longjmp",
+                "requested longjmp unwind"
+            );
         }
 
         private void gmtimeJs(long[] args) {
@@ -3173,26 +3254,29 @@ public final class pglite {
             var manifest = loadPgliteDataManifest();
             reconcileManifestSkew(manifest, data);
             addRunDependency("datafile_pglite.data");
-            for (var entry : manifest) {
-                if (entry.end < entry.start || entry.end > data.length) {
-                    throw new RuntimeBridgeException(
-                        "preloadPgliteData",
-                        "Invalid manifest range for " + entry.filename
-                    );
+            try {
+                for (var entry : manifest) {
+                    if (entry.end < entry.start || entry.end > data.length) {
+                        throw new RuntimeBridgeException(
+                            "preloadPgliteData",
+                            "Invalid manifest range for " + entry.filename
+                        );
+                    }
+                    var fileBytes = Arrays.copyOfRange(data, entry.start, entry.end);
+                    if ("/tmp/pglite/share/postgresql/postgres.bki".equals(entry.filename)) {
+                        fileBytes = normalizeBkiVersion(
+                            fileBytes,
+                            toMajorVersion(this.wasmPostgresVersion)
+                        );
+                    }
+                    this.fs.createDataFile(entry.filename, null, fileBytes, true, true, true);
                 }
-                var fileBytes = Arrays.copyOfRange(data, entry.start, entry.end);
-                if ("/tmp/pglite/share/postgresql/postgres.bki".equals(entry.filename)) {
-                    fileBytes = normalizeBkiVersion(
-                        fileBytes,
-                        toMajorVersion(this.wasmPostgresVersion)
-                    );
-                }
-                this.fs.createDataFile(entry.filename, null, fileBytes, true, true, true);
+                ensurePreloadedFile("/tmp/pglite/bin/initdb", true);
+                ensurePreloadedFile("/tmp/pglite/bin/postgres", true);
+                ensurePreloadedFile("/tmp/pglite/share/postgresql/postgres.bki", false);
+            } finally {
+                removeRunDependency("datafile_pglite.data");
             }
-            ensurePreloadedFile("/tmp/pglite/bin/initdb", true);
-            ensurePreloadedFile("/tmp/pglite/bin/postgres", true);
-            ensurePreloadedFile("/tmp/pglite/share/postgresql/postgres.bki", false);
-            removeRunDependency("datafile_pglite.data");
         }
 
         private String detectWasmPostgresVersion() {
@@ -3507,8 +3591,8 @@ public final class pglite {
                     mode
                 );
                 var normalizedPath = normalize(path);
-                var devId = this.deviceNodes.get(normalizedPath);
-                if (devId != null && this.devices.containsKey(devId)) {
+                var devId = this.deviceRegistry.deviceNode(normalizedPath);
+                if (devId != null && this.deviceRegistry.runtimeDeviceOps(devId) != null) {
                     var devFd = allocateFd(0);
                     this.fdDeviceTable.put(devFd, devId);
                     this.fdDevicePosition.put(devFd, 0);
@@ -4532,14 +4616,48 @@ public final class pglite {
 
         private long syscallFallocate(long[] args) {
             try {
-                if (args.length < 2) {
+                if (args.length < 4) {
                     return err(EINVAL);
                 }
                 var fd = (int) args[0];
                 if (!descriptorExists(fd)) {
                     return err(EBADF);
                 }
-                // Keep behavior conservative: treat fallocate as best-effort success.
+                var mode = (int) args[1];
+                var offset = args[2];
+                var len = args[3];
+                if (mode != 0 || offset < 0 || len < 0) {
+                    return err(EINVAL);
+                }
+                if (len == 0) {
+                    return 0;
+                }
+                if (this.pipeReadTable.containsKey(fd) || this.pipeWriteTable.containsKey(fd)) {
+                    return err(ENODEV);
+                }
+                if (this.fdDeviceTable.containsKey(fd) || this.dirEntries.containsKey(fd)) {
+                    return err(ENODEV);
+                }
+                var channel = this.fdTable.get(fd);
+                if (channel == null) {
+                    return err(EBADF);
+                }
+                if (!(channel instanceof java.nio.channels.FileChannel fileChannel)) {
+                    return 0;
+                }
+                var requiredSize = offset + len;
+                if (requiredSize < 0) {
+                    return err(EINVAL);
+                }
+                var originalPosition = fileChannel.position();
+                try {
+                    if (fileChannel.size() < requiredSize) {
+                        fileChannel.position(requiredSize - 1);
+                        fileChannel.write(java.nio.ByteBuffer.wrap(new byte[] { 0 }));
+                    }
+                } finally {
+                    fileChannel.position(originalPosition);
+                }
                 return 0;
             } catch (Exception e) {
                 return err(EIO);
@@ -4547,10 +4665,76 @@ public final class pglite {
         }
 
         private long syscallNewselect(long[] args) {
-            if (args.length < 1) {
-                return err(EINVAL);
+            try {
+                if (args.length < 5) {
+                    return err(EINVAL);
+                }
+                var nfds = (int) args[0];
+                if (nfds < 0) {
+                    return err(EINVAL);
+                }
+                var memory = this.mod.instance.memory();
+                var readSet = new RuntimeSelectState(memory, (int) args[1], nfds);
+                var writeSet = new RuntimeSelectState(memory, (int) args[2], nfds);
+                var exceptSet = new RuntimeSelectState(memory, (int) args[3], nfds);
+                readSet.clearOutput();
+                writeSet.clearOutput();
+                exceptSet.clearOutput();
+                var total = 0;
+                for (var fd = 0; fd < nfds; fd++) {
+                    if (
+                        !readSet.isSelected(fd) &&
+                        !writeSet.isSelected(fd) &&
+                        !exceptSet.isSelected(fd)
+                    ) {
+                        continue;
+                    }
+                    var pollMask = pollFdMask(fd);
+                    if ((pollMask & 1) != 0 && readSet.isSelected(fd)) {
+                        readSet.markReady(fd);
+                        total++;
+                    }
+                    if ((pollMask & 4) != 0 && writeSet.isSelected(fd)) {
+                        writeSet.markReady(fd);
+                        total++;
+                    }
+                    if ((pollMask & 2) != 0 && exceptSet.isSelected(fd)) {
+                        exceptSet.markReady(fd);
+                        total++;
+                    }
+                }
+                return total;
+            } catch (ErrnoException e) {
+                return err(e.errno);
+            } catch (Exception e) {
+                return err(EIO);
             }
-            // Minimal compatibility: no ready descriptors reported.
+        }
+
+        private int pollFdMask(int fd) throws ErrnoException {
+            if (!descriptorExists(fd)) {
+                throw new ErrnoException(EBADF);
+            }
+            var pipeRead = this.pipeReadTable.get(fd);
+            if (pipeRead != null) {
+                synchronized (pipeRead) {
+                    return pipeRead.buffers.isEmpty() ? 0 : 1;
+                }
+            }
+            if (this.pipeWriteTable.containsKey(fd)) {
+                return 4;
+            }
+            if (this.dirEntries.containsKey(fd)) {
+                return 1;
+            }
+            if (
+                this.fdTable.containsKey(fd) ||
+                this.fdDeviceTable.containsKey(fd) ||
+                this.socketTypeTable.containsKey(fd) ||
+                resolveStdioFd(fd) >= 0
+            ) {
+                return 5;
+            }
             return 0;
         }
 
@@ -4611,12 +4795,49 @@ public final class pglite {
             }
             var fd = (int) args[0];
             var op = (int) args[1];
+            var argp = args.length >= 3 ? (int) args[2] : 0;
             var hasTty = resolveStdioFd(fd) >= 0 && !this.fdTable.containsKey(fd);
             return switch (op) {
-                case 21509, 21505, 21510, 21511, 21512, 21506, 21507, 21508, 21519, 21523, 21524, 21515 ->
-                    hasTty ? 0 : err(ENOTTY);
+                case 21509, 21510, 21511, 21512, 21524, 21515 -> hasTty ? 0 : err(ENOTTY);
+                case 21505 -> {
+                    if (!hasTty) {
+                        yield err(ENOTTY);
+                    }
+                    if (argp != 0) {
+                        this.mod.instance.memory().writeI32(argp, 0);
+                        this.mod.instance.memory().writeI32(argp + 4, 0);
+                        this.mod.instance.memory().writeI32(argp + 8, 0);
+                        this.mod.instance.memory().writeI32(argp + 12, 0);
+                        for (var i = 0; i < 32; i++) {
+                            this.mod.instance.memory().writeByte(argp + 17 + i, (byte) 0);
+                        }
+                    }
+                    yield 0;
+                }
+                case 21506, 21507, 21508 -> hasTty ? 0 : err(ENOTTY);
+                case 21519 -> {
+                    if (!hasTty) {
+                        yield err(ENOTTY);
+                    }
+                    if (argp != 0) {
+                        this.mod.instance.memory().writeI32(argp, 0);
+                    }
+                    yield 0;
+                }
                 case 21520 -> hasTty ? err(EINVAL) : err(ENOTTY);
                 case 21531 -> hasTty ? 0 : err(ENOTTY);
+                case 21523 -> {
+                    if (!hasTty) {
+                        yield err(ENOTTY);
+                    }
+                    if (argp != 0) {
+                        this.mod.instance.memory().writeShort(argp, (short) 24);
+                        this.mod.instance.memory().writeShort(argp + 2, (short) 80);
+                        this.mod.instance.memory().writeShort(argp + 4, (short) 0);
+                        this.mod.instance.memory().writeShort(argp + 6, (short) 0);
+                    }
+                    yield 0;
+                }
                 default -> err(EINVAL);
             };
         }
@@ -4691,6 +4912,15 @@ public final class pglite {
                 var path = resolve(calculateAt(dirfd, readCString((int) args[1]), false));
                 var bufPtr = (int) args[2];
                 var bufSize = (int) args[3];
+                if (bufSize < 0) {
+                    return err(EINVAL);
+                }
+                if (!Files.isSymbolicLink(path)) {
+                    return err(EINVAL);
+                }
+                if (bufSize == 0) {
+                    return 0;
+                }
                 var link = Files.readSymbolicLink(path).toString()
                     .getBytes(java.nio.charset.StandardCharsets.UTF_8);
                 var writeLen = Math.min(link.length, Math.max(0, bufSize));
@@ -4698,8 +4928,16 @@ public final class pglite {
                 return writeLen;
             } catch (ErrnoException e) {
                 return err(e.errno);
-            } catch (Exception e) {
+            } catch (java.nio.file.NotLinkException e) {
+                return err(EINVAL);
+            } catch (java.nio.file.NoSuchFileException e) {
                 return err(ENOENT);
+            } catch (java.nio.file.NotDirectoryException e) {
+                return err(ENOTDIR);
+            } catch (java.nio.file.AccessDeniedException e) {
+                return err(EACCES);
+            } catch (Exception e) {
+                return err(EIO);
             }
         }
 
@@ -5212,6 +5450,55 @@ public final class pglite {
             return toVirtualPath(path);
         }
 
+        private static final class RuntimeSelectState {
+            private final Memory memory;
+            private final int ptr;
+            private final boolean[] selected;
+
+            private RuntimeSelectState(Memory memory, int ptr, int nfds) {
+                this.memory = memory;
+                this.ptr = ptr;
+                var count = Math.max(0, nfds);
+                this.selected = new boolean[count];
+                if (ptr == 0) {
+                    return;
+                }
+                for (var fd = 0; fd < count; fd++) {
+                    this.selected[fd] = readBit(fd);
+                }
+            }
+
+            private boolean isSelected(int fd) {
+                return fd >= 0 && fd < this.selected.length && this.selected[fd];
+            }
+
+            private void clearOutput() {
+                if (this.ptr == 0) {
+                    return;
+                }
+                var words = (this.selected.length + 31) / 32;
+                for (var i = 0; i < words; i++) {
+                    this.memory.writeI32(this.ptr + (i * 4), 0);
+                }
+            }
+
+            private void markReady(int fd) {
+                if (this.ptr == 0 || fd < 0 || fd >= this.selected.length) {
+                    return;
+                }
+                var addr = this.ptr + ((fd / 32) * 4);
+                var mask = 1 << (fd % 32);
+                var current = (int) this.memory.readI32(addr);
+                this.memory.writeI32(addr, current | mask);
+            }
+
+            private boolean readBit(int fd) {
+                var addr = this.ptr + ((fd / 32) * 4);
+                var mask = 1 << (fd % 32);
+                return (this.memory.readI32(addr) & mask) != 0;
+            }
+        }
+
         private static final class ErrnoException extends Exception {
             private final int errno;
 
@@ -5408,14 +5695,152 @@ public final class pglite {
         }
     }
 
-    private static final class EmscriptenFsImpl implements extensionUtils.EmscriptenFS {
-        private final Path rootDir;
-        private final Map<String, MountEntry> mounts = new ConcurrentHashMap<>();
+    private static final class RuntimeDeviceRegistry {
         private final Map<Integer, Object> devices = new ConcurrentHashMap<>();
         private final Map<String, Integer> deviceNodes = new ConcurrentHashMap<>();
 
-        private EmscriptenFsImpl(Path rootDir) {
+        private void registerDevice(int devId, Object ops, String source) {
+            if (ops == null) {
+                throw new RuntimeBridgeException(source, "device ops is null");
+            }
+            var previous = this.devices.putIfAbsent(devId, ops);
+            if (previous != null) {
+                throw new RuntimeBridgeException(
+                    source,
+                    "device id already registered: " + devId
+                );
+            }
+        }
+
+        private void mkdev(String path, int devId, String source) {
+            if (!this.devices.containsKey(devId)) {
+                throw new RuntimeBridgeException(
+                    source,
+                    "device id is not registered: " + devId
+                );
+            }
+            var normalized = normalize(path);
+            var previous = this.deviceNodes.putIfAbsent(normalized, devId);
+            if (previous != null) {
+                throw new RuntimeBridgeException(
+                    source,
+                    "device node already exists: " + normalized
+                );
+            }
+        }
+
+        private Integer deviceNode(String path) {
+            return this.deviceNodes.get(normalize(path));
+        }
+
+        private postgresMod.DeviceOps runtimeDeviceOps(int devId) {
+            var ops = this.devices.get(devId);
+            if (ops instanceof postgresMod.DeviceOps) {
+                return (postgresMod.DeviceOps) ops;
+            }
+            return null;
+        }
+
+        private static String normalize(String path) {
+            if (path == null || path.isBlank() || "/".equals(path)) {
+                return "/";
+            }
+            var value = path.replace('\\', '/');
+            if (!value.startsWith("/")) {
+                value = "/" + value;
+            }
+            while (value.contains("//")) {
+                value = value.replace("//", "/");
+            }
+            if (value.length() > 1 && value.endsWith("/")) {
+                value = value.substring(0, value.length() - 1);
+            }
+            return value;
+        }
+    }
+
+    private static final class RuntimeTimerRegistry {
+        private final Map<Integer, TimerHandle> timers = new ConcurrentHashMap<>();
+        private final AtomicInteger keepaliveCounter = new AtomicInteger(0);
+        private final java.util.function.Consumer<String> debugLog;
+
+        private RuntimeTimerRegistry(java.util.function.Consumer<String> debugLog) {
+            this.debugLog = debugLog;
+        }
+
+        private void setTimeout(int which, long timeoutMs, Runnable callback) {
+            clear(which);
+            if (timeoutMs <= 0L) {
+                return;
+            }
+            var handle = new TimerHandle();
+            this.keepaliveCounter.incrementAndGet();
+            handle.future = TIMER_EXECUTOR.schedule(
+                () -> {
+                    try {
+                        callback.run();
+                    } finally {
+                        if (this.timers.remove(which, handle)) {
+                            release(handle);
+                        }
+                    }
+                },
+                timeoutMs,
+                TimeUnit.MILLISECONDS
+            );
+            this.timers.put(which, handle);
+            this.debugLog.accept(
+                "setitimer which=" + which + " timeoutMs=" + timeoutMs + " keepalive=" + keepaliveCounter.get()
+            );
+        }
+
+        private void clear(int which) {
+            var handle = this.timers.remove(which);
+            if (handle == null) {
+                return;
+            }
+            if (handle.future != null) {
+                handle.future.cancel(false);
+            }
+            release(handle);
+        }
+
+        private void clearAll() {
+            for (var which : new ArrayList<>(this.timers.keySet())) {
+                clear(which);
+            }
+            this.keepaliveCounter.set(0);
+        }
+
+        private int activeTimerCount() {
+            return this.timers.size();
+        }
+
+        private int keepaliveCount() {
+            return this.keepaliveCounter.get();
+        }
+
+        private void release(TimerHandle handle) {
+            if (handle.released.compareAndSet(false, true)) {
+                this.keepaliveCounter.updateAndGet(current -> Math.max(0, current - 1));
+            }
+        }
+
+        private static final class TimerHandle {
+            private ScheduledFuture<?> future;
+            private final java.util.concurrent.atomic.AtomicBoolean released =
+                new java.util.concurrent.atomic.AtomicBoolean(false);
+        }
+    }
+
+    private static final class EmscriptenFsImpl implements extensionUtils.EmscriptenFS {
+        private final Path rootDir;
+        private final RuntimeDeviceRegistry deviceRegistry;
+        private final Map<String, MountEntry> mounts = new ConcurrentHashMap<>();
+
+        private EmscriptenFsImpl(Path rootDir, RuntimeDeviceRegistry deviceRegistry) {
             this.rootDir = rootDir;
+            this.deviceRegistry = deviceRegistry;
             this.mounts.put("/", new MountEntry("/", "MEMFS", null, null));
         }
 
@@ -5628,6 +6053,10 @@ public final class pglite {
                     }
                     if (entry.hostRoot != null) {
                         Files.createDirectories(entry.hostRoot);
+                        if (populate) {
+                            try (var ignored = Files.newDirectoryStream(entry.hostRoot)) {
+                            }
+                        }
                     } else {
                         Files.createDirectories(resolve(entry.mountpoint));
                     }
@@ -5640,16 +6069,7 @@ public final class pglite {
 
         @Override
         public void registerDevice(int devId, Object ops) {
-            if (ops == null) {
-                throw new RuntimeBridgeException("registerDevice", "device ops is null");
-            }
-            var prev = this.devices.putIfAbsent(devId, ops);
-            if (prev != null) {
-                throw new RuntimeBridgeException(
-                    "registerDevice",
-                    "device id already registered: " + devId
-                );
-            }
+            this.deviceRegistry.registerDevice(devId, ops, "fs.registerDevice");
         }
 
         @Override
@@ -5659,20 +6079,8 @@ public final class pglite {
 
         @Override
         public void mkdev(String path, int dev) {
-            if (!this.devices.containsKey(dev)) {
-                throw new RuntimeBridgeException(
-                    "mkdev",
-                    "device id is not registered: " + dev
-                );
-            }
             var normalized = normalize(path);
-            var prev = this.deviceNodes.putIfAbsent(normalized, dev);
-            if (prev != null) {
-                throw new RuntimeBridgeException(
-                    "mkdev",
-                    "device node already exists: " + normalized
-                );
-            }
+            this.deviceRegistry.mkdev(normalized, dev, "fs.mkdev");
             writeFile(normalized, new byte[0]);
         }
 
@@ -5796,6 +6204,12 @@ public final class pglite {
                 "toBytes",
                 "Unsupported file payload type: " + data.getClass().getName()
             );
+        }
+    }
+
+    private static final class RuntimeLongjmpException extends RuntimeException {
+        private RuntimeLongjmpException(String api, String message) {
+            super("EmscriptenRuntime[" + api + "]: " + message);
         }
     }
 
