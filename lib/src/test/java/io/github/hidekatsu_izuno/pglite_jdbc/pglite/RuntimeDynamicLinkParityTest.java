@@ -42,8 +42,8 @@ class RuntimeDynamicLinkParityTest {
 
         var ret = invokeLong(runtime, "dlsymJs", new long[] { 0, symbolPtr, 0 });
         assertEquals(0L, ret);
-        assertTrue(readDlError(runtime).contains("symbol not found"));
-        assertDlerrorContains(instance, "symbol not found");
+        assertTrue(readDlError(runtime).contains("unknown symbol"));
+        assertDlerrorContains(instance, "unknown symbol");
     }
 
     @Test
@@ -85,7 +85,7 @@ class RuntimeDynamicLinkParityTest {
         var instance = extractInstance(runtime);
         var missingPtr = writeCString(instance, 0x7B00, "__missing_symbol__");
         invokeLong(runtime, "dlsymJs", new long[] { 0, missingPtr, 0 });
-        assertTrue(readDlError(runtime).contains("symbol not found"));
+        assertTrue(readDlError(runtime).contains("unknown symbol"));
 
         var symbolPtr = writeCString(instance, 0x7C00, "malloc");
         var symbolIndexPtr = 0x7D00;

@@ -64,6 +64,18 @@ public final class extensionUtils {
 
         byte[] readFile(String path);
 
+        void unlink(String path);
+
+        void createLazyFile(
+            String parent,
+            String name,
+            Object data,
+            boolean canRead,
+            boolean canWrite
+        );
+
+        void createDevice(String parent, String name, Object input, Object output);
+
         void mount(Object type, Object opts, String mountpoint);
 
         void unmount(String mountpoint);

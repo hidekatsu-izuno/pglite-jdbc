@@ -898,6 +898,41 @@ public final class pglite {
                         " argc=" + callArgs.length
                     );
                 }
+                var importFunction = resolveImportedFunction(owner, funcRef);
+                if (
+                    importFunction != null &&
+                    "env".equals(importFunction.module()) &&
+                    importFunction.name().startsWith("invoke_")
+                ) {
+                    if (TRACE_INVOKE) {
+                        appendTrace(
+                            "[pglite-invoke] invoke-import-recursion-guard " +
+                            name +
+                            " tableIndex=" +
+                            tableIndex +
+                            " funcRef=" +
+                            funcRef +
+                            " import=" +
+                            importFunction.module() +
+                            "." +
+                            importFunction.name()
+                        );
+                    }
+                    if (mod.hasExport("setThrew")) {
+                        try {
+                            mod.instance.export("setThrew").apply(1, 0);
+                        } catch (RuntimeException ignored) {
+                        }
+                    }
+                    if (
+                        "invoke_v".equals(name) ||
+                        "invoke_vi".equals(name) ||
+                        "invoke_vii".equals(name)
+                    ) {
+                        return new long[] {};
+                    }
+                    return new long[] { 0L };
+                }
                 var result = owner.getMachine().call(funcRef, callArgs);
                 if (
                     "invoke_v".equals(name) ||
@@ -949,6 +984,31 @@ public final class pglite {
             }
             INVOKE_DEPTH.set(Math.max(0, depth - 1));
         }
+    }
+
+    private static FunctionImport resolveImportedFunction(Instance owner, int functionIndex) {
+        if (owner == null || functionIndex < 0) {
+            return null;
+        }
+        if (owner.function(functionIndex) != null) {
+            return null;
+        }
+        var importSection = owner.module().importSection();
+        var importedFunctionIndex = 0;
+        for (var i = 0; i < importSection.importCount(); i++) {
+            var importDecl = importSection.getImport(i);
+            if (importDecl.importType() != ExternalType.FUNCTION) {
+                continue;
+            }
+            if (importedFunctionIndex == functionIndex) {
+                if (importDecl instanceof FunctionImport functionImport) {
+                    return functionImport;
+                }
+                return null;
+            }
+            importedFunctionIndex++;
+        }
+        return null;
     }
 
     private static final class RuntimePostgresMod implements postgresMod.PostgresMod {
@@ -1384,6 +1444,8 @@ public final class pglite {
         private final Map<Integer, PipeState> pipeReadTable = new ConcurrentHashMap<>();
         private final Map<Integer, PipeState> pipeWriteTable = new ConcurrentHashMap<>();
         private final Map<Integer, Integer> socketTypeTable = new ConcurrentHashMap<>();
+        private final Map<Integer, RuntimeSockState> socketStateTable = new ConcurrentHashMap<>();
+        private final Map<String, Integer> socketBindings = new ConcurrentHashMap<>();
         private final Map<Integer, java.util.List<String>> dirEntries = new ConcurrentHashMap<>();
         private final Map<Integer, Integer> dirCursor = new ConcurrentHashMap<>();
         private final Map<Integer, MmapRegion> mmapRegions = new ConcurrentHashMap<>();
@@ -1397,6 +1459,7 @@ public final class pglite {
         private final String wasmPostgresVersion;
         private final RuntimeDlErrorState dlErrorState = new RuntimeDlErrorState();
         private final RuntimeAsmConstRegistry asmConstRegistry = RuntimeAsmConstRegistry.create();
+        private final RuntimeFsNodeIdIndex fsNodeIdIndex = new RuntimeFsNodeIdIndex();
         private final java.security.SecureRandom secureRandom = new java.security.SecureRandom();
         private String cwd = "/";
         private long tempRet0 = 0L;
@@ -1422,10 +1485,13 @@ public final class pglite {
         private static final int EINVAL = 28;
         private static final int EIO = 29;
         private static final int EISDIR = 31;
+        private static final int EDESTADDRREQ = 17;
         private static final int ENODEV = 43;
         private static final int ENOENT = 44;
         private static final int ENOMEM = 48;
         private static final int EAFNOSUPPORT = 5;
+        private static final int EOVERFLOW = 61;
+        private static final int ENOTCONN = 53;
         private static final int ENOTDIR = 54;
         private static final int ENOTTY = 59;
         private static final int ENOSYS = 52;
@@ -1438,6 +1504,8 @@ public final class pglite {
         private static final int SOCK_STREAM = 1;
         private static final int SOCK_DGRAM = 2;
         private static final int MAX_OPEN_FDS = 4096;
+        private static final long INT53_MAX = 9_007_199_254_740_992L;
+        private static final long INT53_MIN = -9_007_199_254_740_992L;
 
         private EmscriptenRuntimeImpl(
             RuntimePostgresMod mod,
@@ -2023,6 +2091,8 @@ public final class pglite {
             var main = new DynamicLibrary(
                 "__main__",
                 0,
+                true,
+                true,
                 this.mod.instance,
                 0,
                 this.mod.instance.table(0).size(),
@@ -2043,8 +2113,9 @@ public final class pglite {
                 setDlError("_dlopen_js", "handle pointer is null");
                 return 0L;
             }
+            var filename = "";
             try {
-                var filename = readCString(handlePtr + 36);
+                filename = readCString(handlePtr + 36);
                 if (filename == null || filename.isBlank()) {
                     setDlError("_dlopen_js", "library path is empty");
                     return 0L;
@@ -2054,7 +2125,11 @@ public final class pglite {
                 clearDlError();
                 return 1L;
             } catch (RuntimeBridgeException e) {
-                setDlError("_dlopen_js", e.getMessage());
+                var normalized = filename != null ? filename : "";
+                setDlError(
+                    "_dlopen_js",
+                    "Could not load dynamic lib: " + normalized + "\n" + e.getMessage()
+                );
                 recordHostNote("_dlopen_js failed: " + e.getMessage());
                 return 0L;
             } catch (RuntimeException e) {
@@ -2063,11 +2138,29 @@ public final class pglite {
                     recordHostNote("_dlopen_js failed: " + e.getMessage());
                     return 0L;
                 }
-                setDlError("_dlopen_js", e.getClass().getSimpleName() + ": " + e.getMessage());
+                var normalized = filename != null ? filename : "";
+                setDlError(
+                    "_dlopen_js",
+                    "Could not load dynamic lib: " +
+                    normalized +
+                    "\n" +
+                    e.getClass().getSimpleName() +
+                    ": " +
+                    e.getMessage()
+                );
                 recordHostNote("_dlopen_js failed: " + e.getMessage());
                 return 0L;
             } catch (Exception e) {
-                setDlError("_dlopen_js", e.getClass().getSimpleName() + ": " + e.getMessage());
+                var normalized = filename != null ? filename : "";
+                setDlError(
+                    "_dlopen_js",
+                    "Could not load dynamic lib: " +
+                    normalized +
+                    "\n" +
+                    e.getClass().getSimpleName() +
+                    ": " +
+                    e.getMessage()
+                );
                 recordHostNote("_dlopen_js failed: " + e.getMessage());
                 return 0L;
             }
@@ -2110,7 +2203,13 @@ public final class pglite {
 
                 var export = lib.exports.get(symbol);
                 if (export == null) {
-                    setDlError("_dlsym_js", "symbol not found: " + symbol + " in " + lib.name);
+                    setDlError(
+                        "_dlsym_js",
+                        "Tried to lookup unknown symbol \"" +
+                        symbol +
+                        "\" in dynamic lib: " +
+                        lib.name
+                    );
                     recordHostNote("_dlsym_js unknown symbol \"" + symbol + "\" in " + lib.name);
                     return 0L;
                 }
@@ -2141,7 +2240,10 @@ public final class pglite {
                 }
                 setDlError(
                     "_dlsym_js",
-                    "unsupported export type for symbol " + symbol + ": " + export.exportType()
+                    "Tried to lookup unknown symbol \"" +
+                    symbol +
+                    "\" in dynamic lib: " +
+                    lib.name
                 );
                 return 0L;
             } catch (RuntimeException e) {
@@ -2237,6 +2339,8 @@ public final class pglite {
             var lib = new DynamicLibrary(
                 normalizedName,
                 handlePtr,
+                (flags & 0x100) != 0,
+                (flags & 0x1000) != 0,
                 instance,
                 tableBase,
                 metadata.tableSize,
@@ -3201,7 +3305,7 @@ public final class pglite {
                 }
                 var port = ntohs(this.mod.instance.memory().readShort(saPtr + 2));
                 var addr = (int) this.mod.instance.memory().readI32(saPtr + 4);
-                return new SockAddr(formatIpv4(addr), port);
+                return new SockAddr(AF_INET, formatIpv4(addr), port);
             }
             if (family == AF_INET6) {
                 if (saLen != 28) {
@@ -3214,7 +3318,7 @@ public final class pglite {
                     (int) this.mod.instance.memory().readI32(saPtr + 16),
                     (int) this.mod.instance.memory().readI32(saPtr + 20),
                 };
-                return new SockAddr(formatIpv6(words), port);
+                return new SockAddr(AF_INET6, formatIpv6(words), port);
             }
             return null;
         }
@@ -3350,11 +3454,20 @@ public final class pglite {
             return writeLen;
         }
 
+        private static Long toI53(long value) {
+            if (value < INT53_MIN || value > INT53_MAX) {
+                return null;
+            }
+            return value;
+        }
+
         private static final class SockAddr {
+            private final int family;
             private final String address;
             private final int port;
 
-            private SockAddr(String address, int port) {
+            private SockAddr(int family, String address, int port) {
+                this.family = family;
                 this.address = address;
                 this.port = port;
             }
@@ -3825,8 +3938,6 @@ public final class pglite {
                 var newFd = allocateFd(0);
                 duplicateDescriptor(oldFd, newFd);
                 return newFd;
-            } catch (ErrnoException e) {
-                return err(e.errno);
             } catch (Exception e) {
                 return err(EIO);
             }
@@ -3857,8 +3968,6 @@ public final class pglite {
                 }
                 duplicateDescriptor(oldFd, newFd);
                 return newFd;
-            } catch (ErrnoException e) {
-                return err(e.errno);
             } catch (Exception e) {
                 return err(EIO);
             }
@@ -3908,6 +4017,7 @@ public final class pglite {
                 if (args.length < 3) {
                     return err(EINVAL);
                 }
+                var family = (int) args[0];
                 var type = (int) args[1];
                 // Align with Emscripten SOCKFS.createSocket: mask CLOEXEC/NONBLOCK.
                 var normalizedType = type & ~0x80800;
@@ -3917,10 +4027,12 @@ public final class pglite {
                 }
                 var fd = allocateFd(3);
                 this.socketTypeTable.put(fd, normalizedType);
+                this.socketStateTable.put(
+                    fd,
+                    new RuntimeSockState(family, normalizedType, protocol)
+                );
                 this.fdFlagsTable.put(fd, 0);
                 return fd;
-            } catch (ErrnoException e) {
-                return err(e.errno);
             } catch (Exception e) {
                 return err(EIO);
             }
@@ -3932,13 +4044,28 @@ public final class pglite {
                     return err(EINVAL);
                 }
                 var fd = (int) args[0];
-                if (!this.socketTypeTable.containsKey(fd)) {
+                var state = this.socketStateTable.get(fd);
+                if (state == null) {
                     return err(EBADF);
                 }
                 var sockaddr = validateSockaddrForSyscall((int) args[1], (int) args[2]);
                 if (sockaddr == null) {
                     return err(EINVAL);
                 }
+                if (state.boundAddress != null || state.boundPort != 0) {
+                    return err(EINVAL);
+                }
+                if (sockaddr.port != 0) {
+                    var bindingKey = socketBindingKey(sockaddr.address, sockaddr.port);
+                    var existingFd = this.socketBindings.putIfAbsent(bindingKey, fd);
+                    if (existingFd != null && existingFd != fd) {
+                        return err(EINVAL);
+                    }
+                    state.bindingKey = bindingKey;
+                }
+                state.boundFamily = sockaddr.family;
+                state.boundAddress = sockaddr.address;
+                state.boundPort = sockaddr.port;
                 return 0;
             } catch (ErrnoException e) {
                 return err(e.errno);
@@ -3953,17 +4080,59 @@ public final class pglite {
                     return err(EINVAL);
                 }
                 var fd = (int) args[0];
-                if (!this.socketTypeTable.containsKey(fd)) {
+                var state = this.socketStateTable.get(fd);
+                if (state == null) {
                     return err(EBADF);
                 }
                 var len = (int) args[2];
                 if (len < 0) {
                     return err(EINVAL);
                 }
-                if (args.length >= 6 && args[4] != 0L) {
-                    var sockaddr = validateSockaddrForSyscall((int) args[4], (int) args[5]);
-                    if (sockaddr == null) {
-                        return err(EINVAL);
+                SockAddr destination = null;
+                if (state.type == SOCK_DGRAM) {
+                    if (args.length >= 6 && args[4] != 0L) {
+                        destination = validateSockaddrForSyscall((int) args[4], (int) args[5]);
+                        if (destination == null) {
+                            return err(EINVAL);
+                        }
+                    } else if (state.connectedAddress != null && state.connectedPort > 0) {
+                        destination = new SockAddr(
+                            state.connectedFamily,
+                            state.connectedAddress,
+                            state.connectedPort
+                        );
+                    } else {
+                        return err(EDESTADDRREQ);
+                    }
+                } else {
+                    if (state.connectedAddress == null || state.connectedPort <= 0) {
+                        return err(ENOTCONN);
+                    }
+                    destination = new SockAddr(
+                        state.connectedFamily,
+                        state.connectedAddress,
+                        state.connectedPort
+                    );
+                }
+                if (len == 0) {
+                    return 0;
+                }
+                var payload = this.mod.instance.memory().readBytes((int) args[1], len);
+                var sourceAddress = state.boundAddress != null
+                    ? state.boundAddress
+                    : state.family == AF_INET6
+                        ? "::"
+                        : "0.0.0.0";
+                var sourcePort = Math.max(0, state.boundPort);
+                var targetFd = this.socketBindings.get(
+                    socketBindingKey(destination.address, destination.port)
+                );
+                if (targetFd != null) {
+                    var target = this.socketStateTable.get(targetFd);
+                    if (target != null) {
+                        target.recvQueue.addLast(
+                            new RuntimeDatagram(payload, sourceAddress, sourcePort)
+                        );
                     }
                 }
                 return len;
@@ -3975,15 +4144,58 @@ public final class pglite {
         }
 
         private long syscallRecvfrom(long[] args) {
-            if (args.length < 3) {
-                return err(EINVAL);
+            try {
+                if (args.length < 3) {
+                    return err(EINVAL);
+                }
+                var fd = (int) args[0];
+                var state = this.socketStateTable.get(fd);
+                if (state == null) {
+                    return err(EBADF);
+                }
+                var len = (int) args[2];
+                if (len < 0) {
+                    return err(EINVAL);
+                }
+                if (len == 0) {
+                    return 0;
+                }
+                var queued = state.recvQueue.pollFirst();
+                if (queued == null) {
+                    if (state.type == SOCK_STREAM) {
+                        if (state.connectedAddress == null || state.connectedPort <= 0) {
+                            return err(ENOTCONN);
+                        }
+                    }
+                    return err(EAGAIN);
+                }
+                var readLen = Math.min(len, queued.buffer.length);
+                this.mod.instance.memory().write((int) args[1], queued.buffer, 0, readLen);
+                if (state.type == SOCK_STREAM && readLen < queued.buffer.length) {
+                    var remaining = Arrays.copyOfRange(queued.buffer, readLen, queued.buffer.length);
+                    state.recvQueue.addFirst(new RuntimeDatagram(remaining, queued.address, queued.port));
+                }
+
+                if (args.length >= 6 && args[4] != 0L) {
+                    var sockaddrPtr = (int) args[4];
+                    var addrLenPtr = (int) args[5];
+                    var family = state.family == AF_INET6 ? AF_INET6 : AF_INET;
+                    var resolvedAddr = lookupName(queued.address);
+                    var writeErrno = writeSockaddrForRecv(
+                        sockaddrPtr,
+                        addrLenPtr,
+                        family,
+                        resolvedAddr,
+                        queued.port
+                    );
+                    if (writeErrno != 0) {
+                        return err(writeErrno);
+                    }
+                }
+                return readLen;
+            } catch (Exception e) {
+                return err(EIO);
             }
-            var fd = (int) args[0];
-            if (!this.socketTypeTable.containsKey(fd)) {
-                return err(EBADF);
-            }
-            // Keep parity with Emscripten SOCKFS: no queued payload returns 0.
-            return 0;
         }
 
         private SockAddr validateSockaddrForSyscall(int sockaddrPtr, int sockaddrLen)
@@ -3993,6 +4205,46 @@ public final class pglite {
                 throw new ErrnoException(EAFNOSUPPORT);
             }
             return readSockaddr(sockaddrPtr, sockaddrLen);
+        }
+
+        private int writeSockaddrForRecv(
+            int sockaddrPtr,
+            int addrLenPtr,
+            int family,
+            String addr,
+            int port
+        ) {
+            if (family == AF_INET) {
+                var ipv4 = parseIpv4(addr);
+                if (ipv4 == null) {
+                    return EAFNOSUPPORT;
+                }
+                writeSockaddr4(sockaddrPtr, ipv4, port, 16);
+                if (addrLenPtr != 0) {
+                    this.mod.instance.memory().writeI32(addrLenPtr, 16);
+                }
+                return 0;
+            }
+            if (family == AF_INET6) {
+                var ipv6 = parseIpv6(addr);
+                if (ipv6 == null) {
+                    var ipv4 = parseIpv4(addr);
+                    if (ipv4 == null) {
+                        return EAFNOSUPPORT;
+                    }
+                    ipv6 = ipv4MappedIpv6(ipv4);
+                }
+                writeSockaddr6(sockaddrPtr, ipv6, port, 28);
+                if (addrLenPtr != 0) {
+                    this.mod.instance.memory().writeI32(addrLenPtr, 28);
+                }
+                return 0;
+            }
+            return EAFNOSUPPORT;
+        }
+
+        private static String socketBindingKey(String address, int port) {
+            return address + ":" + port;
         }
 
         private long syscallRead(long[] args) {
@@ -4857,8 +5109,11 @@ public final class pglite {
                     return err(EBADF);
                 }
                 var mode = (int) args[1];
-                var offset = args[2];
-                var len = args[3];
+                var offset = toI53(args[2]);
+                var len = toI53(args[3]);
+                if (offset == null || len == null) {
+                    return EOVERFLOW;
+                }
                 if (mode != 0 || offset < 0 || len < 0) {
                     return err(EINVAL);
                 }
@@ -4879,7 +5134,7 @@ public final class pglite {
                     return 0;
                 }
                 var requiredSize = offset + len;
-                if (requiredSize < 0) {
+                if (requiredSize < 0 || requiredSize < offset) {
                     return err(EINVAL);
                 }
                 var originalPosition = fileChannel.position();
@@ -4988,10 +5243,23 @@ public final class pglite {
             if (this.dirEntries.containsKey(fd)) {
                 return 1;
             }
+            var socket = this.socketStateTable.get(fd);
+            if (socket != null) {
+                var mask = RuntimeSelectState.WRITE_READY;
+                if (!socket.recvQueue.isEmpty()) {
+                    mask |= RuntimeSelectState.READ_READY;
+                } else if (
+                    socket.type == SOCK_STREAM &&
+                    (socket.connectedAddress == null || socket.connectedPort <= 0)
+                ) {
+                    // Mirror SOCKFS poll semantics: disconnected streams are readable with EOF/error.
+                    mask |= RuntimeSelectState.READ_READY;
+                }
+                return mask;
+            }
             if (
                 this.fdTable.containsKey(fd) ||
                 this.fdDeviceTable.containsKey(fd) ||
-                this.socketTypeTable.containsKey(fd) ||
                 resolveStdioFd(fd) >= 0
             ) {
                 return 5;
@@ -5066,7 +5334,13 @@ public final class pglite {
                         RuntimeIoctlContract.TCSETSW,
                         RuntimeIoctlContract.TCSETSF,
                         RuntimeIoctlContract.TIOCSPGRP,
-                        RuntimeIoctlContract.TCFLSH -> hasTty ? 0 : err(ENOTTY);
+                        RuntimeIoctlContract.TCFLSH -> {
+                            if (!hasTty) {
+                                yield err(ENOTTY);
+                            }
+                            resolveIoctlArgPointer(args);
+                            yield 0;
+                        }
                     case RuntimeIoctlContract.TCGETS -> {
                         if (!hasTty) {
                             yield err(ENOTTY);
@@ -5085,7 +5359,13 @@ public final class pglite {
                     }
                     case RuntimeIoctlContract.TCSETA,
                         RuntimeIoctlContract.TCSETAW,
-                        RuntimeIoctlContract.TCSETAF -> hasTty ? 0 : err(ENOTTY);
+                        RuntimeIoctlContract.TCSETAF -> {
+                            if (!hasTty) {
+                                yield err(ENOTTY);
+                            }
+                            resolveIoctlArgPointer(args);
+                            yield 0;
+                        }
                     case RuntimeIoctlContract.TIOCGPGRP -> {
                         if (!hasTty) {
                             yield err(ENOTTY);
@@ -5098,8 +5378,19 @@ public final class pglite {
                     }
                     case RuntimeIoctlContract.TIOCSPGRP_ALT -> hasTty ? err(EINVAL) : err(ENOTTY);
                     case RuntimeIoctlContract.TIOCGPTPEER -> {
-                        resolveIoctlArgPointer(args);
-                        yield this.socketTypeTable.containsKey(fd) ? 0 : err(ENOTTY);
+                        var argp = resolveIoctlArgPointer(args);
+                        var socket = this.socketStateTable.get(fd);
+                        if (socket == null) {
+                            yield hasTty ? err(ENOTTY) : err(EINVAL);
+                        }
+                        if (argp != 0) {
+                            var bytes = socket.recvQueue.peekFirst();
+                            this.mod.instance.memory().writeI32(
+                                argp,
+                                bytes != null ? bytes.buffer.length : 0
+                            );
+                        }
+                        yield 0;
                     }
                     case RuntimeIoctlContract.TIOCGWINSZ -> {
                         if (!hasTty) {
@@ -5114,7 +5405,7 @@ public final class pglite {
                         }
                         yield 0;
                     }
-                    default -> RuntimeIoctlContract.defaultErrno(hasTty, op, ENOTTY, EINVAL);
+                    default -> RuntimeIoctlContract.defaultErrno(op, EINVAL);
                 };
             } catch (ErrnoException e) {
                 return err(e.errno);
@@ -5160,26 +5451,35 @@ public final class pglite {
                 var endIdx = Math.min(entries.size(), startIdx + maxEntries);
                 var pos = 0;
                 var idx = startIdx;
+                var basePath = this.fdPathTable.get(fd);
                 for (; idx < endIdx; idx++) {
                     var name = entries.get(idx);
                     byte type;
                     long id;
                     if (".".equals(name) || "..".equals(name)) {
                         type = 4;
-                        id = idx + 1L;
+                        var target = ".".equals(name)
+                            ? basePath
+                            : (basePath != null ? basePath.getParent() : null);
+                        if (target == null) {
+                            target = this.rootDir;
+                        }
+                        id = this.fsNodeIdIndex.idFor(target);
                     } else {
-                        var base = this.fdPathTable.get(fd);
-                        var child = base != null ? base.resolve(name) : null;
-                        if (child != null && Files.isDirectory(child, LinkOption.NOFOLLOW_LINKS)) {
+                        var child = basePath != null ? basePath.resolve(name) : null;
+                        if (child == null || !Files.exists(child, LinkOption.NOFOLLOW_LINKS)) {
+                            continue;
+                        }
+                        if (Files.isDirectory(child, LinkOption.NOFOLLOW_LINKS)) {
                             type = 4;
-                        } else if (child != null && Files.isSymbolicLink(child)) {
+                        } else if (Files.isSymbolicLink(child)) {
                             type = 10;
-                        } else if (child != null && Files.exists(child)) {
-                            type = 8;
+                        } else if (isDeviceNode(child)) {
+                            type = 2;
                         } else {
                             type = 8;
                         }
-                        id = idx + 1L;
+                        id = this.fsNodeIdIndex.idFor(child);
                     }
                     var p = dirp + pos;
                     this.mod.instance.memory().writeLong(p, id);
@@ -5243,13 +5543,20 @@ public final class pglite {
                 if (args.length < 2) {
                     return err(EINVAL);
                 }
+                var length = toI53(args[1]);
+                if (length == null) {
+                    return EOVERFLOW;
+                }
+                if (length < 0) {
+                    return err(EINVAL);
+                }
                 if (args.length == 2) {
                     var fd = (int) args[0];
                     var ch = this.fdTable.get(fd);
                     if (ch == null) {
                         return err(EBADF);
                     }
-                    ch.truncate(args[1]);
+                    ch.truncate(length);
                     return 0;
                 }
                 var path = resolve(readCString((int) args[0]));
@@ -5257,9 +5564,13 @@ public final class pglite {
                     path,
                     EnumSet.of(StandardOpenOption.WRITE, StandardOpenOption.CREATE)
                 )) {
-                    ch.truncate(args[1]);
+                    ch.truncate(length);
                 }
                 return 0;
+            } catch (java.nio.file.NoSuchFileException e) {
+                return err(ENOENT);
+            } catch (java.nio.file.AccessDeniedException e) {
+                return err(EACCES);
             } catch (Exception e) {
                 return err(EIO);
             }
@@ -5565,6 +5876,11 @@ public final class pglite {
             this.mod.instance.memory().writeLong(statPtr + 88, 0);
         }
 
+        private boolean isDeviceNode(Path path) {
+            var virtualPath = toVirtualPath(path);
+            return this.deviceRegistry.deviceNode(virtualPath) != null;
+        }
+
         private void writeStatStruct(
             int statPtr,
             Path path,
@@ -5665,6 +5981,11 @@ public final class pglite {
             } else {
                 this.socketTypeTable.remove(newFd);
             }
+            if (this.socketStateTable.containsKey(oldFd)) {
+                this.socketStateTable.put(newFd, this.socketStateTable.get(oldFd));
+            } else {
+                this.socketStateTable.remove(newFd);
+            }
             var readPipe = this.pipeReadTable.get(oldFd);
             if (readPipe != null) {
                 retainPipe(readPipe);
@@ -5712,6 +6033,25 @@ public final class pglite {
                 releasePipe(writePipe);
             }
             this.socketTypeTable.remove(fd);
+            var socketState = this.socketStateTable.remove(fd);
+            if (socketState != null && socketState.bindingKey != null) {
+                var hasAlias = false;
+                Integer replacementFd = null;
+                for (var entry : this.socketStateTable.entrySet()) {
+                    if (entry.getValue() == socketState) {
+                        hasAlias = true;
+                        replacementFd = entry.getKey();
+                        break;
+                    }
+                }
+                if (hasAlias) {
+                    if (replacementFd != null) {
+                        this.socketBindings.put(socketState.bindingKey, replacementFd);
+                    }
+                } else {
+                    this.socketBindings.remove(socketState.bindingKey);
+                }
+            }
             this.stdioAliases.remove(fd);
         }
 
@@ -5874,6 +6214,8 @@ public final class pglite {
         private static final class DynamicLibrary {
             private final String name;
             private final int handlePtr;
+            private final boolean global;
+            private final boolean nodelete;
             private final Instance instance;
             private final int tableBase;
             private final int tableSize;
@@ -5884,6 +6226,8 @@ public final class pglite {
             private DynamicLibrary(
                 String name,
                 int handlePtr,
+                boolean global,
+                boolean nodelete,
                 Instance instance,
                 int tableBase,
                 int tableSize,
@@ -5892,11 +6236,48 @@ public final class pglite {
             ) {
                 this.name = name;
                 this.handlePtr = handlePtr;
+                this.global = global;
+                this.nodelete = nodelete;
                 this.instance = instance;
                 this.tableBase = tableBase;
                 this.tableSize = tableSize;
                 this.exports = exports;
                 this.exportOrder = exportOrder;
+            }
+        }
+
+        private static final class RuntimeSockState {
+            private final int family;
+            private final int type;
+            private final int protocol;
+            private final java.util.ArrayDeque<RuntimeDatagram> recvQueue =
+                new java.util.ArrayDeque<>();
+            private int boundFamily;
+            private String boundAddress;
+            private int boundPort;
+            private int connectedFamily;
+            private String connectedAddress;
+            private int connectedPort;
+            private String bindingKey;
+
+            private RuntimeSockState(int family, int type, int protocol) {
+                this.family = family;
+                this.type = type;
+                this.protocol = protocol;
+                this.boundFamily = family;
+                this.connectedFamily = family;
+            }
+        }
+
+        private static final class RuntimeDatagram {
+            private final byte[] buffer;
+            private final String address;
+            private final int port;
+
+            private RuntimeDatagram(byte[] buffer, String address, int port) {
+                this.buffer = Arrays.copyOf(buffer, buffer.length);
+                this.address = address;
+                this.port = port;
             }
         }
 
@@ -6026,6 +6407,19 @@ public final class pglite {
         }
     }
 
+    private static final class RuntimeFsNodeIdIndex {
+        private final AtomicInteger nextId = new AtomicInteger(1);
+        private final Map<String, Long> ids = new ConcurrentHashMap<>();
+
+        private long idFor(Path path) {
+            var key = path.toAbsolutePath().normalize().toString();
+            return this.ids.computeIfAbsent(
+                key,
+                ignored -> (long) this.nextId.getAndIncrement()
+            );
+        }
+    }
+
     private static final class RuntimeAsmConstRegistry {
         private final Map<Long, java.util.function.BiConsumer<EmscriptenRuntimeImpl, java.util.List<Object>>> handlers =
             new HashMap<>();
@@ -6099,15 +6493,7 @@ public final class pglite {
         private static final int TIOCSPGRP = 21524;
         private static final int TIOCGPTPEER = 21531;
 
-        private static long defaultErrno(
-            boolean hasTty,
-            int opcode,
-            int notty,
-            int invalid
-        ) {
-            if (!hasTty) {
-                return -notty;
-            }
+        private static long defaultErrno(int opcode, int invalid) {
             return -invalid;
         }
     }
@@ -6115,6 +6501,7 @@ public final class pglite {
     private static final class RuntimeDeviceRegistry {
         private final Map<Integer, Object> devices = new ConcurrentHashMap<>();
         private final Map<String, Integer> deviceNodes = new ConcurrentHashMap<>();
+        private final AtomicInteger nextDynamicDevId = new AtomicInteger((64 << 8) | 1);
 
         private void registerDevice(int devId, Object ops, String source) {
             if (ops == null) {
@@ -6148,6 +6535,15 @@ public final class pglite {
 
         private Integer deviceNode(String path) {
             return this.deviceNodes.get(normalize(path));
+        }
+
+        private int allocateDeviceId() {
+            while (true) {
+                var next = this.nextDynamicDevId.getAndIncrement();
+                if (!this.devices.containsKey(next)) {
+                    return next;
+                }
+            }
         }
 
         private postgresMod.DeviceOps runtimeDeviceOps(int devId) {
@@ -6380,6 +6776,55 @@ public final class pglite {
             } catch (Exception e) {
                 throw new RuntimeBridgeException("readFile", e);
             }
+        }
+
+        @Override
+        public void unlink(String path) {
+            try {
+                Files.delete(resolve(path));
+            } catch (Exception e) {
+                throw new RuntimeBridgeException("unlink", e);
+            }
+        }
+
+        @Override
+        public void createLazyFile(
+            String parent,
+            String name,
+            Object data,
+            boolean canRead,
+            boolean canWrite
+        ) {
+            try {
+                var base = resolve(parent);
+                Files.createDirectories(base);
+                var target = base.resolve(name);
+                Files.write(
+                    target,
+                    readLazyFilePayload(data),
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING,
+                    StandardOpenOption.WRITE
+                );
+            } catch (Exception e) {
+                throw new RuntimeBridgeException("createLazyFile", e);
+            }
+        }
+
+        @Override
+        public void createDevice(String parent, String name, Object input, Object output) {
+            var fullPath = normalize(
+                (parent == null ? "/" : parent) +
+                ((name == null || name.isEmpty()) ? "" : "/" + name)
+            );
+            var devId = this.deviceRegistry.allocateDeviceId();
+            this.deviceRegistry.registerDevice(
+                devId,
+                toDeviceOps(input, output),
+                "fs.createDevice"
+            );
+            this.deviceRegistry.mkdev(fullPath, devId, "fs.createDevice");
+            writeFile(fullPath, new byte[0]);
         }
 
         @Override
@@ -6647,6 +7092,76 @@ public final class pglite {
                 "toBytes",
                 "Unsupported file payload type: " + data.getClass().getName()
             );
+        }
+
+        private static byte[] readLazyFilePayload(Object data) {
+            if (data == null) {
+                return new byte[0];
+            }
+            if (data instanceof byte[] || data instanceof Uint8Array) {
+                return toBytes(data);
+            }
+            if (data instanceof java.net.URL url) {
+                return utils.readFile(url);
+            }
+            if (data instanceof String text) {
+                var normalizedResource = text.startsWith("/") ? text.substring(1) : text;
+                try {
+                    return utils.readFile(normalizedResource);
+                } catch (RuntimeException classpathMissing) {
+                    try {
+                        return Files.readAllBytes(Path.of(text));
+                    } catch (Exception fileMissing) {
+                        throw new RuntimeBridgeException(
+                            "createLazyFile",
+                            "Resource not found: " + text
+                        );
+                    }
+                }
+            }
+            throw new RuntimeBridgeException(
+                "createLazyFile",
+                "Unsupported lazy file source: " + data.getClass().getName()
+            );
+        }
+
+        private static postgresMod.DeviceOps toDeviceOps(Object input, Object output) {
+            if (input instanceof postgresMod.DeviceOps ops && output == null) {
+                return ops;
+            }
+            return new postgresMod.DeviceOps() {
+                @Override
+                public int read(byte[] buffer, int offset, int length, int position) {
+                    if (input instanceof java.util.function.IntSupplier supplier) {
+                        var count = 0;
+                        for (var i = 0; i < length; i++) {
+                            var value = supplier.getAsInt();
+                            if (value < 0) {
+                                break;
+                            }
+                            buffer[offset + i] = (byte) (value & 0xFF);
+                            count++;
+                        }
+                        return count;
+                    }
+                    return 0;
+                }
+
+                @Override
+                public int write(byte[] buffer, int offset, int length, int position) {
+                    if (output instanceof java.util.function.IntConsumer consumer) {
+                        for (var i = 0; i < length; i++) {
+                            consumer.accept(buffer[offset + i] & 0xFF);
+                        }
+                    }
+                    return Math.max(0, length);
+                }
+
+                @Override
+                public int llseek(int offset, int whence, int position) {
+                    return Math.max(0, offset);
+                }
+            };
         }
     }
 

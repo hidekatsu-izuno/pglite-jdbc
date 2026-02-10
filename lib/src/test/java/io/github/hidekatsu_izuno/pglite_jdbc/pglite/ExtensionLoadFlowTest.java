@@ -111,6 +111,24 @@ class ExtensionLoadFlowTest {
         }
 
         @Override
+        public void unlink(String path) {
+        }
+
+        @Override
+        public void createLazyFile(
+            String parent,
+            String name,
+            Object data,
+            boolean canRead,
+            boolean canWrite
+        ) {
+        }
+
+        @Override
+        public void createDevice(String parent, String name, Object input, Object output) {
+        }
+
+        @Override
         public void mount(Object type, Object opts, String mountpoint) {
         }
 

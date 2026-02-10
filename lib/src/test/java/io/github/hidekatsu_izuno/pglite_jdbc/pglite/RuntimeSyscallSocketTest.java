@@ -15,16 +15,39 @@ class RuntimeSyscallSocketTest {
         var runtime = mod.runtime();
         var instance = extractInstance(runtime);
         var sockaddrPtr = 0x3000;
+        var sendPtr = 0x3400;
+        var recvPtr = 0x3500;
+        var recvAddrPtr = 0x3600;
+        var recvAddrLenPtr = 0x3700;
         writeIpv4Sockaddr(instance, sockaddrPtr, 5432);
+        instance.memory().write(sendPtr, new byte[] { 1, 2, 3, 4 }, 0, 4);
 
-        var fd = invokeLong(runtime, "syscallSocket", new long[] { 2, 1, 0 });
+        var fd = invokeLong(runtime, "syscallSocket", new long[] { 2, 2, 0 });
         assertTrue(fd >= 3);
         assertEquals(0L, invokeLong(runtime, "syscallBind", new long[] { fd, sockaddrPtr, 16 }));
         assertEquals(
             4L,
-            invokeLong(runtime, "syscallSendto", new long[] { fd, 0, 4, 0, sockaddrPtr, 16 })
+            invokeLong(
+                runtime,
+                "syscallSendto",
+                new long[] { fd, sendPtr, 4, 0, sockaddrPtr, 16 }
+            )
         );
-        assertEquals(0L, invokeLong(runtime, "syscallRecvfrom", new long[] { fd, 0, 8, 0, 0, 0 }));
+        assertEquals(
+            4L,
+            invokeLong(
+                runtime,
+                "syscallRecvfrom",
+                new long[] { fd, recvPtr, 8, 0, recvAddrPtr, recvAddrLenPtr }
+            )
+        );
+        assertEquals(2, Short.toUnsignedInt(instance.memory().readShort(recvAddrPtr)));
+        assertEquals(16, instance.memory().readI32(recvAddrLenPtr));
+        assertEquals(1, instance.memory().read(recvPtr) & 0xFF);
+        assertEquals(
+            -6L,
+            invokeLong(runtime, "syscallRecvfrom", new long[] { fd, recvPtr, 8, 0, 0, 0 })
+        );
         assertEquals(0L, invokeLong(runtime, "syscallClose", new long[] { fd }));
         assertEquals(-8L, invokeLong(runtime, "syscallSendto", new long[] { fd, 0, 1, 0, 0, 0 }));
     }
@@ -35,6 +58,33 @@ class RuntimeSyscallSocketTest {
         var runtime = mod.runtime();
         var fd = invokeLong(runtime, "syscallSocket", new long[] { 999, 1, 0 });
         assertTrue(fd >= 3);
+        assertEquals(0L, invokeLong(runtime, "syscallClose", new long[] { fd }));
+    }
+
+    @Test
+    void shouldRequireConnectionForStreamSendtoAndRecvfrom() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var runtime = mod.runtime();
+        var instance = extractInstance(runtime);
+        var sockaddrPtr = 0x3230;
+        var sendPtr = 0x3240;
+        writeIpv4Sockaddr(instance, sockaddrPtr, 15432);
+        instance.memory().write(sendPtr, new byte[] { 1 }, 0, 1);
+
+        var fd = invokeLong(runtime, "syscallSocket", new long[] { 2, 1, 0 });
+        assertTrue(fd >= 3);
+        assertEquals(
+            -53L,
+            invokeLong(
+                runtime,
+                "syscallSendto",
+                new long[] { fd, sendPtr, 1, 0, sockaddrPtr, 16 }
+            )
+        );
+        assertEquals(
+            -53L,
+            invokeLong(runtime, "syscallRecvfrom", new long[] { fd, 0x3260, 8, 0, 0, 0 })
+        );
         assertEquals(0L, invokeLong(runtime, "syscallClose", new long[] { fd }));
     }
 
@@ -64,7 +114,7 @@ class RuntimeSyscallSocketTest {
         var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
         var runtime = mod.runtime();
         var instance = extractInstance(runtime);
-        var fd = invokeLong(runtime, "syscallSocket", new long[] { 2, 1, 0 });
+        var fd = invokeLong(runtime, "syscallSocket", new long[] { 2, 2, 0 });
         assertTrue(fd >= 3);
 
         var unsupportedFamily = 0x3200;
@@ -113,7 +163,7 @@ class RuntimeSyscallSocketTest {
 
     private static void writeIpv4Sockaddr(Instance instance, int ptr, int port) {
         instance.memory().writeShort(ptr, (short) 2);
-        instance.memory().writeShort(ptr + 2, (short) port);
+        instance.memory().writeShort(ptr + 2, Short.reverseBytes((short) port));
         instance.memory().writeI32(ptr + 4, 0x0100007f);
     }
 }
