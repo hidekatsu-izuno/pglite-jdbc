@@ -4,6 +4,7 @@ import io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.pglite;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -15,7 +16,9 @@ class RuntimeFsHelperParityTest {
         fs.mkdirTree("/tmp/lazy");
         fs.createLazyFile("/tmp/lazy", "pgcrypto.tar.gz", "pgcrypto.tar.gz", true, true);
         assertTrue(fs.analyzePath("/tmp/lazy/pgcrypto.tar.gz").exists);
+        assertEquals(0L, fs.stat("/tmp/lazy/pgcrypto.tar.gz").size);
         assertTrue(fs.readFile("/tmp/lazy/pgcrypto.tar.gz").length > 0);
+        assertTrue(fs.stat("/tmp/lazy/pgcrypto.tar.gz").size > 0L);
 
         fs.unlink("/tmp/lazy/pgcrypto.tar.gz");
         assertFalse(fs.analyzePath("/tmp/lazy/pgcrypto.tar.gz").exists);

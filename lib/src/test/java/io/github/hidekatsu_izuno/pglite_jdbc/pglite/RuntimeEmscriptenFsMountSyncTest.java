@@ -9,6 +9,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -76,5 +77,37 @@ class RuntimeEmscriptenFsMountSyncTest {
         fs.writeFile("/../../outside.bin", "x".getBytes(StandardCharsets.UTF_8));
         assertTrue(fs.analyzePath("/outside.bin").exists);
         assertEquals("x", new String(fs.readFile("/outside.bin"), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void shouldPopulateIdbfsMountFromSyncedState() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var fs = mod.runtime().FS();
+        fs.mount("IDBFS", Map.of(), "/mnt/idb");
+        fs.writeFile("/mnt/idb/cache.txt", "cached".getBytes(StandardCharsets.UTF_8));
+
+        var flushCount = new AtomicInteger(0);
+        fs.syncfs(
+            false,
+            err -> {
+                assertNull(err);
+                flushCount.incrementAndGet();
+            }
+        );
+        assertEquals(1, flushCount.get());
+
+        fs.unlink("/mnt/idb/cache.txt");
+        assertFalse(fs.analyzePath("/mnt/idb/cache.txt").exists);
+
+        var populateCount = new AtomicInteger(0);
+        fs.syncfs(
+            true,
+            err -> {
+                assertNull(err);
+                populateCount.incrementAndGet();
+            }
+        );
+        assertEquals(1, populateCount.get());
+        assertEquals("cached", new String(fs.readFile("/mnt/idb/cache.txt"), StandardCharsets.UTF_8));
     }
 }

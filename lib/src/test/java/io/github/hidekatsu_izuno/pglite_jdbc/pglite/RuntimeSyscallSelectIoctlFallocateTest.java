@@ -198,6 +198,24 @@ class RuntimeSyscallSelectIoctlFallocateTest {
         assertEquals('X', instance.memory().read(0x3704) & 0xFF);
     }
 
+    @Test
+    void shouldReturnEnottyForTiocgptpeerOnRegularFile() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var runtime = mod.runtime();
+        var instance = extractInstance(runtime);
+        var path = "/tmp/pglite/base/ioctl-regular.txt";
+        var pathPtr = writeCString(instance, 0x3900, path);
+        var fd = invokeLong(
+            runtime,
+            "syscallOpenAt",
+            new long[] { AT_FDCWD, pathPtr, 0x40 | 0x2, 0 }
+        );
+        assertTrue(fd >= 3);
+
+        assertEquals(-59L, invokeLong(runtime, "syscallIoctl", new long[] { fd, 21531, 0 }));
+        assertEquals(0L, invokeLong(runtime, "syscallClose", new long[] { fd }));
+    }
+
     private static Instance extractInstance(Object runtime) {
         try {
             var modField = runtime.getClass().getDeclaredField("mod");

@@ -38,6 +38,24 @@ class RuntimeDynamicLinkParityTest {
     }
 
     @Test
+    void shouldNormalizeDlopenPathInFailureReason() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var runtime = mod.runtime();
+        var instance = extractInstance(runtime);
+        var handlePtr = 0x7920;
+        for (var i = 0; i < 128; i++) {
+            instance.memory().writeByte(handlePtr + i, (byte) 0);
+        }
+        writeCString(instance, handlePtr + 36, "/tmp/../missing/libfake.so");
+
+        var ret = invokeLong(runtime, "dlopenJs", new long[] { handlePtr });
+        assertEquals(0L, ret);
+        var error = readDlError(runtime);
+        assertTrue(error.contains("libfake.so"), error);
+        assertTrue(!error.contains("/../"), error);
+    }
+
+    @Test
     void shouldCaptureDlsymFailureReason() {
         var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
         var runtime = mod.runtime();

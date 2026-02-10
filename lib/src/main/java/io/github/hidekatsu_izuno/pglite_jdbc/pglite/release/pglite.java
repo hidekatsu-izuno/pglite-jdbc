@@ -2121,6 +2121,7 @@ public final class pglite {
                     setDlError("_dlopen_js", "library path is empty");
                     return 0L;
                 }
+                filename = normalizeDlPathLikeJs(filename);
                 var flags = this.mod.instance.memory().readInt(handlePtr + 4);
                 loadDynamicLibrary(filename, handlePtr, flags);
                 clearDlError();
@@ -2165,6 +2166,17 @@ public final class pglite {
                 recordHostNote("_dlopen_js failed: " + e.getMessage());
                 return 0L;
             }
+        }
+
+        private String normalizeDlPathLikeJs(String path) {
+            if (path == null || path.isEmpty()) {
+                return path;
+            }
+            var normalized = java.nio.file.Paths.get(path).normalize().toString();
+            if (path.startsWith("/") && !normalized.startsWith("/")) {
+                normalized = "/" + normalized;
+            }
+            return normalized.replace('\\', '/');
         }
 
         private long dlsymJs(long[] args) {
@@ -2296,7 +2308,7 @@ public final class pglite {
             }
         }
 
-        private static boolean isMemoryAccessFault(RuntimeException e) {
+        private static boolean isMemoryAccessFault(Throwable e) {
             var message = e.getMessage();
             if (message == null) {
                 return false;
@@ -2956,6 +2968,9 @@ public final class pglite {
                 this.mmapRegions.put(ptr, new MmapRegion(fd, offset, len, true, prot, flags));
                 return 0;
             } catch (Exception e) {
+                if (isMemoryAccessFault(e)) {
+                    return err(EFAULT);
+                }
                 return err(EIO);
             }
         }
@@ -2997,6 +3012,9 @@ public final class pglite {
                 }
                 return 0;
             } catch (Exception e) {
+                if (isMemoryAccessFault(e)) {
+                    return err(EFAULT);
+                }
                 return err(EIO);
             }
         }
@@ -3907,6 +3925,10 @@ public final class pglite {
                     return fd;
                 }
                 var opts = decodeOpenOptions(flags);
+                var accessMode = flags & 0x3;
+                if (accessMode != 0x1 && this.fs instanceof EmscriptenFsImpl fsImpl) {
+                    fsImpl.ensureLazyFileMaterialized(normalizedPath);
+                }
                 if ((flags & 0x40) != 0) { // O_CREAT
                     var parent = target.getParent();
                     if (parent != null) {
@@ -3933,6 +3955,9 @@ public final class pglite {
             } catch (java.nio.file.FileSystemException e) {
                 return err(EIO);
             } catch (Exception e) {
+                if (isMemoryAccessFault(e)) {
+                    return err(EFAULT);
+                }
                 return err(EIO);
             }
         }
@@ -3949,6 +3974,9 @@ public final class pglite {
                 closeDescriptor(fd);
                 return 0;
             } catch (Exception e) {
+                if (isMemoryAccessFault(e)) {
+                    return err(EFAULT);
+                }
                 return err(EIO);
             }
         }
@@ -4094,6 +4122,8 @@ public final class pglite {
                 state.boundAddress = sockaddr.address;
                 state.boundPort = sockaddr.port;
                 return 0;
+            } catch (ErrnoException e) {
+                return err(e.errno);
             } catch (Exception e) {
                 return err(EIO);
             }
@@ -4115,7 +4145,8 @@ public final class pglite {
                 }
                 SockAddr destination = null;
                 if (state.type == SOCK_DGRAM) {
-                    if (args.length >= 6 && args[4] != 0L) {
+                    var hasSockAddr = args.length >= 6 && args[4] != 0L;
+                    if (hasSockAddr) {
                         destination = validateSockaddrForSyscall((int) args[4], (int) args[5]);
                         if (destination == null) {
                             return err(EINVAL);
@@ -4161,6 +4192,13 @@ public final class pglite {
                     }
                 }
                 return len;
+            } catch (ErrnoException e) {
+                return err(e.errno);
+            } catch (RuntimeException e) {
+                if (isMemoryAccessFault(e)) {
+                    return err(EFAULT);
+                }
+                return err(EIO);
             } catch (Exception e) {
                 return err(EIO);
             }
@@ -4185,7 +4223,13 @@ public final class pglite {
                 }
                 var queued = state.recvQueue.pollFirst();
                 if (queued == null) {
-                    return 0;
+                    if (
+                        state.type == SOCK_STREAM &&
+                        (state.connectedAddress == null || state.connectedPort <= 0)
+                    ) {
+                        return err(ENOTCONN);
+                    }
+                    return err(EAGAIN);
                 }
                 var readLen = Math.min(len, queued.buffer.length);
                 this.mod.instance.memory().write((int) args[1], queued.buffer, 0, readLen);
@@ -4211,6 +4255,11 @@ public final class pglite {
                     }
                 }
                 return readLen;
+            } catch (RuntimeException e) {
+                if (isMemoryAccessFault(e)) {
+                    return err(EFAULT);
+                }
+                return err(EIO);
             } catch (Exception e) {
                 return err(EIO);
             }
@@ -4316,6 +4365,8 @@ public final class pglite {
                 return read;
             } catch (ErrnoException e) {
                 return err(e.errno);
+            } catch (RuntimeException e) {
+                return err(EFAULT);
             } catch (Exception e) {
                 return err(EIO);
             }
@@ -4821,6 +4872,8 @@ public final class pglite {
                 return err(EBADF);
             } catch (ErrnoException e) {
                 return err(e.errno);
+            } catch (RuntimeException e) {
+                return err(EFAULT);
             } catch (Exception e) {
                 return err(EIO);
             }
@@ -5399,7 +5452,7 @@ public final class pglite {
                         var argp = resolveIoctlArgPointer(args);
                         var socket = this.socketStateTable.get(fd);
                         if (socket == null) {
-                            yield hasTty ? err(ENOTTY) : err(EINVAL);
+                            yield err(ENOTTY);
                         }
                         if (argp != 0) {
                             var bytes = socket.recvQueue.peekFirst();
@@ -6679,11 +6732,12 @@ public final class pglite {
         private final Path rootDir;
         private final RuntimeDeviceRegistry deviceRegistry;
         private final Map<String, MountEntry> mounts = new ConcurrentHashMap<>();
+        private final Map<String, LazyFileEntry> lazyFiles = new ConcurrentHashMap<>();
 
         private EmscriptenFsImpl(Path rootDir, RuntimeDeviceRegistry deviceRegistry) {
             this.rootDir = rootDir;
             this.deviceRegistry = deviceRegistry;
-            this.mounts.put("/", new MountEntry("/", "MEMFS", null, null));
+            this.mounts.put("/", new MountEntry("/", MountBackend.MEMFS, "MEMFS", null, null, null));
         }
 
         @Override
@@ -6782,6 +6836,7 @@ public final class pglite {
                     StandardOpenOption.TRUNCATE_EXISTING,
                     StandardOpenOption.WRITE
                 );
+                this.lazyFiles.remove(normalize(path));
             } catch (Exception e) {
                 throw new RuntimeBridgeException("writeFile", e);
             }
@@ -6790,6 +6845,7 @@ public final class pglite {
         @Override
         public byte[] readFile(String path) {
             try {
+                ensureLazyFileMaterialized(path);
                 return Files.readAllBytes(resolve(path));
             } catch (Exception e) {
                 throw new RuntimeBridgeException("readFile", e);
@@ -6800,6 +6856,7 @@ public final class pglite {
         public void unlink(String path) {
             try {
                 Files.delete(resolve(path));
+                this.lazyFiles.remove(normalize(path));
             } catch (Exception e) {
                 throw new RuntimeBridgeException("unlink", e);
             }
@@ -6814,16 +6871,21 @@ public final class pglite {
             boolean canWrite
         ) {
             try {
-                var base = resolve(parent);
+                var normalizedParent = normalize(parent);
+                var normalizedPath = normalize(
+                    normalizedParent + ((name == null || name.isEmpty()) ? "" : "/" + name)
+                );
+                var base = resolve(normalizedParent);
                 Files.createDirectories(base);
-                var target = base.resolve(name);
+                var target = resolve(normalizedPath);
                 Files.write(
                     target,
-                    readLazyFilePayload(data),
+                    new byte[0],
                     StandardOpenOption.CREATE,
                     StandardOpenOption.TRUNCATE_EXISTING,
                     StandardOpenOption.WRITE
                 );
+                this.lazyFiles.put(normalizedPath, new LazyFileEntry(data));
             } catch (Exception e) {
                 throw new RuntimeBridgeException("createLazyFile", e);
             }
@@ -6855,8 +6917,13 @@ public final class pglite {
                 );
             }
             mkdirTree(normalized);
-            var hostRoot = resolveHostRoot(type, opts);
-            this.mounts.put(normalized, new MountEntry(normalized, type, opts, hostRoot));
+            var backend = resolveMountBackend(type);
+            var hostRoot = resolveHostRoot(type, opts, backend);
+            var syncRoot = resolveSyncRoot(normalized, backend);
+            this.mounts.put(
+                normalized,
+                new MountEntry(normalized, backend, type, opts, hostRoot, syncRoot)
+            );
         }
 
         @Override
@@ -6942,14 +7009,25 @@ public final class pglite {
                     if (entry == null) {
                         continue;
                     }
-                    if (entry.hostRoot != null) {
-                        Files.createDirectories(entry.hostRoot);
-                        if (populate) {
-                            try (var ignored = Files.newDirectoryStream(entry.hostRoot)) {
+                    switch (entry.backend) {
+                        case NODEFS -> {
+                            if (entry.hostRoot != null) {
+                                Files.createDirectories(entry.hostRoot);
                             }
                         }
-                    } else {
-                        Files.createDirectories(resolve(entry.mountpoint));
+                        case IDBFS -> {
+                            var mountRoot = resolve(entry.mountpoint);
+                            Files.createDirectories(mountRoot);
+                            if (entry.syncRoot != null) {
+                                Files.createDirectories(entry.syncRoot);
+                                if (populate) {
+                                    copyDirectoryTree(entry.syncRoot, mountRoot);
+                                } else {
+                                    copyDirectoryTree(mountRoot, entry.syncRoot);
+                                }
+                            }
+                        }
+                        case MEMFS -> Files.createDirectories(resolve(entry.mountpoint));
                     }
                 }
             } catch (Exception e) {
@@ -6975,18 +7053,80 @@ public final class pglite {
             writeFile(normalized, new byte[0]);
         }
 
+        private void ensureLazyFileMaterialized(String path) {
+            var normalized = normalize(path);
+            var lazyEntry = this.lazyFiles.get(normalized);
+            if (lazyEntry == null || lazyEntry.materialized) {
+                return;
+            }
+            synchronized (lazyEntry) {
+                if (lazyEntry.materialized) {
+                    return;
+                }
+                var target = resolve(normalized);
+                var parent = target.getParent();
+                if (parent != null) {
+                    try {
+                        Files.createDirectories(parent);
+                    } catch (Exception e) {
+                        throw new RuntimeBridgeException("createLazyFile", e);
+                    }
+                }
+                var payload = readLazyFilePayload(lazyEntry.source);
+                try {
+                    Files.write(
+                        target,
+                        payload,
+                        StandardOpenOption.CREATE,
+                        StandardOpenOption.TRUNCATE_EXISTING,
+                        StandardOpenOption.WRITE
+                    );
+                } catch (Exception e) {
+                    throw new RuntimeBridgeException("createLazyFile", e);
+                }
+                lazyEntry.materialized = true;
+            }
+        }
+
+        private static final class LazyFileEntry {
+            private final Object source;
+            private volatile boolean materialized;
+
+            private LazyFileEntry(Object source) {
+                this.source = source;
+                this.materialized = false;
+            }
+        }
+
         private static final class MountEntry {
+            private final MountBackend backend;
             private final String mountpoint;
             private final Object type;
             private final Object opts;
             private final Path hostRoot;
+            private final Path syncRoot;
 
-            private MountEntry(String mountpoint, Object type, Object opts, Path hostRoot) {
+            private MountEntry(
+                String mountpoint,
+                MountBackend backend,
+                Object type,
+                Object opts,
+                Path hostRoot,
+                Path syncRoot
+            ) {
                 this.mountpoint = mountpoint;
+                this.backend = backend;
                 this.type = type;
                 this.opts = opts;
                 this.hostRoot = hostRoot;
+                this.syncRoot = syncRoot;
             }
+        }
+
+        private enum MountBackend {
+            MEMFS,
+            NODEFS,
+            IDBFS
         }
 
         private Path resolve(String path) {
@@ -7037,8 +7177,18 @@ public final class pglite {
             return best;
         }
 
-        private Path resolveHostRoot(Object type, Object opts) {
-            if (!isNodeFs(type)) {
+        private MountBackend resolveMountBackend(Object type) {
+            if (isNodeFs(type)) {
+                return MountBackend.NODEFS;
+            }
+            if (isIdbFs(type)) {
+                return MountBackend.IDBFS;
+            }
+            return MountBackend.MEMFS;
+        }
+
+        private Path resolveHostRoot(Object type, Object opts, MountBackend backend) {
+            if (backend != MountBackend.NODEFS) {
                 return null;
             }
             if (!(opts instanceof Map<?, ?> map)) {
@@ -7057,6 +7207,63 @@ public final class pglite {
             }
         }
 
+        private Path resolveSyncRoot(String mountpoint, MountBackend backend) {
+            if (backend != MountBackend.IDBFS) {
+                return null;
+            }
+            var sanitized = mountpoint.equals("/")
+                ? "_root"
+                : mountpoint.substring(1).replace('/', '_');
+            var syncRoot = this.rootDir.resolve(".idbfs").resolve(sanitized).normalize();
+            try {
+                Files.createDirectories(syncRoot);
+            } catch (Exception e) {
+                throw new RuntimeBridgeException("mount", e);
+            }
+            return syncRoot;
+        }
+
+        private void copyDirectoryTree(Path from, Path to) {
+            try {
+                if (!Files.exists(from)) {
+                    return;
+                }
+                Files.createDirectories(to);
+                try (var stream = Files.walk(from)) {
+                    stream.forEach(sourcePath -> {
+                        try {
+                            var relative = from.relativize(sourcePath);
+                            var targetPath = to.resolve(relative.toString()).normalize();
+                            if (Files.isDirectory(sourcePath)) {
+                                Files.createDirectories(targetPath);
+                            } else if (Files.isSymbolicLink(sourcePath)) {
+                                var linkTarget = Files.readSymbolicLink(sourcePath);
+                                Files.deleteIfExists(targetPath);
+                                Files.createSymbolicLink(targetPath, linkTarget);
+                            } else {
+                                var parent = targetPath.getParent();
+                                if (parent != null) {
+                                    Files.createDirectories(parent);
+                                }
+                                Files.copy(
+                                    sourcePath,
+                                    targetPath,
+                                    StandardCopyOption.REPLACE_EXISTING,
+                                    StandardCopyOption.COPY_ATTRIBUTES
+                                );
+                            }
+                        } catch (Exception e) {
+                            throw new RuntimeBridgeException("syncfs", e);
+                        }
+                    });
+                }
+            } catch (RuntimeBridgeException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new RuntimeBridgeException("syncfs", e);
+            }
+        }
+
         private static boolean isNodeFs(Object type) {
             if (type == null) {
                 return false;
@@ -7066,6 +7273,17 @@ public final class pglite {
             }
             var simpleName = type.getClass().getSimpleName();
             return simpleName != null && simpleName.toUpperCase().contains("NODEFS");
+        }
+
+        private static boolean isIdbFs(Object type) {
+            if (type == null) {
+                return false;
+            }
+            if (type instanceof String text) {
+                return "IDBFS".equalsIgnoreCase(text);
+            }
+            var simpleName = type.getClass().getSimpleName();
+            return simpleName != null && simpleName.toUpperCase().contains("IDBFS");
         }
 
         private static String normalize(String path) {

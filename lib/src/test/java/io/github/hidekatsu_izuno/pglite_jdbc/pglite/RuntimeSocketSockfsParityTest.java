@@ -11,6 +11,75 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RuntimeSocketSockfsParityTest {
     @Test
+    void shouldRequireConnectionForStreamSendtoEvenWithExplicitDestination() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var runtime = mod.runtime();
+        var instance = extractInstance(runtime);
+        var sourceFd = invokeLong(runtime, "syscallSocket", new long[] { 2, 1, 0 });
+        var targetFd = invokeLong(runtime, "syscallSocket", new long[] { 2, 1, 0 });
+        assertTrue(sourceFd >= 3);
+        assertTrue(targetFd >= 3);
+
+        var targetAddrPtr = writeSockaddr(instance, 0x4050, 6101);
+        assertEquals(0L, invokeLong(runtime, "syscallBind", new long[] { targetFd, targetAddrPtr, 16 }));
+
+        var sendPtr = writePayload(instance, 0x4060, new byte[] { 9, 8, 7 });
+        assertEquals(
+            -53L,
+            invokeLong(
+                runtime,
+                "syscallSendto",
+                new long[] { sourceFd, sendPtr, 3, 0, targetAddrPtr, 16 }
+            )
+        );
+
+        assertEquals(0L, invokeLong(runtime, "syscallClose", new long[] { sourceFd }));
+        assertEquals(0L, invokeLong(runtime, "syscallClose", new long[] { targetFd }));
+    }
+
+    @Test
+    void shouldReturnEfaultForInvalidSendtoAndRecvfromPointers() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var runtime = mod.runtime();
+        var instance = extractInstance(runtime);
+        var sourceFd = invokeLong(runtime, "syscallSocket", new long[] { 2, 2, 0 });
+        var targetFd = invokeLong(runtime, "syscallSocket", new long[] { 2, 2, 0 });
+        assertTrue(sourceFd >= 3);
+        assertTrue(targetFd >= 3);
+
+        var targetAddrPtr = writeSockaddr(instance, 0x4090, 6102);
+        assertEquals(0L, invokeLong(runtime, "syscallBind", new long[] { targetFd, targetAddrPtr, 16 }));
+        assertEquals(
+            -21L,
+            invokeLong(
+                runtime,
+                "syscallSendto",
+                new long[] { sourceFd, 0x7FFF_FFF0L, 8, 0, targetAddrPtr, 16 }
+            )
+        );
+
+        var sendPtr = writePayload(instance, 0x40A0, new byte[] { 1, 2, 3 });
+        assertEquals(
+            3L,
+            invokeLong(
+                runtime,
+                "syscallSendto",
+                new long[] { sourceFd, sendPtr, 3, 0, targetAddrPtr, 16 }
+            )
+        );
+        assertEquals(
+            -21L,
+            invokeLong(
+                runtime,
+                "syscallRecvfrom",
+                new long[] { targetFd, 0x7FFF_FFF0L, 3, 0, 0, 0 }
+            )
+        );
+        assertEquals(0L, invokeLong(runtime, "syscallClose", new long[] { sourceFd }));
+        assertEquals(0L, invokeLong(runtime, "syscallClose", new long[] { targetFd }));
+    }
+
+    @Test
     void shouldReturnZeroWhenRecvfromQueueIsEmpty() {
         var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
         var runtime = mod.runtime();
@@ -20,7 +89,10 @@ class RuntimeSocketSockfsParityTest {
 
         var recvPtr = 0x4500;
         instance.memory().writeByte(recvPtr, (byte) 0x7F);
-        assertEquals(0L, invokeLong(runtime, "syscallRecvfrom", new long[] { fd, recvPtr, 16, 0, 0, 0 }));
+        assertEquals(
+            -6L,
+            invokeLong(runtime, "syscallRecvfrom", new long[] { fd, recvPtr, 16, 0, 0, 0 })
+        );
         assertEquals(0x7F, instance.memory().read(recvPtr) & 0xFF);
         assertEquals(0L, invokeLong(runtime, "syscallClose", new long[] { fd }));
     }
@@ -54,7 +126,7 @@ class RuntimeSocketSockfsParityTest {
             invokeLong(
                 runtime,
                 "syscallSendto",
-                new long[] { sourceFd, sendPtr, 4, 0, alternateAddrPtr, 16 }
+                new long[] { sourceFd, sendPtr, 4, 0, 0, 0 }
             )
         );
 
