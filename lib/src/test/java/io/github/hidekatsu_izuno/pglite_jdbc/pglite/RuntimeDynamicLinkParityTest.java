@@ -1,8 +1,12 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pglite;
 
 import com.dylibso.chicory.runtime.Instance;
+import com.dylibso.chicory.wasm.types.Export;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.pglite;
 import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -127,6 +131,22 @@ class RuntimeDynamicLinkParityTest {
         assertTrue(readDlError(runtime).contains("symbol pointer fault"));
     }
 
+    @Test
+    void shouldResolveHandleZeroSymbolFromGlobalLibrary() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var runtime = mod.runtime();
+        var runtimeMod = extractRuntimeMod(runtime);
+        var instance = extractInstance(runtime);
+        var fakeSymbol = "__fake_global_malloc__";
+        var mainMalloc = findExport(instance, "malloc");
+        injectGlobalLibrary(runtime, runtimeMod, instance, fakeSymbol, mainMalloc);
+
+        var symbolPtr = writeCString(instance, 0x7F40, fakeSymbol);
+        var ret = invokeLong(runtime, "dlsymJs", new long[] { 0, symbolPtr, 0 });
+        assertNotEquals(0L, ret);
+        assertEquals("", readDlError(runtime));
+    }
+
     private static String readDlError(Object runtime) {
         try {
             var method = runtime.getClass().getDeclaredMethod("lastDlError");
@@ -148,6 +168,88 @@ class RuntimeDynamicLinkParityTest {
         } catch (ReflectiveOperationException e) {
             throw new RuntimeException("Failed to extract runtime instance", e);
         }
+    }
+
+    private static Object extractRuntimeMod(Object runtime) {
+        try {
+            var modField = runtime.getClass().getDeclaredField("mod");
+            modField.setAccessible(true);
+            return modField.get(runtime);
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException("Failed to extract runtime mod", e);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void injectGlobalLibrary(
+        Object runtime,
+        Object runtimeMod,
+        Instance instance,
+        String symbolName,
+        Export export
+    ) {
+        try {
+            Class<?> dynamicLibraryClass = null;
+            for (var nested : runtime.getClass().getDeclaredClasses()) {
+                if ("DynamicLibrary".equals(nested.getSimpleName())) {
+                    dynamicLibraryClass = nested;
+                    break;
+                }
+            }
+            if (dynamicLibraryClass == null) {
+                throw new IllegalStateException("DynamicLibrary class not found");
+            }
+            var constructor = dynamicLibraryClass.getDeclaredConstructor(
+                String.class,
+                int.class,
+                boolean.class,
+                boolean.class,
+                Instance.class,
+                int.class,
+                int.class,
+                Map.class,
+                java.util.List.class
+            );
+            constructor.setAccessible(true);
+            var exports = new LinkedHashMap<String, Export>();
+            exports.put(symbolName, export);
+            var exportOrder = new ArrayList<String>();
+            exportOrder.add(symbolName);
+            var fakeLib = constructor.newInstance(
+                "__fake_global__",
+                9001,
+                true,
+                false,
+                instance,
+                0,
+                instance.table(0).size(),
+                exports,
+                exportOrder
+            );
+
+            var handleMapField = runtime.getClass().getDeclaredField("loadedLibsByHandle");
+            handleMapField.setAccessible(true);
+            var handleMap = (Map<Integer, Object>) handleMapField.get(runtime);
+            handleMap.put(9001, fakeLib);
+
+            var nameMapField = runtime.getClass().getDeclaredField("loadedLibsByName");
+            nameMapField.setAccessible(true);
+            var nameMap = (Map<String, Object>) nameMapField.get(runtime);
+            nameMap.put("__fake_global__", fakeLib);
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException("Failed to inject fake global dynamic library", e);
+        }
+    }
+
+    private static Export findExport(Instance instance, String name) {
+        var section = instance.module().exportSection();
+        for (var i = 0; i < section.exportCount(); i++) {
+            var export = section.getExport(i);
+            if (name.equals(export.name())) {
+                return export;
+            }
+        }
+        throw new IllegalStateException("Export not found: " + name);
     }
 
     private static int writeCString(Instance instance, int ptr, String value) {

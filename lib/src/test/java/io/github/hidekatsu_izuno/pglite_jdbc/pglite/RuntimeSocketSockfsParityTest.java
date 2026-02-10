@@ -11,6 +11,29 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RuntimeSocketSockfsParityTest {
     @Test
+    void shouldReturnZeroWhenRecvfromQueueIsEmpty() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var runtime = mod.runtime();
+        var instance = extractInstance(runtime);
+        var fd = invokeLong(runtime, "syscallSocket", new long[] { 2, 2, 0 });
+        assertTrue(fd >= 3);
+
+        var recvPtr = 0x4500;
+        instance.memory().writeByte(recvPtr, (byte) 0x7F);
+        assertEquals(0L, invokeLong(runtime, "syscallRecvfrom", new long[] { fd, recvPtr, 16, 0, 0, 0 }));
+        assertEquals(0x7F, instance.memory().read(recvPtr) & 0xFF);
+        assertEquals(0L, invokeLong(runtime, "syscallClose", new long[] { fd }));
+    }
+
+    @Test
+    void shouldReturnEprotonosupportForInvalidStreamProtocol() {
+        var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
+        var runtime = mod.runtime();
+        var result = invokeLong(runtime, "syscallSocket", new long[] { 2, 1, 17 });
+        assertEquals(-66L, result);
+    }
+
+    @Test
     void shouldUseConnectedStreamDestinationAndPreserveUnreadTail() {
         var mod = pglite.PostgresModFactory(new postgresMod.PartialPostgresMod()).join();
         var runtime = mod.runtime();

@@ -50,6 +50,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -2190,7 +2191,7 @@ public final class pglite {
                 }
 
                 var lib = handlePtr == 0
-                    ? this.loadedLibsByHandle.get(0)
+                    ? resolveDlsymDefaultLibrary(symbol)
                     : this.loadedLibsByHandle.get(handlePtr);
                 if (lib == null && handlePtr != 0) {
                     setDlError("_dlsym_js", "library handle not found: " + handlePtr);
@@ -2251,6 +2252,32 @@ public final class pglite {
                 recordHostNote("_dlsym_js failed: " + e.getMessage());
                 return 0L;
             }
+        }
+
+        private DynamicLibrary resolveDlsymDefaultLibrary(String symbol) {
+            var main = this.loadedLibsByHandle.get(0);
+            if (main != null && main.exports.containsKey(symbol)) {
+                return main;
+            }
+            var visited = Collections.newSetFromMap(
+                new IdentityHashMap<DynamicLibrary, Boolean>()
+            );
+            if (main != null) {
+                visited.add(main);
+            }
+            for (var lib : this.loadedLibsByHandle.values()) {
+                if (lib == null || visited.contains(lib)) {
+                    continue;
+                }
+                visited.add(lib);
+                if (!lib.global) {
+                    continue;
+                }
+                if (lib.exports.containsKey(symbol)) {
+                    return lib;
+                }
+            }
+            return main;
         }
 
         private boolean writeDlsymSymbolIndex(int symbolIndexPtr, int symbolIndex) {
@@ -4067,8 +4094,6 @@ public final class pglite {
                 state.boundAddress = sockaddr.address;
                 state.boundPort = sockaddr.port;
                 return 0;
-            } catch (ErrnoException e) {
-                return err(e.errno);
             } catch (Exception e) {
                 return err(EIO);
             }
@@ -4136,8 +4161,6 @@ public final class pglite {
                     }
                 }
                 return len;
-            } catch (ErrnoException e) {
-                return err(e.errno);
             } catch (Exception e) {
                 return err(EIO);
             }
@@ -4162,12 +4185,7 @@ public final class pglite {
                 }
                 var queued = state.recvQueue.pollFirst();
                 if (queued == null) {
-                    if (state.type == SOCK_STREAM) {
-                        if (state.connectedAddress == null || state.connectedPort <= 0) {
-                            return err(ENOTCONN);
-                        }
-                    }
-                    return err(EAGAIN);
+                    return 0;
                 }
                 var readLen = Math.min(len, queued.buffer.length);
                 this.mod.instance.memory().write((int) args[1], queued.buffer, 0, readLen);
