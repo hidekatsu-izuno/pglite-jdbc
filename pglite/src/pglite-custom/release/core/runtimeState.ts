@@ -28,6 +28,5 @@ export function bindRuntimeModule(
 	module: RuntimeModule,
 ): RuntimeModule {
 	state.module = module;
-	module.__customRuntimeState = state;
 	return module;
 }

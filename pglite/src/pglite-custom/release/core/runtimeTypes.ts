@@ -51,7 +51,6 @@ export interface RuntimeModule extends EmscriptenModule {
 	locateFile?: (path: string, scriptDirectory: string) => string;
 	dataFileDownloads?: Record<string, { loaded: number; total: number }>;
 	preloadResults?: Record<string, { fromCache: boolean }>;
-	__customRuntimeState?: RuntimeState;
 	[key: string]: unknown;
 }
 
