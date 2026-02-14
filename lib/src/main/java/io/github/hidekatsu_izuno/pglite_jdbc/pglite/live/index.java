@@ -172,7 +172,6 @@ public class index {
                         });
                     });
                     return new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQuery<T>() {
-                        private volatile io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryResults<T> latest = initial;
                         private volatile boolean dead;
 
                         @Override
@@ -211,14 +210,10 @@ public class index {
                                     new IllegalArgumentException("offset and limit cannot be provided for non-windowed queries")
                                 );
                             }
-                            return debouncedRefresh.call(new QueryRefreshArgs(offset, limit)).then(ignored -> {
-                                latest = latestRef.get();
-                                return null;
-                            });
+                            return debouncedRefresh.call(new QueryRefreshArgs(offset, limit)).then(ignored -> null);
                         }
                     };
                 }).then(liveQueryObj -> {
-                    @SuppressWarnings("unchecked")
                     var liveQuery = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQuery<T>) liveQueryObj;
                     attachAbort(options.signal(), () -> liveQuery.unsubscribe(null));
                     return liveQuery;
@@ -484,7 +479,6 @@ public class index {
                         }
                     };
                 }).then(liveQueryObj -> {
-                    @SuppressWarnings("unchecked")
                     var liveQuery = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQuery<T>) liveQueryObj;
                     attachAbort(options.signal(), () -> liveQuery.unsubscribe(null));
                     return liveQuery;
@@ -493,12 +487,10 @@ public class index {
         };
     }
 
-    @SuppressWarnings("unchecked")
     private static <T> T castRow(Map<String, Object> row) {
         return (T) row;
     }
 
-    @SuppressWarnings("unchecked")
     private static List<Map<String, Object>> toRowMaps(List<?> rows) {
         var out = new ArrayList<Map<String, Object>>();
         if (rows == null) {
@@ -532,7 +524,6 @@ public class index {
         return changed;
     }
 
-    @SuppressWarnings("unchecked")
     private static <T> Map<String, Object> rowMap(T row) {
         if (row instanceof Map<?, ?> map) {
             return (Map<String, Object>) map;
@@ -553,7 +544,6 @@ public class index {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private static <T> List<T> orderedRows(
         LinkedHashMap<Object, Map<String, Object>> rowsMap,
         LinkedHashMap<Object, Object> afterMap
@@ -583,7 +573,6 @@ public class index {
         return ordered;
     }
 
-    @SuppressWarnings("unchecked")
     private static <T> List<T> stripAfterColumn(List<T> rows) {
         var out = new ArrayList<T>(rows.size());
         for (var row : rows) {
@@ -788,7 +777,6 @@ public class index {
         return tx.query(sql, new Object[] { viewName }, null).then(result -> {
             var out = new ArrayList<TableRef>();
             for (var row : result.rows()) {
-                @SuppressWarnings("unchecked")
                 var mapRow = row instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.<String, Object>of();
                 out.add(
                     new TableRef(
@@ -868,7 +856,6 @@ public class index {
         return utils.formatQuery(pg, query, params, null).then(formattedQuery -> {
             if (!isWindowed) {
                 return pg.query((String) formattedQuery, null, null).then(result -> {
-                    @SuppressWarnings("unchecked")
                     var rows = (List<T>) result.rows();
                     return new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryResults<>(
                         rows,
@@ -890,7 +877,6 @@ public class index {
                         var countRow = rowMap(countResult.rows().getFirst());
                         totalCount = asInt(countRow.get("count"));
                     }
-                    @SuppressWarnings("unchecked")
                     var rows = (List<T>) windowResult.rows();
                     return new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryResults<>(
                         rows,
@@ -966,7 +952,6 @@ public class index {
         return utils.formatQuery(pg, query, params, null).then(formattedQuery -> {
             var windowSql = "SELECT * FROM (" + formattedQuery + ") AS live_query_window LIMIT " + limit + " OFFSET " + offset;
             return pg.query(windowSql, null, null).then(windowResult -> {
-                @SuppressWarnings("unchecked")
                 var rows = (List<T>) windowResult.rows();
                 return new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryResults<>(
                     rows,

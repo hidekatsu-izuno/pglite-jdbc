@@ -7,12 +7,10 @@ import java.util.function.Consumer;
 public class emAsmRegistry_generated {
     private emAsmRegistry_generated() {}
 
-    @SuppressWarnings("unchecked")
     private static Map<String, Object> moduleMap(runtimeTypes.EmResolverContext context) {
         return context.state().moduleArg();
     }
 
-    @SuppressWarnings("unchecked")
     private static String eventType(Object event) {
         if (event instanceof Map<?, ?> map) {
             var type = map.get("type");
@@ -21,7 +19,6 @@ public class emAsmRegistry_generated {
         return "";
     }
 
-    @SuppressWarnings("unchecked")
     private static String eventData(Object event) {
         if (event instanceof Map<?, ?> map) {
             var data = map.get("data");

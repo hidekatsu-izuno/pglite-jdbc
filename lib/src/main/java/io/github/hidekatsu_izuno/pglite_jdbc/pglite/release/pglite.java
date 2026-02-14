@@ -176,7 +176,6 @@ public class pglite {
             if (payload == null) {
                 payload = new byte[0];
             }
-            fs.putBuffer(payload);
 
             readFn.accept(0, payload.length);
             writeFn.accept(0, payload.length);
@@ -189,7 +188,6 @@ public class pglite {
 
     private static final class RuntimeFs implements postgresMod.FS {
         private final Map<String, byte[]> files = new ConcurrentHashMap<>();
-        private volatile byte[] buffer = new byte[0];
 
         @Override
         public void createPreloadedFile(
@@ -221,10 +219,6 @@ public class pglite {
         @Override
         public void writeFile(String path, byte[] data) {
             files.put(path, data != null ? data : new byte[0]);
-        }
-
-        void putBuffer(byte[] bytes) {
-            this.buffer = bytes != null ? bytes : new byte[0];
         }
     }
 }

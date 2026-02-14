@@ -82,7 +82,6 @@ public class RuntimePackageLoaderParityTest {
         final Map<String, Map<String, Integer>> dataFileDownloads = new HashMap<>();
         final Map<String, Map<String, Boolean>> preloadResults = new HashMap<>();
         byte[] preloadedPackage;
-        String status;
 
         CapturingRuntimeModule(boolean calledRun) {
             this.calledRun = calledRun;
@@ -123,7 +122,6 @@ public class RuntimePackageLoaderParityTest {
 
         @Override
         public void setStatus(String status) {
-            this.status = status;
         }
 
         @Override

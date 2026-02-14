@@ -1,6 +1,5 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pglite;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;

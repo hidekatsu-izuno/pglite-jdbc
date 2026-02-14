@@ -23,7 +23,6 @@ public class LiveNamespaceOverloadParityTest {
     void shouldSupportStringOverloads() {
         var pg = new StubPGlite();
         var setup = index.live.setup().setup(pg, Map.of(), false).join();
-        @SuppressWarnings("unchecked")
         var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
         assertNotNull(namespace);
 
@@ -41,7 +40,6 @@ public class LiveNamespaceOverloadParityTest {
     void shouldRejectPartialWindowOptions() {
         var pg = new StubPGlite();
         var setup = index.live.setup().setup(pg, Map.of(), false).join();
-        @SuppressWarnings("unchecked")
         var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
         var options = new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryOptions<>(
             "select 1",
@@ -59,7 +57,6 @@ public class LiveNamespaceOverloadParityTest {
     void shouldRequireKeyForChangesAndIncrementalQuery() {
         var pg = new StubPGlite();
         var setup = index.live.setup().setup(pg, Map.of(), false).join();
-        @SuppressWarnings("unchecked")
         var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
 
         var changesOptions = new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveChangesOptions<>(
@@ -85,13 +82,13 @@ public class LiveNamespaceOverloadParityTest {
 
     @Test
     void shouldComputeChangesInsertUpdateDelete() {
+        @SuppressWarnings("unchecked")
         var pg = new SequencedStubPGlite(
             List.of(Map.of("id", 1, "name", "a")),
             List.of(Map.of("id", 1, "name", "b"), Map.of("id", 2, "name", "c")),
             List.of(Map.of("id", 2, "name", "c"))
         );
         var setup = index.live.setup().setup(pg, Map.of(), false).join();
-        @SuppressWarnings("unchecked")
         var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
 
         var changes = namespace.changes("select * from t", null, "id", ignored -> {}).join();
@@ -117,12 +114,12 @@ public class LiveNamespaceOverloadParityTest {
 
     @Test
     void shouldUnsubscribeWhenSignalIsAborted() {
+        @SuppressWarnings("unchecked")
         var pg = new SequencedStubPGlite(
             List.of(Map.of("id", 1, "name", "a")),
             List.of(Map.of("id", 1, "name", "b"))
         );
         var setup = index.live.setup().setup(pg, Map.of(), false).join();
-        @SuppressWarnings("unchecked")
         var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
         var controller = new AbortController();
         var options = new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveIncrementalQueryOptions<>(
@@ -143,7 +140,6 @@ public class LiveNamespaceOverloadParityTest {
     void shouldNotAllowSubscribeAfterFullyUnsubscribed() {
         var pg = new StubPGlite();
         var setup = index.live.setup().setup(pg, Map.of(), false).join();
-        @SuppressWarnings("unchecked")
         var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
 
         var liveQuery = namespace.query("select 1", null, null).join();
@@ -159,7 +155,6 @@ public class LiveNamespaceOverloadParityTest {
     void shouldRejectOffsetLimitOnNonWindowedRefresh() {
         var pg = new StubPGlite();
         var setup = index.live.setup().setup(pg, Map.of(), false).join();
-        @SuppressWarnings("unchecked")
         var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
 
         var liveQuery = namespace.query("select 1", null, null).join();
@@ -171,7 +166,6 @@ public class LiveNamespaceOverloadParityTest {
     void shouldSkipRefreshWhenNoQuerySubscribers() {
         var pg = new CountingStubPGlite();
         var setup = index.live.setup().setup(pg, Map.of(), false).join();
-        @SuppressWarnings("unchecked")
         var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
 
         var liveQuery = namespace.query("select 1", null, null).join();
@@ -184,7 +178,6 @@ public class LiveNamespaceOverloadParityTest {
     void shouldSkipRefreshWhenNoChangesSubscribers() {
         var pg = new CountingStubPGlite();
         var setup = index.live.setup().setup(pg, Map.of(), false).join();
-        @SuppressWarnings("unchecked")
         var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
 
         var changes = namespace.changes("select * from t", null, "id", null).join();
@@ -197,7 +190,6 @@ public class LiveNamespaceOverloadParityTest {
     void shouldClearAllSubscribersWhenUnsubscribeCallbackProvided() {
         var pg = new CountingStubPGlite();
         var setup = index.live.setup().setup(pg, Map.of(), false).join();
-        @SuppressWarnings("unchecked")
         var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
 
         var live = namespace.<Map<String, Object>>query("select 1", null, results -> {}).join();
@@ -213,7 +205,6 @@ public class LiveNamespaceOverloadParityTest {
     void shouldUseWindowedSqlAndTotalCount() {
         var pg = new WindowedStubPGlite();
         var setup = index.live.setup().setup(pg, Map.of(), false).join();
-        @SuppressWarnings("unchecked")
         var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
         var options = new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryOptions<Map<String, Object>>(
             "select * from items",
@@ -235,7 +226,6 @@ public class LiveNamespaceOverloadParityTest {
     void shouldEmitResetWhenRetryingMissingRelationError() {
         var pg = new MissingRelationThenDataStubPGlite();
         var setup = index.live.setup().setup(pg, Map.of(), false).join();
-        @SuppressWarnings("unchecked")
         var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
 
         var changes = namespace.changes("select * from t", null, "id", null).join();
@@ -249,7 +239,6 @@ public class LiveNamespaceOverloadParityTest {
     void shouldFilterLiveChangeMetadataFields() {
         var pg = new MetadataFieldsStubPGlite();
         var setup = index.live.setup().setup(pg, Map.of(), false).join();
-        @SuppressWarnings("unchecked")
         var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
 
         var changes = namespace.changes("select * from t", null, "id", null).join();
@@ -260,7 +249,6 @@ public class LiveNamespaceOverloadParityTest {
     void shouldRetryWindowedLiveQueryOnMissingRelationError() {
         var pg = new WindowedRetryStubPGlite();
         var setup = index.live.setup().setup(pg, Map.of(), false).join();
-        @SuppressWarnings("unchecked")
         var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
         var options = new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryOptions<Map<String, Object>>(
             "select * from items",
@@ -280,7 +268,6 @@ public class LiveNamespaceOverloadParityTest {
     void shouldRefreshAgainWhenWindowedTotalCountChanges() {
         var pg = new WindowedChangingCountStubPGlite();
         var setup = index.live.setup().setup(pg, Map.of(), false).join();
-        @SuppressWarnings("unchecked")
         var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
         var seenTotals = new java.util.concurrent.CopyOnWriteArrayList<Integer>();
         var query = namespace.query(
@@ -303,12 +290,12 @@ public class LiveNamespaceOverloadParityTest {
 
     @Test
     void shouldKeepIncrementalOrderForStringKeys() {
+        @SuppressWarnings("unchecked")
         var pg = new SequencedStubPGlite(
             List.of(Map.of("id", "a", "name", "A"), Map.of("id", "b", "name", "B")),
             List.of(Map.of("id", "b", "name", "B"), Map.of("id", "a", "name", "A"))
         );
         var setup = index.live.setup().setup(pg, Map.of(), false).join();
-        @SuppressWarnings("unchecked")
         var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
         var latestOrder = new java.util.concurrent.atomic.AtomicReference<List<String>>(List.of());
         var latestRows = new java.util.concurrent.atomic.AtomicReference<List<Map<String, Object>>>(List.of());
@@ -332,12 +319,12 @@ public class LiveNamespaceOverloadParityTest {
 
     @Test
     void shouldApplyMiddleReorderUsingAfterMarker() {
+        @SuppressWarnings("unchecked")
         var pg = new SequencedStubPGlite(
             List.of(Map.of("id", "a", "name", "A"), Map.of("id", "b", "name", "B"), Map.of("id", "c", "name", "C")),
             List.of(Map.of("id", "a", "name", "A"), Map.of("id", "c", "name", "C"), Map.of("id", "b", "name", "B"))
         );
         var setup = index.live.setup().setup(pg, Map.of(), false).join();
-        @SuppressWarnings("unchecked")
         var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
         var latestOrder = new java.util.concurrent.atomic.AtomicReference<List<String>>(List.of());
         var live = namespace.incrementalQuery(
@@ -357,12 +344,12 @@ public class LiveNamespaceOverloadParityTest {
 
     @Test
     void shouldAllowResubscribeForIncrementalAfterUnsubscribeAllWithoutUpdates() {
+        @SuppressWarnings("unchecked")
         var pg = new SequencedStubPGlite(
             List.of(Map.of("id", 1, "name", "a")),
             List.of(Map.of("id", 1, "name", "b"))
         );
         var setup = index.live.setup().setup(pg, Map.of(), false).join();
-        @SuppressWarnings("unchecked")
         var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
         var updates = new java.util.concurrent.atomic.AtomicInteger();
         var live = namespace.incrementalQuery("select * from t", null, "id", null).join();
@@ -468,7 +455,7 @@ public class LiveNamespaceOverloadParityTest {
         private final Queue<List<Map<String, Object>>> sequences = new ArrayDeque<>();
 
         SequencedStubPGlite(
-            List<Map<String, Object>>... rows
+            @SuppressWarnings("unchecked") List<Map<String, Object>>... rows
         ) {
             for (var row : rows) {
                 sequences.add(row);
