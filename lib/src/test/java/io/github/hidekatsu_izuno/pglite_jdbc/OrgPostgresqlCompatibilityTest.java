@@ -32,7 +32,9 @@ class OrgPostgresqlCompatibilityTest {
             assertEquals(16, pgConnection.getDefaultFetchSize());
             assertEquals(AutoSave.CONSERVATIVE, pgConnection.getAutosave());
             assertEquals(PreferQueryMode.EXTENDED, pgConnection.getPreferQueryMode());
-            assertEquals(5, connection.unwrap(PGConnection.class).getQueryTimeout());
+            try (var statement = connection.createStatement()) {
+                assertEquals(5, statement.getQueryTimeout());
+            }
 
             try (var prepared = connection.prepareStatement("SELECT ?::int4 AS value")) {
                 var pgStatement = prepared.unwrap(PGStatement.class);

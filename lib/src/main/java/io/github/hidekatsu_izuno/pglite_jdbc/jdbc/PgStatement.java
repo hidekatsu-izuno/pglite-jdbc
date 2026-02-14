@@ -1,7 +1,5 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.jdbc;
 
-import io.github.hidekatsu_izuno.pglite_jdbc.PGStatement;
-import io.github.hidekatsu_izuno.pglite_jdbc.core.BaseStatement;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -49,15 +47,11 @@ final class PgStatement implements InvocationHandler {
         var interfaces = preparedSql == null
             ? new Class<?>[] {
                 Statement.class,
-                BaseStatement.class,
-                PGStatement.class,
                 org.postgresql.PGStatement.class,
             }
             : new Class<?>[] {
                 PreparedStatement.class,
                 Statement.class,
-                BaseStatement.class,
-                PGStatement.class,
                 org.postgresql.PGStatement.class,
             };
         var handler = new PgStatement(connection, preparedSql);

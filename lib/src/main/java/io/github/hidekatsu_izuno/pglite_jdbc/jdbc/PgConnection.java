@@ -1,8 +1,5 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.jdbc;
 
-import io.github.hidekatsu_izuno.pglite_jdbc.PGConnection;
-import io.github.hidekatsu_izuno.pglite_jdbc.PGNotification;
-import io.github.hidekatsu_izuno.pglite_jdbc.core.BaseConnection;
 import io.github.hidekatsu_izuno.pglite_jdbc.core.QueryExecutor;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_;
 import java.lang.reflect.Array;
@@ -29,7 +26,8 @@ import org.postgresql.util.PSQLException;
 import org.postgresql.util.PSQLState;
 
 public final class PgConnection implements InvocationHandler {
-    private static final PGNotification[] EMPTY_NOTIFICATIONS = new PGNotification[0];
+    private static final org.postgresql.PGNotification[] EMPTY_NOTIFICATIONS =
+        new org.postgresql.PGNotification[0];
 
     private final QueryExecutor queryExecutor;
     private final String url;
@@ -81,8 +79,6 @@ public final class PgConnection implements InvocationHandler {
             PgConnection.class.getClassLoader(),
             new Class<?>[] {
                 Connection.class,
-                BaseConnection.class,
-                PGConnection.class,
                 org.postgresql.PGConnection.class,
             },
             handler
@@ -283,7 +279,6 @@ public final class PgConnection implements InvocationHandler {
             }
             case "setNetworkTimeout" -> null;
             case "getNetworkTimeout" -> 0;
-            case "getQueryExecutor" -> queryExecutor;
             case "getNotifications", "getNotifications" + "\u0000" -> EMPTY_NOTIFICATIONS;
             case "getBackendPID" -> 0;
             case "cancelQuery" -> null;
