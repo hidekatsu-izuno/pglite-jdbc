@@ -26,7 +26,7 @@ final class PgCopyManagerAdapter extends org.postgresql.copy.CopyManager {
     private final PgConnection connection;
 
     PgCopyManagerAdapter(PgConnection connection) throws SQLException {
-        super(PgBaseConnectionAdapter.create(connection, new java.util.concurrent.atomic.AtomicReference<>()));
+        super((org.postgresql.core.BaseConnection) connection.proxy());
         this.connection = connection;
     }
 

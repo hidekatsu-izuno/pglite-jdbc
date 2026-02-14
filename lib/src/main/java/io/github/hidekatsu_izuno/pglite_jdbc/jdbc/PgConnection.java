@@ -6,28 +6,36 @@ import java.lang.reflect.Array;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.SQLFeatureNotSupportedException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.TimeZone;
+import java.util.Timer;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.logging.Logger;
 import org.postgresql.jdbc.AutoSave;
 import org.postgresql.jdbc.PreferQueryMode;
+import org.postgresql.util.LruCache;
 import org.postgresql.util.PSQLException;
 import org.postgresql.util.PSQLState;
 
 public final class PgConnection implements InvocationHandler {
     private static final org.postgresql.PGNotification[] EMPTY_NOTIFICATIONS =
         new org.postgresql.PGNotification[0];
+    private static final org.postgresql.jdbc.TimestampUtils TIMESTAMP_UTILS =
+        new org.postgresql.jdbc.TimestampUtils(false, TimeZone::getDefault);
 
     private final QueryExecutor queryExecutor;
     private final String url;
@@ -52,6 +60,11 @@ public final class PgConnection implements InvocationHandler {
     private org.postgresql.copy.CopyManager copyApi;
     private org.postgresql.fastpath.Fastpath fastpathApi;
     private org.postgresql.largeobject.LargeObjectManager largeObjectApi;
+    private final org.postgresql.core.TypeInfo typeInfo = createTypeInfo();
+    private final LruCache<org.postgresql.jdbc.FieldMetadata.Key, org.postgresql.jdbc.FieldMetadata>
+        fieldMetadataCache = new LruCache<>(0, 0, false);
+    private final Timer sharedTimer = new Timer(true);
+    private final org.postgresql.core.QueryExecutor coreQueryExecutor = createCoreQueryExecutor();
 
     private PgConnection(
         QueryExecutor queryExecutor,
@@ -80,6 +93,7 @@ public final class PgConnection implements InvocationHandler {
             new Class<?>[] {
                 Connection.class,
                 org.postgresql.PGConnection.class,
+                org.postgresql.core.BaseConnection.class,
             },
             handler
         );
@@ -302,6 +316,43 @@ public final class PgConnection implements InvocationHandler {
             case "getCopyAPI" -> getCopyAPI();
             case "getFastpathAPI" -> getFastpathAPI();
             case "getLargeObjectAPI" -> getLargeObjectAPI();
+            case "execSQLQuery" -> unsupportedCore("execSQLQuery");
+            case "execSQLUpdate" -> {
+                execControl((String) args[0]);
+                yield null;
+            }
+            case "getQueryExecutor" -> coreQueryExecutor;
+            case "getReplicationProtocol" -> unsupportedCore("getReplicationProtocol");
+            case "getObject" -> getObjectValue((String) args[0], (String) args[1], (byte[]) args[2]);
+            case "getEncoding" -> org.postgresql.core.Encoding.getJVMEncoding("UTF-8");
+            case "getTypeInfo" -> typeInfo;
+            case "haveMinimumServerVersion" -> true;
+            case "encodeString" -> encodeString((String) args[0]);
+            case "escapeString" -> escapeString((String) args[0]);
+            case "getStandardConformingStrings" -> true;
+            case "getTimestampUtils" -> TIMESTAMP_UTILS;
+            case "getLogger" -> Logger.getLogger("io.github.hidekatsu_izuno.pglite_jdbc");
+            case "getStringVarcharFlag" -> true;
+            case "getTransactionState" -> txOpen
+                ? org.postgresql.core.TransactionState.OPEN
+                : org.postgresql.core.TransactionState.IDLE;
+            case "binaryTransferSend" -> false;
+            case "isColumnSanitiserDisabled" -> false;
+            case "addTimerTask" -> {
+                sharedTimer.schedule((java.util.TimerTask) args[0], (Long) args[1]);
+                yield null;
+            }
+            case "purgeTimerTasks" -> {
+                sharedTimer.purge();
+                yield null;
+            }
+            case "getFieldMetadataCache" -> fieldMetadataCache;
+            case "createQuery" -> unsupportedCore("createQuery");
+            case "setFlushCacheOnDeallocate" -> null;
+            case "hintReadOnly" -> readOnly;
+            case "getXmlFactoryFactory" -> unsupportedCore("getXmlFactoryFactory");
+            case "getLogServerErrorDetail" -> true;
+            case "getConvertBooleanToNumeric" -> false;
             case "getPreferQueryMode" -> preferQueryMode;
             case "getAutosave" -> autosave;
             case "setAutosave" -> {
@@ -491,6 +542,10 @@ public final class PgConnection implements InvocationHandler {
         return fastpathApi;
     }
 
+    org.postgresql.fastpath.Fastpath ensureFastpathAPI() throws SQLException {
+        return getFastpathAPI();
+    }
+
     private org.postgresql.largeobject.LargeObjectManager getLargeObjectAPI() throws SQLException {
         ensureOpen();
         if (largeObjectApi == null) {
@@ -519,5 +574,222 @@ public final class PgConnection implements InvocationHandler {
             boxed[i] = Array.get(elements, i);
         }
         return new PgArray(typeName, boxed);
+    }
+
+    private Object unsupportedCore(String method) throws SQLException {
+        throw new SQLFeatureNotSupportedException(method + " is not supported");
+    }
+
+    private Object getObjectValue(String type, String value, byte[] byteValue) {
+        if (value != null) {
+            return value;
+        }
+        if (byteValue != null) {
+            return new String(byteValue, StandardCharsets.UTF_8);
+        }
+        return null;
+    }
+
+    private byte[] encodeString(String value) throws SQLException {
+        if (value == null) {
+            return null;
+        }
+        return value.getBytes(StandardCharsets.UTF_8);
+    }
+
+    private String escapeString(String value) throws SQLException {
+        if (value == null) {
+            return null;
+        }
+        if (value.indexOf('\0') >= 0) {
+            throw new PSQLException("Zero bytes are not allowed in strings", PSQLState.INVALID_PARAMETER_VALUE);
+        }
+        return value.replace("\\", "\\\\").replace("'", "''");
+    }
+
+    private org.postgresql.core.TypeInfo createTypeInfo() {
+        return (org.postgresql.core.TypeInfo) Proxy.newProxyInstance(
+            PgConnection.class.getClassLoader(),
+            new Class<?>[] { org.postgresql.core.TypeInfo.class },
+            (proxy, method, args) -> {
+                var name = method.getName();
+                if (method.getDeclaringClass() == Object.class) {
+                    return switch (name) {
+                        case "toString" -> "PgTypeInfo";
+                        case "hashCode" -> System.identityHashCode(proxy);
+                        case "equals" -> proxy == args[0];
+                        default -> null;
+                    };
+                }
+                return switch (name) {
+                    case "getSQLType" -> {
+                        if (args[0] instanceof Integer oid) {
+                            yield JdbcCompat.oidToJdbcType(oid);
+                        }
+                        yield pgTypeToSqlType((String) args[0]);
+                    }
+                    case "getPGType" -> {
+                        if (args[0] instanceof String typeName) {
+                            yield pgTypeToOid(typeName);
+                        }
+                        yield oidToPgType((Integer) args[0]);
+                    }
+                    case "getPGArrayElement" -> arrayOidToElementOid((Integer) args[0]);
+                    case "getPGArrayType" -> elementOidToArrayOid(pgTypeToOid((String) args[0]));
+                    case "getArrayDelimiter" -> ',';
+                    case "getTypeForAlias" -> args[0];
+                    case "getJavaClass" -> "java.lang.Object";
+                    case "requiresQuoting" -> requiresQuotingOid((Integer) args[0]);
+                    case "requiresQuotingSqlType" -> requiresQuotingSqlType((Integer) args[0]);
+                    case "longOidToInt" -> (int) (long) (Long) args[0];
+                    case "intOidToLong" -> ((Integer) args[0]) & 0xFFFFFFFFL;
+                    case "getPGTypeNamesWithSQLTypes", "getPGTypeOidsWithSQLTypes" ->
+                        java.util.Collections.emptyIterator();
+                    case "getPGobject" -> null;
+                    case "isCaseSensitive", "isSigned" -> true;
+                    case "addCoreType", "addDataType" -> null;
+                    default -> JdbcCompat.defaultReturn(method.getReturnType());
+                };
+            }
+        );
+    }
+
+    private org.postgresql.core.QueryExecutor createCoreQueryExecutor() {
+        return (org.postgresql.core.QueryExecutor) Proxy.newProxyInstance(
+            PgConnection.class.getClassLoader(),
+            new Class<?>[] { org.postgresql.core.QueryExecutor.class },
+            (proxy, method, args) -> {
+                if (method.getDeclaringClass() == Object.class) {
+                    return switch (method.getName()) {
+                        case "toString" -> "PgCoreQueryExecutor";
+                        case "hashCode" -> System.identityHashCode(proxy);
+                        case "equals" -> proxy == args[0];
+                        default -> null;
+                    };
+                }
+                if (method.getName().equals("getAutoSave")) {
+                    return autosave;
+                }
+                throw new SQLFeatureNotSupportedException(
+                    "Core QueryExecutor method is not supported: " + method.getName()
+                );
+            }
+        );
+    }
+
+    private int pgTypeToSqlType(String typeName) {
+        if (typeName == null) {
+            return Types.OTHER;
+        }
+        return switch (typeName.toLowerCase()) {
+            case "bool", "boolean" -> Types.BOOLEAN;
+            case "int2", "smallint" -> Types.SMALLINT;
+            case "int4", "integer", "int" -> Types.INTEGER;
+            case "int8", "bigint" -> Types.BIGINT;
+            case "float4", "real" -> Types.REAL;
+            case "float8", "double", "double precision" -> Types.DOUBLE;
+            case "numeric", "decimal" -> Types.NUMERIC;
+            case "text", "varchar", "character varying", "char", "character" -> Types.VARCHAR;
+            case "bytea" -> Types.BINARY;
+            case "date" -> Types.DATE;
+            case "time" -> Types.TIME;
+            case "timestamp", "timestamptz" -> Types.TIMESTAMP;
+            default -> Types.OTHER;
+        };
+    }
+
+    private int pgTypeToOid(String typeName) {
+        if (typeName == null) {
+            return 0;
+        }
+        return switch (typeName.toLowerCase()) {
+            case "bool", "boolean" -> 16;
+            case "int2", "smallint" -> 21;
+            case "int4", "integer", "int" -> 23;
+            case "int8", "bigint" -> 20;
+            case "text" -> 25;
+            case "float4", "real" -> 700;
+            case "float8", "double", "double precision" -> 701;
+            case "date" -> 1082;
+            case "time" -> 1083;
+            case "timestamp" -> 1114;
+            case "timestamptz" -> 1184;
+            case "numeric", "decimal" -> 1700;
+            case "varchar", "character varying" -> 1043;
+            case "bytea" -> 17;
+            default -> 0;
+        };
+    }
+
+    private String oidToPgType(int oid) {
+        return switch (oid) {
+            case 16 -> "bool";
+            case 21 -> "int2";
+            case 23 -> "int4";
+            case 20 -> "int8";
+            case 25 -> "text";
+            case 700 -> "float4";
+            case 701 -> "float8";
+            case 1082 -> "date";
+            case 1083 -> "time";
+            case 1114 -> "timestamp";
+            case 1184 -> "timestamptz";
+            case 1700 -> "numeric";
+            case 1043 -> "varchar";
+            case 17 -> "bytea";
+            default -> null;
+        };
+    }
+
+    private int elementOidToArrayOid(int oid) {
+        return switch (oid) {
+            case 16 -> 1000;
+            case 21 -> 1005;
+            case 23 -> 1007;
+            case 20 -> 1016;
+            case 25 -> 1009;
+            case 700 -> 1021;
+            case 701 -> 1022;
+            case 1082 -> 1182;
+            case 1083 -> 1183;
+            case 1114 -> 1115;
+            case 1184 -> 1185;
+            case 1700 -> 1231;
+            case 1043 -> 1015;
+            case 17 -> 1001;
+            default -> 0;
+        };
+    }
+
+    private int arrayOidToElementOid(int oid) {
+        return switch (oid) {
+            case 1000 -> 16;
+            case 1005 -> 21;
+            case 1007 -> 23;
+            case 1016 -> 20;
+            case 1009 -> 25;
+            case 1021 -> 700;
+            case 1022 -> 701;
+            case 1182 -> 1082;
+            case 1183 -> 1083;
+            case 1115 -> 1114;
+            case 1185 -> 1184;
+            case 1231 -> 1700;
+            case 1015 -> 1043;
+            case 1001 -> 17;
+            default -> 0;
+        };
+    }
+
+    private boolean requiresQuotingOid(int oid) {
+        return requiresQuotingSqlType(JdbcCompat.oidToJdbcType(oid));
+    }
+
+    private boolean requiresQuotingSqlType(int sqlType) {
+        return switch (sqlType) {
+            case Types.INTEGER, Types.SMALLINT, Types.BIGINT, Types.DECIMAL, Types.NUMERIC,
+                Types.REAL, Types.DOUBLE, Types.FLOAT, Types.BOOLEAN -> false;
+            default -> true;
+        };
     }
 }

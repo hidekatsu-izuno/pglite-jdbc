@@ -5,7 +5,6 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
-import java.util.concurrent.atomic.AtomicReference;
 import org.postgresql.fastpath.Fastpath;
 import org.postgresql.fastpath.FastpathArg;
 import org.postgresql.util.PSQLException;
@@ -37,10 +36,8 @@ final class PgFastpathAdapter extends Fastpath {
     }
 
     static Fastpath create(PgConnection connection) {
-        var holder = new AtomicReference<Fastpath>();
-        var baseConnection = PgBaseConnectionAdapter.create(connection, holder);
+        var baseConnection = (org.postgresql.core.BaseConnection) connection.proxy();
         var fastpath = new PgFastpathAdapter(baseConnection, connection);
-        holder.set(fastpath);
         return fastpath;
     }
 
