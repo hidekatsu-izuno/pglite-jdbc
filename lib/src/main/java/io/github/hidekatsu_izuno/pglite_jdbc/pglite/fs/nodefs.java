@@ -50,7 +50,31 @@ public class nodefs {
 
         @Override
         public Promise<Void> closeFs() {
-            return Promise.resolve(null);
+            if (pg == null) {
+                return Promise.resolve(null);
+            }
+            try {
+                var modField = io.github.hidekatsu_izuno.pglite_jdbc.pglite.pglite.class.getDeclaredField("mod");
+                modField.setAccessible(true);
+                var mod = modField.get(pg);
+                if (mod == null) {
+                    return Promise.resolve(null);
+                }
+                var fsMethod = mod.getClass().getMethod("FS");
+                var fs = fsMethod.invoke(mod);
+                if (fs == null) {
+                    return Promise.resolve(null);
+                }
+                try {
+                    var quitMethod = fs.getClass().getMethod("quit");
+                    quitMethod.invoke(fs);
+                } catch (NoSuchMethodException ignored) {
+                    // Runtime FS may not expose quit in JVM mode.
+                }
+                return Promise.resolve(null);
+            } catch (Throwable e) {
+                return Promise.reject(e instanceof Exception ex ? ex : new RuntimeException(e));
+            }
         }
     }
 }

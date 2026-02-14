@@ -1,5 +1,6 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pglite;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -93,7 +94,7 @@ public class LiveNamespaceOverloadParityTest {
         @SuppressWarnings("unchecked")
         var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
 
-        var changes = namespace.changes("select * from t", null, "id", null).join();
+        var changes = namespace.changes("select * from t", null, "id", ignored -> {}).join();
         assertTrue(changes.initialChanges().stream().anyMatch(c ->
             c instanceof io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.ChangeInsert<?>
         ));
@@ -164,6 +165,213 @@ public class LiveNamespaceOverloadParityTest {
         var liveQuery = namespace.query("select 1", null, null).join();
         var error = assertThrows(RuntimeException.class, () -> liveQuery.refresh(0, 10).join());
         assertTrue(error.getMessage().contains("cannot be provided for non-windowed"));
+    }
+
+    @Test
+    void shouldSkipRefreshWhenNoQuerySubscribers() {
+        var pg = new CountingStubPGlite();
+        var setup = index.live.setup().setup(pg, Map.of(), false).join();
+        @SuppressWarnings("unchecked")
+        var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
+
+        var liveQuery = namespace.query("select 1", null, null).join();
+        assertEquals(1, pg.count);
+        liveQuery.refresh(null, null).join();
+        assertEquals(1, pg.count);
+    }
+
+    @Test
+    void shouldSkipRefreshWhenNoChangesSubscribers() {
+        var pg = new CountingStubPGlite();
+        var setup = index.live.setup().setup(pg, Map.of(), false).join();
+        @SuppressWarnings("unchecked")
+        var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
+
+        var changes = namespace.changes("select * from t", null, "id", null).join();
+        assertEquals(1, pg.count);
+        changes.refresh().join();
+        assertEquals(1, pg.count);
+    }
+
+    @Test
+    void shouldClearAllSubscribersWhenUnsubscribeCallbackProvided() {
+        var pg = new CountingStubPGlite();
+        var setup = index.live.setup().setup(pg, Map.of(), false).join();
+        @SuppressWarnings("unchecked")
+        var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
+
+        var live = namespace.<Map<String, Object>>query("select 1", null, results -> {}).join();
+        var sub = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.function.Consumer<io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryResults<Map<String, Object>>> callback = ignored -> sub.incrementAndGet();
+        live.subscribe(callback);
+        live.unsubscribe(callback).join();
+        live.refresh(null, null).join();
+        assertEquals(0, sub.get());
+    }
+
+    @Test
+    void shouldUseWindowedSqlAndTotalCount() {
+        var pg = new WindowedStubPGlite();
+        var setup = index.live.setup().setup(pg, Map.of(), false).join();
+        @SuppressWarnings("unchecked")
+        var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
+        var options = new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryOptions<Map<String, Object>>(
+            "select * from items",
+            null,
+            1,
+            1,
+            null,
+            null
+        );
+
+        var liveQuery = namespace.query(options).join();
+        assertEquals(3, liveQuery.initialResults().totalCount());
+        assertEquals(1, liveQuery.initialResults().rows().size());
+        assertTrue(pg.queries.stream().anyMatch(sql -> sql.contains("live_query_window LIMIT 1 OFFSET 1")));
+        assertTrue(pg.queries.stream().anyMatch(sql -> sql.contains("live_query_total_count")));
+    }
+
+    @Test
+    void shouldEmitResetWhenRetryingMissingRelationError() {
+        var pg = new MissingRelationThenDataStubPGlite();
+        var setup = index.live.setup().setup(pg, Map.of(), false).join();
+        @SuppressWarnings("unchecked")
+        var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
+
+        var changes = namespace.changes("select * from t", null, "id", null).join();
+        assertTrue(changes.initialChanges().stream().anyMatch(c ->
+            c instanceof io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.ChangeReset<?>
+        ));
+        assertTrue(changes.initialChanges().getFirst() instanceof io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.ChangeReset<?>);
+    }
+
+    @Test
+    void shouldFilterLiveChangeMetadataFields() {
+        var pg = new MetadataFieldsStubPGlite();
+        var setup = index.live.setup().setup(pg, Map.of(), false).join();
+        @SuppressWarnings("unchecked")
+        var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
+
+        var changes = namespace.changes("select * from t", null, "id", null).join();
+        assertEquals(List.of("id", "name"), changes.fields().stream().map(io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Field::name).toList());
+    }
+
+    @Test
+    void shouldRetryWindowedLiveQueryOnMissingRelationError() {
+        var pg = new WindowedRetryStubPGlite();
+        var setup = index.live.setup().setup(pg, Map.of(), false).join();
+        @SuppressWarnings("unchecked")
+        var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
+        var options = new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryOptions<Map<String, Object>>(
+            "select * from items",
+            null,
+            0,
+            1,
+            null,
+            null
+        );
+
+        var liveQuery = namespace.query(options).join();
+        assertEquals(2, liveQuery.initialResults().totalCount());
+        assertEquals(1, liveQuery.initialResults().rows().size());
+    }
+
+    @Test
+    void shouldRefreshAgainWhenWindowedTotalCountChanges() {
+        var pg = new WindowedChangingCountStubPGlite();
+        var setup = index.live.setup().setup(pg, Map.of(), false).join();
+        @SuppressWarnings("unchecked")
+        var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
+        var seenTotals = new java.util.concurrent.CopyOnWriteArrayList<Integer>();
+        var query = namespace.query(
+            new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryOptions<Map<String, Object>>(
+                "select * from items",
+                null,
+                0,
+                1,
+                results -> seenTotals.add(results.rows().size()),
+                null
+            )
+        ).join();
+        query.subscribe(results -> seenTotals.add(results.totalCount()));
+
+        query.refresh(null, null).join();
+
+        assertTrue(seenTotals.stream().anyMatch(v -> v == 1));
+        assertTrue(seenTotals.stream().anyMatch(v -> v == 2));
+    }
+
+    @Test
+    void shouldKeepIncrementalOrderForStringKeys() {
+        var pg = new SequencedStubPGlite(
+            List.of(Map.of("id", "a", "name", "A"), Map.of("id", "b", "name", "B")),
+            List.of(Map.of("id", "b", "name", "B"), Map.of("id", "a", "name", "A"))
+        );
+        var setup = index.live.setup().setup(pg, Map.of(), false).join();
+        @SuppressWarnings("unchecked")
+        var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
+        var latestOrder = new java.util.concurrent.atomic.AtomicReference<List<String>>(List.of());
+        var latestRows = new java.util.concurrent.atomic.AtomicReference<List<Map<String, Object>>>(List.of());
+        var live = namespace.incrementalQuery(
+            new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveIncrementalQueryOptions<Map<String, Object>>(
+                "select * from t",
+                null,
+                "id",
+                results -> {
+                    latestRows.set(results.rows());
+                    latestOrder.set(results.rows().stream().map(row -> String.valueOf(row.get("id"))).toList());
+                },
+                null
+            )
+        ).join();
+        assertEquals(List.of("a", "b"), live.initialResults().rows().stream().map(row -> String.valueOf(row.get("id"))).toList());
+        live.refresh(null, null).join();
+        assertEquals(List.of("b", "a"), latestOrder.get());
+        assertTrue(latestRows.get().stream().noneMatch(row -> row.containsKey("__after__")));
+    }
+
+    @Test
+    void shouldApplyMiddleReorderUsingAfterMarker() {
+        var pg = new SequencedStubPGlite(
+            List.of(Map.of("id", "a", "name", "A"), Map.of("id", "b", "name", "B"), Map.of("id", "c", "name", "C")),
+            List.of(Map.of("id", "a", "name", "A"), Map.of("id", "c", "name", "C"), Map.of("id", "b", "name", "B"))
+        );
+        var setup = index.live.setup().setup(pg, Map.of(), false).join();
+        @SuppressWarnings("unchecked")
+        var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
+        var latestOrder = new java.util.concurrent.atomic.AtomicReference<List<String>>(List.of());
+        var live = namespace.incrementalQuery(
+            new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveIncrementalQueryOptions<Map<String, Object>>(
+                "select * from t",
+                null,
+                "id",
+                results -> latestOrder.set(results.rows().stream().map(row -> String.valueOf(row.get("id"))).toList()),
+                null
+            )
+        ).join();
+
+        assertEquals(List.of("a", "b", "c"), live.initialResults().rows().stream().map(row -> String.valueOf(row.get("id"))).toList());
+        live.refresh(null, null).join();
+        assertEquals(List.of("a", "c", "b"), latestOrder.get());
+    }
+
+    @Test
+    void shouldAllowResubscribeForIncrementalAfterUnsubscribeAllWithoutUpdates() {
+        var pg = new SequencedStubPGlite(
+            List.of(Map.of("id", 1, "name", "a")),
+            List.of(Map.of("id", 1, "name", "b"))
+        );
+        var setup = index.live.setup().setup(pg, Map.of(), false).join();
+        @SuppressWarnings("unchecked")
+        var namespace = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveNamespace) setup.namespaceObj().get("live");
+        var updates = new java.util.concurrent.atomic.AtomicInteger();
+        var live = namespace.incrementalQuery("select * from t", null, "id", null).join();
+
+        live.unsubscribe(null).join();
+        live.subscribe(results -> updates.incrementAndGet());
+        live.refresh(null, null).join();
+
+        assertEquals(0, updates.get());
     }
 
     private static class StubPGlite implements io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.PGliteInterface {
@@ -279,6 +487,116 @@ public class LiveNamespaceOverloadParityTest {
             @SuppressWarnings("unchecked")
             var castRows = (List<T>) next;
             return Promise.resolve(new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Results<>(castRows, castRows.size(), fields, null));
+        }
+    }
+
+    private static class WindowedStubPGlite extends StubPGlite {
+        private final List<String> queries = new ArrayList<>();
+        @Override
+        public <T> Promise<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Results<T>> query(String query, Object[] params, io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.QueryOptions options) {
+            queries.add(query);
+            if (query.contains("COUNT(*) AS count")) {
+                @SuppressWarnings("unchecked")
+                var countRows = (List<T>) List.of(Map.of("count", 3));
+                return Promise.resolve(new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Results<>(countRows, 1, List.of(
+                    new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Field("count", 0)
+                ), null));
+            }
+            @SuppressWarnings("unchecked")
+            var rows = (List<T>) List.of(Map.of("id", 2, "name", "b"));
+            return Promise.resolve(new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Results<>(rows, rows.size(), List.of(
+                new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Field("id", 0),
+                new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Field("name", 0)
+            ), null));
+        }
+    }
+
+    private static class CountingStubPGlite extends StubPGlite {
+        int count;
+        @Override
+        public <T> Promise<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Results<T>> query(String query, Object[] params, io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.QueryOptions options) {
+            count++;
+            @SuppressWarnings("unchecked")
+            var rows = (List<T>) List.of(Map.of("id", 1));
+            return Promise.resolve(new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Results<>(rows, rows.size(), List.of(), null));
+        }
+    }
+
+    private static class MissingRelationThenDataStubPGlite extends StubPGlite {
+        private int calls;
+        @Override
+        public <T> Promise<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Results<T>> query(String query, Object[] params, io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.QueryOptions options) {
+            calls++;
+            if (calls == 1) {
+                return Promise.reject(new RuntimeException("relation \"live_query_state\" does not exist"));
+            }
+            @SuppressWarnings("unchecked")
+            var rows = (List<T>) List.of(Map.of("id", 1, "name", "a"));
+            return Promise.resolve(new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Results<>(rows, rows.size(), List.of(
+                new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Field("id", 0),
+                new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Field("name", 0)
+            ), null));
+        }
+    }
+
+    private static class MetadataFieldsStubPGlite extends StubPGlite {
+        @Override
+        public <T> Promise<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Results<T>> query(String query, Object[] params, io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.QueryOptions options) {
+            @SuppressWarnings("unchecked")
+            var rows = (List<T>) List.of(Map.of("id", 1, "name", "a"));
+            return Promise.resolve(new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Results<>(rows, rows.size(), List.of(
+                new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Field("__after__", 0),
+                new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Field("__op__", 0),
+                new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Field("__changed_columns__", 0),
+                new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Field("id", 0),
+                new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Field("name", 0)
+            ), null));
+        }
+    }
+
+    private static class WindowedRetryStubPGlite extends StubPGlite {
+        private int calls;
+        @Override
+        public <T> Promise<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Results<T>> query(String query, Object[] params, io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.QueryOptions options) {
+            calls++;
+            if (calls == 1) {
+                return Promise.reject(new RuntimeException("prepared statement \"live_query_x\" does not exist"));
+            }
+            if (query.contains("COUNT(*) AS count")) {
+                @SuppressWarnings("unchecked")
+                var countRows = (List<T>) List.of(Map.of("count", 2));
+                return Promise.resolve(new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Results<>(countRows, 1, List.of(
+                    new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Field("count", 0)
+                ), null));
+            }
+            @SuppressWarnings("unchecked")
+            var rows = (List<T>) List.of(Map.of("id", 1, "name", "a"));
+            return Promise.resolve(new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Results<>(rows, rows.size(), List.of(
+                new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Field("id", 0),
+                new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Field("name", 0)
+            ), null));
+        }
+    }
+
+    private static class WindowedChangingCountStubPGlite extends StubPGlite {
+        private int countReads;
+        @Override
+        public <T> Promise<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Results<T>> query(String query, Object[] params, io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.QueryOptions options) {
+            if (query.contains("COUNT(*) AS count")) {
+                countReads++;
+                var count = countReads == 1 ? 1 : 2;
+                @SuppressWarnings("unchecked")
+                var countRows = (List<T>) List.of(Map.of("count", count));
+                return Promise.resolve(new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Results<>(countRows, 1, List.of(
+                    new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Field("count", 0)
+                ), null));
+            }
+            @SuppressWarnings("unchecked")
+            var rows = (List<T>) List.of(Map.of("id", 1, "name", "a"));
+            return Promise.resolve(new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Results<>(rows, rows.size(), List.of(
+                new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Field("id", 0),
+                new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Field("name", 0)
+            ), null));
         }
     }
 }

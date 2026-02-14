@@ -51,11 +51,11 @@ public class interface_ {
 
     public sealed interface Change<T> permits ChangeInsert, ChangeDelete, ChangeUpdate, ChangeReset {}
 
-    public record ChangeInsert<T>(List<String> changedColumns, int after, T row) implements Change<T> {}
+    public record ChangeInsert<T>(List<String> changedColumns, Object after, T row) implements Change<T> {}
 
     public record ChangeDelete<T>(List<String> changedColumns, T row) implements Change<T> {}
 
-    public record ChangeUpdate<T>(List<String> changedColumns, int after, T row) implements Change<T> {}
+    public record ChangeUpdate<T>(List<String> changedColumns, Object after, T row) implements Change<T> {}
 
     public record ChangeReset<T>(T row) implements Change<T> {}
 

@@ -35,6 +35,8 @@ public class LiveSqlHelpersTest {
         assertEquals(1, tables.size());
         assertEquals("items", tables.getFirst().table_name());
         assertTrue(tx.queries.getFirst().contains("WITH RECURSIVE view_dependencies"));
+        assertTrue(tx.queries.getFirst().contains("dependent_name AS table_name"));
+        assertTrue(tx.queries.getFirst().contains("JOIN pg_rewrite r ON vd.dependent_name"));
     }
 
     @Test

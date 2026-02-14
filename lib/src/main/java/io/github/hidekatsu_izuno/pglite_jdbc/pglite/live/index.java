@@ -2,6 +2,7 @@ package io.github.hidekatsu_izuno.pglite_jdbc.pglite.live;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.AbortSignal;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.utils;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -12,6 +13,8 @@ import java.util.function.Consumer;
 
 public class index {
     private index() {}
+    private static final int MAX_RETRIES = 5;
+    private record QueryRefreshArgs(Integer offset, Integer limit) {}
 
     public static record TableRef(
         String table_name,
@@ -69,6 +72,9 @@ public class index {
                 if ((options.offset() == null) != (options.limit() == null)) {
                     return Promise.reject(new IllegalArgumentException("offset and limit must be provided together"));
                 }
+                var isWindowed = options.offset() != null && options.limit() != null;
+                var currentOffset = new java.util.concurrent.atomic.AtomicReference<Integer>(options.offset());
+                var currentLimit = new java.util.concurrent.atomic.AtomicReference<Integer>(options.limit());
                 var subscribers = new ArrayList<Consumer<io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryResults<T>>>();
                 if (options.callback() != null) {
                     subscribers.add(results ->
@@ -82,21 +88,88 @@ public class index {
                         )
                     );
                 }
-                return pg.query(options.query(), options.params(), null).then(initialResult -> {
-                    @SuppressWarnings("unchecked")
-                    var initialRows = (List<T>) initialResult.rows();
-                    var initial = new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryResults<>(
-                        initialRows,
-                        initialResult.affectedRows(),
-                        initialResult.fields(),
-                        initialResult.blob(),
-                        initialResult.rows().size(),
-                        options.offset(),
-                        options.limit()
-                    );
+                return index.<T>runLiveQueryWithRetry(
+                    pg,
+                    options.query(),
+                    options.params(),
+                    isWindowed,
+                    currentOffset.get(),
+                    currentLimit.get(),
+                    0
+                ).then(initial -> {
+                    var totalCountRef = new java.util.concurrent.atomic.AtomicReference<Integer>(initial.totalCount());
+                    var latestRef = new java.util.concurrent.atomic.AtomicReference<io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryResults<T>>(initial);
                     for (var subscriber : List.copyOf(subscribers)) {
                         subscriber.accept(initial);
                     }
+                    var debouncedRefresh = utils.debounceMutex((QueryRefreshArgs args) -> {
+                        var offset = args.offset();
+                        var limit = args.limit();
+                        if (subscribers.isEmpty()) {
+                            return Promise.resolve(null);
+                        }
+                        if (offset != null) {
+                            currentOffset.set(offset);
+                            currentLimit.set(limit);
+                        }
+                        if (!isWindowed) {
+                            return index.<T>runLiveQueryWithRetry(
+                                pg,
+                                options.query(),
+                                options.params(),
+                                false,
+                                null,
+                                null,
+                                0
+                            ).then(result -> {
+                                latestRef.set(result);
+                                for (var subscriber : List.copyOf(subscribers)) {
+                                    subscriber.accept(latestRef.get());
+                                }
+                                return null;
+                            });
+                        }
+                        return index.<T>runWindowQueryWithKnownTotalWithRetry(
+                            pg,
+                            options.query(),
+                            options.params(),
+                            currentOffset.get(),
+                            currentLimit.get(),
+                            totalCountRef.get(),
+                            0
+                        ).then(result -> {
+                            latestRef.set(result);
+                            for (var subscriber : List.copyOf(subscribers)) {
+                                subscriber.accept(latestRef.get());
+                            }
+                            return runWindowTotalCountWithRetry(
+                                pg,
+                                options.query(),
+                                options.params(),
+                                0
+                            ).then(newTotalCount -> {
+                                if (!Objects.equals(totalCountRef.get(), newTotalCount)) {
+                                    totalCountRef.set(newTotalCount);
+                                    return index.<T>runWindowQueryWithKnownTotalWithRetry(
+                                        pg,
+                                        options.query(),
+                                        options.params(),
+                                        currentOffset.get(),
+                                        currentLimit.get(),
+                                        totalCountRef.get(),
+                                        0
+                                    ).then(updated -> {
+                                        latestRef.set(updated);
+                                        for (var subscriber : List.copyOf(subscribers)) {
+                                            subscriber.accept(latestRef.get());
+                                        }
+                                        return null;
+                                    });
+                                }
+                                return null;
+                            });
+                        });
+                    });
                     return new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQuery<T>() {
                         private volatile io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryResults<T> latest = initial;
                         private volatile boolean dead;
@@ -120,11 +193,7 @@ public class index {
                         public Promise<Void> unsubscribe(
                             Consumer<io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryResults<T>> callback
                         ) {
-                            if (callback == null) {
-                                subscribers.clear();
-                            } else {
-                                subscribers.remove(callback);
-                            }
+                            subscribers.clear();
                             if (subscribers.isEmpty()) {
                                 dead = true;
                             }
@@ -136,27 +205,13 @@ public class index {
                             if ((offset == null) != (limit == null)) {
                                 return Promise.reject(new IllegalArgumentException("offset and limit must be provided together"));
                             }
-                            var isWindowed = options.offset() != null && options.limit() != null;
                             if (!isWindowed && (offset != null || limit != null)) {
                                 return Promise.reject(
                                     new IllegalArgumentException("offset and limit cannot be provided for non-windowed queries")
                                 );
                             }
-                            return pg.query(options.query(), options.params(), null).then(result -> {
-                                @SuppressWarnings("unchecked")
-                                var rows = (List<T>) result.rows();
-                                latest = new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryResults<>(
-                                    rows,
-                                    result.affectedRows(),
-                                    result.fields(),
-                                    result.blob(),
-                                    result.rows().size(),
-                                    offset != null ? offset : options.offset(),
-                                    limit != null ? limit : options.limit()
-                                );
-                                for (var subscriber : List.copyOf(subscribers)) {
-                                    subscriber.accept(latest);
-                                }
+                            return debouncedRefresh.call(new QueryRefreshArgs(offset, limit)).then(ignored -> {
+                                latest = latestRef.get();
                                 return null;
                             });
                         }
@@ -202,6 +257,13 @@ public class index {
                 var changesRef = new java.util.concurrent.atomic.AtomicReference<List<io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.Change<T>>>(List.of());
                 var previousByKey = new LinkedHashMap<Object, Map<String, Object>>();
                 var previousOrder = new ArrayList<Object>();
+                var emitReset = new java.util.concurrent.atomic.AtomicBoolean(false);
+                var debouncedRefresh = utils.debounceMutex((Boolean ignored) -> {
+                    if (subscribers.isEmpty() && !changesRef.get().isEmpty()) {
+                        return Promise.resolve(null);
+                    }
+                    return refreshChanges(options, pg, fieldsRef, changesRef, previousByKey, previousOrder, subscribers, emitReset, 0);
+                });
 
                 var liveChanges = new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveChanges<T>() {
                     private volatile boolean dead;
@@ -229,11 +291,7 @@ public class index {
                     public Promise<Void> unsubscribe(
                         Consumer<List<io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.Change<T>>> callback
                     ) {
-                        if (callback == null) {
-                            subscribers.clear();
-                        } else {
-                            subscribers.remove(callback);
-                        }
+                        subscribers.clear();
                         if (subscribers.isEmpty()) {
                             dead = true;
                         }
@@ -242,73 +300,7 @@ public class index {
 
                     @Override
                     public Promise<Void> refresh() {
-                        return pg.query(options.query(), options.params(), null).then(result -> {
-                            var fields = result.fields() != null ? result.fields() : List.<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Field>of();
-                            fieldsRef.set(fields);
-
-                            var currentRows = toRowMaps(result.rows());
-                            var currentByKey = new LinkedHashMap<Object, Map<String, Object>>();
-                            var currentOrder = new ArrayList<Object>();
-                            for (var row : currentRows) {
-                                var keyValue = row.get(options.key());
-                                if (keyValue == null) {
-                                    continue;
-                                }
-                                currentByKey.put(keyValue, row);
-                                currentOrder.add(keyValue);
-                            }
-
-                            var computed = new ArrayList<io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.Change<T>>();
-                            for (var prevKey : previousOrder) {
-                                if (!currentByKey.containsKey(prevKey)) {
-                                    computed.add(
-                                        new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.ChangeDelete<>(
-                                            List.of(),
-                                            castRow(previousByKey.get(prevKey))
-                                        )
-                                    );
-                                }
-                            }
-
-                            Object previousRowKey = null;
-                            for (var keyValue : currentOrder) {
-                                var current = currentByKey.get(keyValue);
-                                var old = previousByKey.get(keyValue);
-                                var after = previousRowKey == null ? -1 : previousRowKey.hashCode();
-                                if (old == null) {
-                                    computed.add(
-                                        new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.ChangeInsert<>(
-                                            List.of(),
-                                            after,
-                                            castRow(current)
-                                        )
-                                    );
-                                } else {
-                                    var changedColumns = changedColumns(old, current, options.key());
-                                    if (!changedColumns.isEmpty()) {
-                                        computed.add(
-                                            new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.ChangeUpdate<>(
-                                                changedColumns,
-                                                after,
-                                                castRow(current)
-                                            )
-                                        );
-                                    }
-                                }
-                                previousRowKey = keyValue;
-                            }
-
-                            previousByKey.clear();
-                            previousByKey.putAll(currentByKey);
-                            previousOrder.clear();
-                            previousOrder.addAll(currentOrder);
-
-                            changesRef.set(List.copyOf(computed));
-                            for (var subscriber : List.copyOf(subscribers)) {
-                                subscriber.accept(changesRef.get());
-                            }
-                            return null;
-                        });
+                        return debouncedRefresh.call(Boolean.TRUE);
                     }
                 };
 
@@ -352,7 +344,7 @@ public class index {
                     Consumer<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Results<T>>
                 >();
                 var rowsMap = new LinkedHashMap<Object, Map<String, Object>>();
-                var afterMap = new LinkedHashMap<Integer, Object>();
+                var afterMap = new LinkedHashMap<Object, Object>();
                 var lastRowsRef = new java.util.concurrent.atomic.AtomicReference<List<T>>(List.of());
                 var fieldsRef = new java.util.concurrent.atomic.AtomicReference<List<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Field>>(List.of());
                 var firstRun = new java.util.concurrent.atomic.AtomicBoolean(true);
@@ -397,20 +389,26 @@ public class index {
                                     }
                                     var merged = new LinkedHashMap<String, Object>(rowsMap.getOrDefault(keyValue, Map.of()));
                                     for (var col : update.changedColumns()) {
+                                        if ("__after__".equals(col)) {
+                                            continue;
+                                        }
                                         merged.put(col, obj.get(col));
                                     }
                                     merged.put(options.key(), keyValue);
                                     rowsMap.put(keyValue, merged);
-                                    afterMap.put(update.after(), keyValue);
+                                    if (update.changedColumns().contains("__after__")) {
+                                        afterMap.put(update.after(), keyValue);
+                                    }
                                 }
                             }
 
                             var orderedRows = index.<T>orderedRows(rowsMap, afterMap);
-                            lastRowsRef.set(orderedRows);
+                            var cleanedRows = index.<T>stripAfterColumn(orderedRows);
+                            lastRowsRef.set(cleanedRows);
                             if (!firstRun.get()) {
                                 runResultCallbacks(callbacks, new io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Results<T>(
-                                    orderedRows,
-                                    orderedRows.size(),
+                                    cleanedRows,
+                                    cleanedRows.size(),
                                     fieldsRef.get(),
                                     null
                                 ));
@@ -440,7 +438,6 @@ public class index {
                     );
 
                     return new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQuery<T>() {
-                        private volatile boolean dead;
                         @Override
                         public io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryResults<T> initialResults() {
                             return initialResults;
@@ -450,9 +447,6 @@ public class index {
                         public void subscribe(
                             Consumer<io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryResults<T>> callback
                         ) {
-                            if (dead) {
-                                throw new IllegalStateException("Live query is no longer active and cannot be subscribed to");
-                            }
                             var bridge = (Consumer<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Results<T>>) (results ->
                                 callback.accept(new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryResults<>(
                                     results.rows(),
@@ -472,18 +466,9 @@ public class index {
                         public Promise<Void> unsubscribe(
                             Consumer<io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryResults<T>> callback
                         ) {
-                            if (callback == null) {
-                                callbackBridges.clear();
-                                callbacks.clear();
-                                dead = true;
-                                return changes.unsubscribe(null);
-                            }
-                            var bridge = callbackBridges.remove(callback);
-                            if (bridge != null) {
-                                callbacks.remove(bridge);
-                            }
+                            callbackBridges.clear();
+                            callbacks.clear();
                             if (callbacks.isEmpty()) {
-                                dead = true;
                                 return changes.unsubscribe(null);
                             }
                             return Promise.resolve(null);
@@ -554,8 +539,8 @@ public class index {
         return Map.of("value", row);
     }
 
-    private static void removeAfterEntry(Map<Integer, Object> afterMap, Object keyValue) {
-        Integer target = null;
+    private static void removeAfterEntry(Map<Object, Object> afterMap, Object keyValue) {
+        Object target = null;
         for (var entry : afterMap.entrySet()) {
             if (Objects.equals(entry.getValue(), keyValue)) {
                 target = entry.getKey();
@@ -570,10 +555,10 @@ public class index {
     @SuppressWarnings("unchecked")
     private static <T> List<T> orderedRows(
         LinkedHashMap<Object, Map<String, Object>> rowsMap,
-        LinkedHashMap<Integer, Object> afterMap
+        LinkedHashMap<Object, Object> afterMap
     ) {
         var ordered = new ArrayList<T>();
-        var lastAfter = -1;
+        Object lastAfter = null;
         for (var i = 0; i < rowsMap.size(); i++) {
             var nextKey = afterMap.get(lastAfter);
             if (nextKey == null) {
@@ -584,7 +569,7 @@ public class index {
                 break;
             }
             ordered.add(castRow(row));
-            lastAfter = nextKey.hashCode();
+            lastAfter = nextKey;
         }
         if (ordered.size() != rowsMap.size()) {
             for (var row : rowsMap.values()) {
@@ -597,6 +582,26 @@ public class index {
         return ordered;
     }
 
+    @SuppressWarnings("unchecked")
+    private static <T> List<T> stripAfterColumn(List<T> rows) {
+        var out = new ArrayList<T>(rows.size());
+        for (var row : rows) {
+            if (row instanceof Map<?, ?> map && map.containsKey("__after__")) {
+                var cleaned = new LinkedHashMap<String, Object>();
+                for (var entry : map.entrySet()) {
+                    if ("__after__".equals(String.valueOf(entry.getKey()))) {
+                        continue;
+                    }
+                    cleaned.put(String.valueOf(entry.getKey()), entry.getValue());
+                }
+                out.add((T) cleaned);
+            } else {
+                out.add(row);
+            }
+        }
+        return out;
+    }
+
     private static <T> void runResultCallbacks(
         List<Consumer<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Results<T>>> callbacks,
         io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Results<T> results
@@ -606,16 +611,141 @@ public class index {
         }
     }
 
+    private static <T> void runChangeCallbacks(
+        List<Consumer<List<io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.Change<T>>>> callbacks,
+        List<io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.Change<T>> changes
+    ) {
+        for (var callback : List.copyOf(callbacks)) {
+            callback.accept(changes);
+        }
+    }
+
+    private static List<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Field> filterLiveChangeFields(
+        List<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Field> fields
+    ) {
+        var out = new ArrayList<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Field>();
+        for (var field : fields) {
+            if ("__after__".equals(field.name()) || "__op__".equals(field.name()) || "__changed_columns__".equals(field.name())) {
+                continue;
+            }
+            out.add(field);
+        }
+        return List.copyOf(out);
+    }
+
+    private static <T> Promise<Void> refreshChanges(
+        io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveChangesOptions<T> options,
+        io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.PGliteInterface pg,
+        java.util.concurrent.atomic.AtomicReference<List<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Field>> fieldsRef,
+        java.util.concurrent.atomic.AtomicReference<List<io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.Change<T>>> changesRef,
+        LinkedHashMap<Object, Map<String, Object>> previousByKey,
+        ArrayList<Object> previousOrder,
+        List<Consumer<List<io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.Change<T>>>> subscribers,
+        java.util.concurrent.atomic.AtomicBoolean emitReset,
+        int retryCount
+    ) {
+        return pg.query(options.query(), options.params(), null).then(result -> {
+            var fields = filterLiveChangeFields(
+                result.fields() != null ? result.fields() : List.<io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Field>of()
+            );
+            fieldsRef.set(fields);
+
+            var currentRows = toRowMaps(result.rows());
+            var currentByKey = new LinkedHashMap<Object, Map<String, Object>>();
+            var currentOrder = new ArrayList<Object>();
+            for (var row : currentRows) {
+                var keyValue = row.get(options.key());
+                if (keyValue == null) {
+                    continue;
+                }
+                currentByKey.put(keyValue, row);
+                currentOrder.add(keyValue);
+            }
+
+            var computed = new ArrayList<io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.Change<T>>();
+            if (emitReset.getAndSet(false)) {
+                computed.add(new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.ChangeReset<>(null));
+            }
+            var previousAfterByKey = new LinkedHashMap<Object, Object>();
+            Object previousOrderAfter = null;
+            for (var prevKey : previousOrder) {
+                previousAfterByKey.put(prevKey, previousOrderAfter);
+                previousOrderAfter = prevKey;
+            }
+
+            for (var prevKey : previousOrder) {
+                if (!currentByKey.containsKey(prevKey)) {
+                    computed.add(
+                        new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.ChangeDelete<>(
+                            List.of(),
+                            castRow(previousByKey.get(prevKey))
+                        )
+                    );
+                }
+            }
+
+            Object previousRowKey = null;
+            for (var keyValue : currentOrder) {
+                var current = currentByKey.get(keyValue);
+                var old = previousByKey.get(keyValue);
+                var after = previousRowKey;
+                if (old == null) {
+                    computed.add(
+                        new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.ChangeInsert<>(
+                            List.of(),
+                            after,
+                            castRow(current)
+                        )
+                    );
+                } else {
+                    var changedColumns = changedColumns(old, current, options.key());
+                    if (!Objects.equals(previousAfterByKey.get(keyValue), after)) {
+                        changedColumns.add("__after__");
+                    }
+                    if (!changedColumns.isEmpty()) {
+                        computed.add(
+                            new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.ChangeUpdate<>(
+                                changedColumns,
+                                after,
+                                castRow(current)
+                            )
+                        );
+                    }
+                }
+                previousRowKey = keyValue;
+            }
+
+            previousByKey.clear();
+            previousByKey.putAll(currentByKey);
+            previousOrder.clear();
+            previousOrder.addAll(currentOrder);
+
+            changesRef.set(List.copyOf(computed));
+            runChangeCallbacks(subscribers, changesRef.get());
+            return null;
+        }, error -> {
+            var message = error != null ? String.valueOf(error.getMessage()) : "";
+            if (message.contains("does not exist") && retryCount < MAX_RETRIES) {
+                emitReset.set(true);
+                previousByKey.clear();
+                previousOrder.clear();
+                return refreshChanges(options, pg, fieldsRef, changesRef, previousByKey, previousOrder, subscribers, emitReset, retryCount + 1);
+            }
+            throw new RuntimeException(error);
+        });
+    }
+
     public static Promise<List<TableRef>> getTablesForView(
         io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.PGliteInterface tx,
         String viewName
     ) {
         var sql = """
             WITH RECURSIVE view_dependencies AS (
+              -- Base case: Get the initial view's dependencies
               SELECT DISTINCT
-                cl.relname AS table_name,
+                cl.relname AS dependent_name,
                 n.nspname AS schema_name,
-                cl.oid AS table_oid,
+                cl.oid AS dependent_oid,
                 n.oid AS schema_oid,
                 cl.relkind = 'v' AS is_view
               FROM pg_rewrite r
@@ -627,15 +757,18 @@ public class index {
                   SELECT oid FROM pg_class WHERE relname = $1 AND relkind = 'v'
                 )
                 AND d.deptype = 'n'
+
               UNION ALL
+
+              -- Recursive case: Traverse dependencies for views
               SELECT DISTINCT
-                cl.relname AS table_name,
+                cl.relname AS dependent_name,
                 n.nspname AS schema_name,
-                cl.oid AS table_oid,
+                cl.oid AS dependent_oid,
                 n.oid AS schema_oid,
                 cl.relkind = 'v' AS is_view
               FROM view_dependencies vd
-              JOIN pg_rewrite r ON vd.table_name = (
+              JOIN pg_rewrite r ON vd.dependent_name = (
                 SELECT relname FROM pg_class WHERE oid = r.ev_class AND relkind = 'v'
               )
               JOIN pg_depend d ON r.oid = d.objid
@@ -643,7 +776,11 @@ public class index {
               JOIN pg_namespace n ON cl.relnamespace = n.oid
               WHERE d.deptype = 'n'
             )
-            SELECT DISTINCT table_name, schema_name, table_oid, schema_oid
+            SELECT DISTINCT
+              dependent_name AS table_name,
+              schema_name,
+              dependent_oid AS table_oid,
+              schema_oid
             FROM view_dependencies
             WHERE NOT is_view;
             """;
@@ -717,6 +854,139 @@ public class index {
             return 0;
         }
         return Integer.parseInt(String.valueOf(value));
+    }
+
+    private static <T> Promise<io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryResults<T>> runLiveQuery(
+        io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.PGliteInterface pg,
+        String query,
+        Object[] params,
+        boolean isWindowed,
+        Integer offset,
+        Integer limit
+    ) {
+        return utils.formatQuery(pg, query, params, null).then(formattedQuery -> {
+            if (!isWindowed) {
+                return pg.query((String) formattedQuery, null, null).then(result -> {
+                    @SuppressWarnings("unchecked")
+                    var rows = (List<T>) result.rows();
+                    return new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryResults<>(
+                        rows,
+                        result.affectedRows(),
+                        result.fields(),
+                        result.blob(),
+                        result.rows().size(),
+                        null,
+                        null
+                    );
+                });
+            }
+            var windowSql = "SELECT * FROM (" + formattedQuery + ") AS live_query_window LIMIT " + limit + " OFFSET " + offset;
+            var countSql = "SELECT COUNT(*) AS count FROM (" + formattedQuery + ") AS live_query_total_count";
+            return pg.query(windowSql, null, null).then(windowResult ->
+                pg.query(countSql, null, null).then(countResult -> {
+                    var totalCount = 0;
+                    if (countResult.rows() != null && !countResult.rows().isEmpty()) {
+                        var countRow = rowMap(countResult.rows().getFirst());
+                        totalCount = asInt(countRow.get("count"));
+                    }
+                    @SuppressWarnings("unchecked")
+                    var rows = (List<T>) windowResult.rows();
+                    return new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryResults<>(
+                        rows,
+                        windowResult.affectedRows(),
+                        windowResult.fields(),
+                        windowResult.blob(),
+                        totalCount,
+                        offset,
+                        limit
+                    );
+                })
+            );
+        });
+    }
+
+    private static <T> Promise<io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryResults<T>> runLiveQueryWithRetry(
+        io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.PGliteInterface pg,
+        String query,
+        Object[] params,
+        boolean isWindowed,
+        Integer offset,
+        Integer limit,
+        int retryCount
+    ) {
+        return runLiveQuery(pg, query, params, isWindowed, offset, limit).then(
+            result -> result,
+            error -> {
+                var message = error != null ? String.valueOf(error.getMessage()) : "";
+                if (message.contains("does not exist") && retryCount < MAX_RETRIES) {
+                    return runLiveQueryWithRetry(pg, query, params, isWindowed, offset, limit, retryCount + 1);
+                }
+                throw new RuntimeException(error);
+            }
+        );
+    }
+
+    private static Promise<Integer> runWindowTotalCountWithRetry(
+        io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.PGliteInterface pg,
+        String query,
+        Object[] params,
+        int retryCount
+    ) {
+        return utils.formatQuery(pg, query, params, null).then(formattedQuery -> {
+            var countSql = "SELECT COUNT(*) AS count FROM (" + formattedQuery + ") AS live_query_total_count";
+            return pg.query(countSql, null, null).then(countResult -> {
+                if (countResult.rows() == null || countResult.rows().isEmpty()) {
+                    return 0;
+                }
+                var countRow = rowMap(countResult.rows().getFirst());
+                return asInt(countRow.get("count"));
+            });
+        }).then(
+            value -> value,
+            error -> {
+                var message = error != null ? String.valueOf(error.getMessage()) : "";
+                if (message.contains("does not exist") && retryCount < MAX_RETRIES) {
+                    return runWindowTotalCountWithRetry(pg, query, params, retryCount + 1);
+                }
+                throw new RuntimeException(error);
+            }
+        );
+    }
+
+    private static <T> Promise<io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryResults<T>> runWindowQueryWithKnownTotalWithRetry(
+        io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.PGliteInterface pg,
+        String query,
+        Object[] params,
+        Integer offset,
+        Integer limit,
+        Integer totalCount,
+        int retryCount
+    ) {
+        return utils.formatQuery(pg, query, params, null).then(formattedQuery -> {
+            var windowSql = "SELECT * FROM (" + formattedQuery + ") AS live_query_window LIMIT " + limit + " OFFSET " + offset;
+            return pg.query(windowSql, null, null).then(windowResult -> {
+                @SuppressWarnings("unchecked")
+                var rows = (List<T>) windowResult.rows();
+                return new io.github.hidekatsu_izuno.pglite_jdbc.pglite.live.interface_.LiveQueryResults<>(
+                    rows,
+                    windowResult.affectedRows(),
+                    windowResult.fields(),
+                    windowResult.blob(),
+                    totalCount,
+                    offset,
+                    limit
+                );
+            });
+        }).then(
+            value -> value,
+            error -> {
+                var message = error != null ? String.valueOf(error.getMessage()) : "";
+                if (message.contains("does not exist") && retryCount < MAX_RETRIES) {
+                    return runWindowQueryWithKnownTotalWithRetry(pg, query, params, offset, limit, totalCount, retryCount + 1);
+                }
+                throw new RuntimeException(error);
+            }
+        );
     }
 
     private static void attachAbort(

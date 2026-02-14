@@ -1,10 +1,15 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pglite.worker;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages;
+import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Event;
+import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.EventTarget;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -45,10 +50,13 @@ public class index {
     public static class WorkerRuntime {
         private final String id;
         private final PGliteWorker db;
+        private final Set<String> connectedTabs = ConcurrentHashMap.newKeySet();
+        private final List<String> warnings = new CopyOnWriteArrayList<>();
 
         WorkerRuntime(String id, PGliteWorker db) {
             this.id = id;
             this.db = db;
+            warnings.add("Browser leader election is disabled; running in single-process worker mode");
         }
 
         public String id() {
@@ -60,27 +68,50 @@ public class index {
         }
 
         public boolean hasTab(String tabId) {
-            return false;
+            return connectedTabs.contains(tabId);
         }
 
         public Promise<Object> rpc(String tabId, String method, Object... args) {
-            return Promise.reject(new UnsupportedOperationException("Worker RPC is disabled in JVM-only mode"));
+            connectedTabs.add(tabId);
+            var api = makeWorkerApi(tabId, db);
+            try {
+                return switch (method) {
+                    case "getDebugLevel" -> api.getDebugLevel().then(value -> (Object) value);
+                    case "close" -> api.close().then(value -> null);
+                    case "execProtocol" -> api.execProtocol((byte[]) args[0]).then(value -> (Object) value);
+                    case "execProtocolStream" -> api.execProtocolStream((byte[]) args[0]).then(value -> (Object) value);
+                    case "execProtocolRaw" -> api.execProtocolRaw((byte[]) args[0]).then(value -> (Object) value);
+                    case "dumpDataDir" -> api.dumpDataDir(args.length > 0 ? (String) args[0] : null).then(value -> (Object) value);
+                    case "syncToFs" -> api.syncToFs().then(value -> null);
+                    default -> {
+                        warnings.add("Unknown worker RPC method: " + method);
+                        yield Promise.reject(new IllegalArgumentException("Unknown worker RPC method: " + method));
+                    }
+                };
+            } catch (Throwable e) {
+                return Promise.reject(e instanceof Exception ex ? ex : new RuntimeException(e));
+            }
         }
 
         public List<String> warnings() {
-            return List.of("Worker runtime is disabled in JVM-only mode");
+            return List.copyOf(warnings);
         }
     }
 
     public static class PGliteWorker implements interface_.PGliteInterface {
         private final io.github.hidekatsu_izuno.pglite_jdbc.pglite.pglite delegate;
+        private final EventTarget eventTarget = new EventTarget();
+        private final List<String> warnings = new CopyOnWriteArrayList<>();
+        private volatile boolean leader = true;
 
         public PGliteWorker() {
             this.delegate = new io.github.hidekatsu_izuno.pglite_jdbc.pglite.pglite();
+            warnings.add("Browser tab coordination is disabled; using single-process worker mode");
         }
 
         public PGliteWorker(io.github.hidekatsu_izuno.pglite_jdbc.pglite.pglite delegate) {
             this.delegate = delegate;
+            warnings.add("Browser tab coordination is disabled; using single-process worker mode");
         }
 
         @Override
@@ -105,6 +136,8 @@ public class index {
 
         @Override
         public Promise<Void> close() {
+            leader = false;
+            eventTarget.dispatchEvent(new Event("leader-change"));
             return delegate.close();
         }
 
@@ -178,21 +211,32 @@ public class index {
         }
 
         public Promise<List<messages.BackendMessage>> execProtocolStream(byte[] message, interface_.ExecProtocolOptions options) {
-            return Promise.reject(new UnsupportedOperationException("Worker stream API is disabled in JVM-only mode"));
+            return delegate.execProtocol(message, options).then(result -> result.messages());
+        }
+
+        public Promise<Void> syncToFs() {
+            return delegate.syncToFs();
         }
 
         public boolean isLeader() {
-            return false;
+            return leader;
         }
 
         public Supplier<Void> onLeaderChange(Runnable callback) {
-            return () -> null;
+            Consumer<Event> listener = ignored -> callback.run();
+            eventTarget.addEventListener("leader-change", listener);
+            return () -> {
+                eventTarget.removeEventListener("leader-change", listener);
+                return null;
+            };
         }
 
-        public void offLeaderChange(Runnable callback) {}
+        public void offLeaderChange(Runnable callback) {
+            warnings.add("offLeaderChange is a no-op in single-process worker mode");
+        }
 
         public List<String> warnings() {
-            return List.of("Worker APIs are disabled in JVM-only mode");
+            return List.copyOf(warnings);
         }
     }
 
@@ -215,7 +259,7 @@ public class index {
 
             @Override
             public Promise<List<messages.BackendMessage>> execProtocolStream(byte[] message) {
-                return Promise.reject(new UnsupportedOperationException("Worker stream API is disabled in JVM-only mode"));
+                return db.execProtocolStream(message, null);
             }
 
             @Override
@@ -230,12 +274,18 @@ public class index {
 
             @Override
             public Promise<Void> syncToFs() {
-                return Promise.reject(new UnsupportedOperationException("Worker sync API is disabled in JVM-only mode"));
+                return db.syncToFs();
             }
         };
     }
 
     public static Promise<WorkerRuntime> worker(WorkerOptions options, Map<String, Object> initOptions) {
-        return Promise.reject(new UnsupportedOperationException("Browser Worker runtime is disabled in JVM-only mode"));
+        if (options == null || options.init() == null) {
+            return Promise.reject(new IllegalArgumentException("worker init callback is required"));
+        }
+        var effectiveInitOptions = initOptions != null ? initOptions : Map.<String, Object>of();
+        var dataDir = String.valueOf(effectiveInitOptions.getOrDefault("dataDir", ""));
+        var id = String.valueOf(effectiveInitOptions.getOrDefault("id", "jvm:" + dataDir));
+        return options.init().init(effectiveInitOptions).then(db -> new WorkerRuntime(id, db));
     }
 }

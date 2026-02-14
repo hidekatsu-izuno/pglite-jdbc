@@ -8,9 +8,11 @@ public class Navigator {
      * await navigator.locks.request(mainLock, async () => { ... });
      */
 
+    private static final LockManager LOCK_MANAGER = new LockManager();
+
     private Navigator() {}
 
     public static LockManager locks() {
-        throw new UnsupportedOperationException("Navigator.locks is disabled in JVM-only mode");
+        return LOCK_MANAGER;
     }
 }
