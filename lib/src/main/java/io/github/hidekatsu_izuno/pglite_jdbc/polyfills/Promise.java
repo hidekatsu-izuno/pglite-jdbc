@@ -16,9 +16,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public final class Promise<T> {
-    private static final ThreadLocal<ExecutorService> EXECUTOR = ThreadLocal.withInitial(
-        Executors::newVirtualThreadPerTaskExecutor
-    );
+    private static final ExecutorService EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
     private final CompletableFuture<T> future;
 
     @FunctionalInterface
@@ -63,7 +61,7 @@ public final class Promise<T> {
     }
 
     public static ExecutorService executor() {
-        return EXECUTOR.get();
+        return EXECUTOR;
     }
 
     public <U> Promise<U> then(Function<? super T, ?> onFulfilled) {

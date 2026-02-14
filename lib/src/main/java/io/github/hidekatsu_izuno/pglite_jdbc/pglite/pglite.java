@@ -1,13 +1,21 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pglite;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages;
-import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.types;
+import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.parser;
+import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.serializer;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
+import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.base.Filesystem;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Semaphore;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -15,6 +23,10 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class pglite extends base implements interface_.PGliteInterface {
+    protected static final int DEFAULT_RECV_BUF_SIZE = 1024 * 1024;
+    protected static final int MAX_BUFFER_SIZE = 1 << 30;
+    private static final boolean TRACE_INIT = Boolean.getBoolean("pglite.trace_init");
+
     protected Filesystem fs;
     protected postgresMod.PostgresMod mod;
     public final String dataDir;
@@ -25,11 +37,31 @@ public class pglite extends base implements interface_.PGliteInterface {
     protected final int debug;
     protected final Promise<Void> waitReady;
     protected final Semaphore listenMutex = new Semaphore(1);
+    protected final Semaphore fsSyncMutex = new Semaphore(1);
+    protected volatile boolean fsSyncScheduled;
+    protected volatile boolean inTransaction;
     protected final Map<String, List<Consumer<String>>> notifyListeners =
         new ConcurrentHashMap<>();
-    protected final List<BiConsumer<String, String>> globalNotifyListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
-    protected final List<Runnable> extensionClosers = new java.util.concurrent.CopyOnWriteArrayList<>();
-    protected volatile String preparedQueryText;
+    protected final List<BiConsumer<String, String>> globalNotifyListeners =
+        new CopyOnWriteArrayList<>();
+    protected final List<Runnable> extensionClosers = new CopyOnWriteArrayList<>();
+    protected final List<Runnable> extensionInitializers = new CopyOnWriteArrayList<>();
+
+    protected parser.Parser protocolParser = new parser.Parser();
+    protected volatile int pgliteWrite = -1;
+    protected final List<messages.BackendMessage> currentResults = new ArrayList<>();
+    protected volatile boolean currentThrowOnError;
+    protected volatile Consumer<messages.NoticeMessage> currentOnNotice;
+    protected volatile int pgliteRead = -1;
+    protected volatile byte[] outputData = new byte[0];
+    protected volatile int readOffset;
+    protected volatile messages.DatabaseError currentDatabaseError;
+    protected volatile boolean keepRawResponse = true;
+    protected volatile byte[] inputData = new byte[DEFAULT_RECV_BUF_SIZE];
+    protected volatile int writeOffset;
+
+    protected volatile byte[] queryReadBuffer;
+    protected volatile List<byte[]> queryWriteChunks;
 
     public static final class PGliteOptions {
         public String dataDir;
@@ -38,6 +70,7 @@ public class pglite extends base implements interface_.PGliteInterface {
         public Filesystem fs;
         public Integer debug;
         public Boolean relaxedDurability;
+        public Integer initialMemory;
         public Map<String, interface_.Extension> extensions;
     }
 
@@ -68,9 +101,14 @@ public class pglite extends base implements interface_.PGliteInterface {
         return pg.waitReady.then(ignored -> pg);
     }
 
+    public postgresMod.PostgresMod Module() {
+        return this.mod;
+    }
+
     protected Promise<Void> init(PGliteOptions options) {
         return new Promise<>((resolve, reject) -> {
             try {
+                traceInit("init:start");
                 if (options.fs != null) {
                     this.fs = options.fs;
                 } else {
@@ -80,14 +118,22 @@ public class pglite extends base implements interface_.PGliteInterface {
                         parsed.fsType()
                     );
                 }
+                traceInit("init:fs-ready type=" + this.fs.getClass().getSimpleName());
 
                 var overrides = new postgresMod.PartialPostgresMod();
                 overrides.WASM_PREFIX = io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.base.WASM_PREFIX;
-                overrides.INITIAL_MEMORY = 64 * 1024 * 1024;
-                var setupPromises = new java.util.ArrayList<Promise<Void>>();
+                overrides.INITIAL_MEMORY = options.initialMemory != null
+                    ? options.initialMemory
+                    : 64 * 1024 * 1024;
+                overrides.noExitRuntime = true;
+                overrides.arguments = buildModuleArguments(options);
+
+                var setupPromises = new ArrayList<Promise<Void>>();
+                var extPromises =
+                    new ConcurrentHashMap<String, CompletableFuture<extensionUtils.ExtensionBlob>>();
+                var emscriptenOptions = new ConcurrentHashMap<String, Object>();
 
                 if (options.extensions != null) {
-                    var extPromises = new java.util.concurrent.ConcurrentHashMap<String, Promise<byte[]>>();
                     for (var entry : options.extensions.entrySet()) {
                         var extName = entry.getKey();
                         var extension = entry.getValue();
@@ -98,30 +144,55 @@ public class pglite extends base implements interface_.PGliteInterface {
                             .setup(this, overrides, false)
                             .then(resultObj -> {
                                 var result = (interface_.ExtensionSetupResult) resultObj;
+                                if (result == null) {
+                                    return (Void) null;
+                                }
+                                if (result.emscriptenOpts() instanceof Map<?, ?> mapOpts) {
+                                    for (var opt : mapOpts.entrySet()) {
+                                        if (opt.getKey() instanceof String key) {
+                                            emscriptenOptions.put(key, opt.getValue());
+                                        }
+                                    }
+                                }
                                 if (result.bundlePath() != null) {
+                                    var bytes = extensionUtils.loadExtensionBundle(result.bundlePath());
                                     extPromises.put(
                                         extName,
-                                        Promise.resolve(extensionUtils.loadExtensionBundle(result.bundlePath()))
+                                        CompletableFuture.completedFuture(
+                                            extensionUtils.toExtensionBlob(bytes)
+                                        )
                                     );
                                 }
                                 if (result.init() != null) {
-                                    result.init().run();
+                                    extensionInitializers.add(result.init());
                                 }
                                 if (result.close() != null) {
                                     extensionClosers.add(result.close());
                                 }
                                 return (Void) null;
-                            });
+                            })
+                            .then(ignored2 -> (Void) null);
                         setupPromises.add(setupPromise);
                     }
-                    overrides.pg_extensions = extPromises;
                 }
+                overrides.pg_extensions = extPromises;
 
                 Promise.all(setupPromises)
-                    .then(ignored -> this.fs.init(this, Map.of()))
-                    .then(initResultObj -> fs.initialSyncFs().then(ignore -> initResultObj))
+                    .then(ignored -> {
+                        traceInit("init:extensions-setup-done");
+                        return this.fs.init(this, emscriptenOptions);
+                    })
                     .then(initResultObj -> {
-                        var initResult = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.base.InitResult) initResultObj;
+                        traceInit("init:fs-init-done");
+                        return fs.initialSyncFs().then(ignore -> {
+                            traceInit("init:fs-initial-sync-done");
+                            return initResultObj;
+                        });
+                    })
+                    .then(initResultObj -> {
+                        traceInit("init:build-runtime-start");
+                        var initResult =
+                            (io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.base.InitResult) initResultObj;
                         if (initResult.emscriptenOpts() != null) {
                             if (initResult.emscriptenOpts().get("WASM_PREFIX") instanceof String prefix) {
                                 overrides.WASM_PREFIX = prefix;
@@ -130,27 +201,103 @@ public class pglite extends base implements interface_.PGliteInterface {
                                 overrides.INITIAL_MEMORY = memory.intValue();
                             }
                         }
-                        return io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.pglite.PostgresModFactory(overrides);
+                        return io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.pglite
+                            .PostgresModFactory(overrides);
                     })
                     .then(factoryResult -> {
+                        traceInit("init:build-runtime-done");
+                        traceInit("init:prop trace_host_calls=" + Boolean.getBoolean("pglite.trace_host_calls"));
                         this.mod = (postgresMod.PostgresMod) factoryResult;
-                        return extensionUtils.loadExtensions(this.mod, message -> {});
+                        setupBlobDevice();
+                        setupReadWriteCallbacks();
+                        this.mod._set_read_write_cbs(this.pgliteRead, this.pgliteWrite);
+                        traceInit("init:callbacks-ready");
+                        return extensionUtils.loadExtensions(this.mod, this::log);
                     })
                     .then(ignored -> {
+                        traceInit("init:extensions-load-done");
+                        var idb = this.mod._pgl_initdb();
+                        traceInit("init:initdb-done status=" + idb);
+                        if (idb == 0) {
+                            throw new IllegalStateException("INITDB failed to return value");
+                        }
+                        if ((idb & 0b0001) != 0) {
+                            throw new IllegalStateException("INITDB failed: status=" + idb);
+                        }
+                        this.mod._pgl_backend();
+                        traceInit("init:backend-done");
                         this.ready = true;
-                        return (Void) null;
+                        return this.exec("SET search_path TO public;", null)
+                            .then(ignoredExec -> {
+                                traceInit("init:set-search-path-done");
+                                return refreshArrayTypes();
+                            })
+                            .then(ignoredInit -> runExtensionInitializers());
                     })
                     .then(ignored -> {
+                        traceInit("init:done");
                         resolve.run(null);
                         return null;
                     }, error -> {
-                        reject.run(error instanceof Throwable ? (Throwable) error : new RuntimeException(String.valueOf(error)));
+                        traceInit("init:error " + error);
+                        reject.run(error instanceof Throwable
+                            ? (Throwable) error
+                            : new RuntimeException(String.valueOf(error))
+                        );
                         return null;
                     });
             } catch (Throwable e) {
+                traceInit("init:exception " + e);
                 reject.run(e);
             }
         });
+    }
+
+    private static void traceInit(String message) {
+        if (!TRACE_INIT) {
+            return;
+        }
+        var line = "[pglite-init] " + message;
+        System.err.println(line);
+        try {
+            Files.writeString(
+                Path.of("tmp/pglite-init.log"),
+                line + System.lineSeparator(),
+                StandardOpenOption.CREATE,
+                StandardOpenOption.APPEND
+            );
+        } catch (Exception ignored) {
+            // Best effort diagnostics.
+        }
+    }
+
+    private String[] buildModuleArguments(PGliteOptions options) {
+        var pgUser = options.username != null ? options.username : "postgres";
+        var pgDatabase = options.database != null ? options.database : "template1";
+        var args = new ArrayList<String>();
+        args.add("./this.program");
+        args.add("PGDATA=" + io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.base.PGDATA);
+        args.add("PREFIX=" + io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.base.WASM_PREFIX);
+        args.add("PGUSER=" + pgUser);
+        args.add("PGDATABASE=" + pgDatabase);
+        args.add("MODE=REACT");
+        args.add("REPL=N");
+        if (this.debug > 0) {
+            args.add("-d");
+            args.add(Integer.toString(this.debug));
+        }
+        return args.toArray(String[]::new);
+    }
+
+    private Promise<Void> runExtensionInitializers() {
+        var chain = Promise.resolve((Void) null);
+        for (var initializer : extensionInitializers) {
+            chain = chain.then(ignored -> {
+                initializer.run();
+                return (Void) null;
+            });
+        }
+        return chain;
     }
 
     @Override
@@ -165,7 +312,7 @@ public class pglite extends base implements interface_.PGliteInterface {
 
     @Override
     public boolean ready() {
-        return ready;
+        return ready && !closing && !closed;
     }
 
     @Override
@@ -186,7 +333,24 @@ public class pglite extends base implements interface_.PGliteInterface {
                 }
                 return null;
             })
-            .then(ignored -> fs.closeFs().then(ignore -> null))
+            .then(ignored -> {
+                if (this.mod != null) {
+                    this.mod._pgl_shutdown();
+                }
+                return null;
+            })
+            .then(ignored -> {
+                if (this.mod != null && this.pgliteRead >= 0) {
+                    this.mod.removeFunction(this.pgliteRead);
+                    this.pgliteRead = -1;
+                }
+                if (this.mod != null && this.pgliteWrite >= 0) {
+                    this.mod.removeFunction(this.pgliteWrite);
+                    this.pgliteWrite = -1;
+                }
+                return null;
+            })
+            .then(ignored -> fs != null ? fs.closeFs() : Promise.resolve(null))
             .then(ignored -> {
                 closed = true;
                 closing = false;
@@ -194,16 +358,59 @@ public class pglite extends base implements interface_.PGliteInterface {
                 return null;
             }, error -> {
                 closing = false;
-                throw new RuntimeException(error instanceof Throwable ? (Throwable) error : new RuntimeException(String.valueOf(error)));
+                throw new RuntimeException(
+                    error instanceof Throwable
+                        ? (Throwable) error
+                        : new RuntimeException(String.valueOf(error))
+                );
             });
     }
 
     @Override
     protected Promise<Void> checkReady() {
+        if (this.closing) {
+            return Promise.reject(new IllegalStateException("PGlite is closing"));
+        }
+        if (this.closed) {
+            return Promise.reject(new IllegalStateException("PGlite is closed"));
+        }
         if (!ready) {
             return waitReady;
         }
         return Promise.resolve(null);
+    }
+
+    public byte[] execProtocolRawSync(byte[] message) {
+        if (this.mod == null) {
+            throw new IllegalStateException("Postgres module is not initialized");
+        }
+        var input = message != null ? message : new byte[0];
+        this.readOffset = 0;
+        this.writeOffset = 0;
+        this.outputData = input;
+        if (this.keepRawResponse && this.inputData.length != DEFAULT_RECV_BUF_SIZE) {
+            this.inputData = new byte[DEFAULT_RECV_BUF_SIZE];
+        }
+
+        this.mod._interactive_one(input.length, input.length > 0 ? (input[0] & 0xFF) : 0);
+        this.outputData = new byte[0];
+
+        if (this.keepRawResponse && this.writeOffset > 0) {
+            return Arrays.copyOf(this.inputData, this.writeOffset);
+        }
+        return new byte[0];
+    }
+
+    @Override
+    public Promise<byte[]> execProtocolRaw(byte[] message, interface_.ExecProtocolOptions options) {
+        var resolved = resolveExecProtocolOptions(options);
+        return checkReady().then(ignored -> {
+            var data = execProtocolRawSync(message);
+            if (resolved.syncToFs()) {
+                return syncToFs().then(ignoreSync -> data);
+            }
+            return data;
+        });
     }
 
     @Override
@@ -211,54 +418,139 @@ public class pglite extends base implements interface_.PGliteInterface {
         byte[] message,
         interface_.ExecProtocolOptions options
     ) {
-        return execProtocolRaw(message, options).then(data -> {
-            var parsedMessages = parseBackendMessagesFromFrontend(data, message);
-            if (options != null && options.onNotice() != null) {
-                for (var msg : parsedMessages) {
-                    if (msg instanceof messages.NoticeMessage notice) {
-                        options.onNotice().accept(notice);
-                    }
-                }
+        var resolved = resolveExecProtocolOptions(options);
+        this.currentThrowOnError = resolved.throwOnError();
+        this.currentOnNotice = resolved.onNotice();
+        this.currentResults.clear();
+        this.currentDatabaseError = null;
+
+        return this.execProtocolRaw(message, resolved).then(data -> {
+            var dbError = this.currentDatabaseError;
+            var result = new interface_.ExecProtocolResult(
+                List.copyOf(this.currentResults),
+                data
+            );
+            this.currentResults.clear();
+            this.currentThrowOnError = false;
+            this.currentOnNotice = null;
+            this.currentDatabaseError = null;
+            if (resolved.throwOnError() && dbError != null) {
+                this.protocolParser = new parser.Parser();
+                throw dbError;
             }
-            return new interface_.ExecProtocolResult(parsedMessages, data);
+            return result;
+        }, error -> {
+            this.currentResults.clear();
+            this.currentThrowOnError = false;
+            this.currentOnNotice = null;
+            this.currentDatabaseError = null;
+            throw new RuntimeException(
+                error instanceof Throwable
+                    ? (Throwable) error
+                    : new RuntimeException(String.valueOf(error))
+            );
         });
     }
 
-    @Override
-    public Promise<byte[]> execProtocolRaw(byte[] message, interface_.ExecProtocolOptions options) {
-        return checkReady().then(ignored -> {
-            var input = message != null ? message : new byte[0];
-            var out = new byte[input.length];
-            mod._queue_message(input);
-            var readCb = mod.addFunction((ptr, length) -> {
-                // no-op placeholder for runtime parity
-            }, "vii");
-            var writeCb = mod.addFunction((ptr, length) -> {
-                System.arraycopy(input, 0, out, 0, Math.min(length, input.length));
-            }, "vii");
-            mod._set_read_write_cbs(readCb, writeCb);
-            mod._interactive_one(input.length, 0);
-            mod.removeFunction(readCb);
-            mod.removeFunction(writeCb);
-            return out;
+    public Promise<List<messages.BackendMessage>> execProtocolStream(
+        byte[] message,
+        interface_.ExecProtocolOptions options
+    ) {
+        var resolved = resolveExecProtocolOptions(options);
+        this.currentThrowOnError = resolved.throwOnError();
+        this.currentOnNotice = resolved.onNotice();
+        this.currentResults.clear();
+        this.currentDatabaseError = null;
+        this.keepRawResponse = false;
+
+        return this.execProtocolRaw(message, resolved).then(ignored -> {
+            this.keepRawResponse = true;
+            var dbError = this.currentDatabaseError;
+            var result = List.copyOf(this.currentResults);
+            this.currentResults.clear();
+            this.currentThrowOnError = false;
+            this.currentOnNotice = null;
+            this.currentDatabaseError = null;
+            if (resolved.throwOnError() && dbError != null) {
+                this.protocolParser = new parser.Parser();
+                throw dbError;
+            }
+            return result;
+        }, error -> {
+            this.keepRawResponse = true;
+            this.currentResults.clear();
+            this.currentThrowOnError = false;
+            this.currentOnNotice = null;
+            this.currentDatabaseError = null;
+            throw new RuntimeException(
+                error instanceof Throwable
+                    ? (Throwable) error
+                    : new RuntimeException(String.valueOf(error))
+            );
         });
+    }
+
+    private interface_.ExecProtocolOptions resolveExecProtocolOptions(interface_.ExecProtocolOptions options) {
+        if (options != null) {
+            return options;
+        }
+        return new interface_.ExecProtocolOptions(true, true, null);
     }
 
     @Override
     public Promise<Void> syncToFs() {
-        return fs != null ? fs.syncToFs(relaxedDurability) : Promise.resolve(null);
+        if (this.fs == null) {
+            return Promise.resolve(null);
+        }
+        if (this.fsSyncScheduled) {
+            return Promise.resolve(null);
+        }
+        this.fsSyncScheduled = true;
+
+        Supplier<Promise<Void>> doSync = () ->
+            runWithSemaphore(this.fsSyncMutex, () -> {
+                this.fsSyncScheduled = false;
+                return this.fs.syncToFs(this.relaxedDurability);
+            });
+
+        if (this.relaxedDurability) {
+            doSync.get();
+            return Promise.resolve(null);
+        }
+        return doSync.get();
     }
 
-    public Promise<Void> listen(String channel, java.util.function.Consumer<String> callback) {
-        /*
-         * Removed server-side notification registration from:
-         * pglite/src/pglite/pglite.ts
-         *
-         * async #listen(channel: string, callback: (payload: string) => void, tx?: Transaction) {
-         *   this.#notifyListeners.set(pgChannel, [...listeners, callback]);
-         * }
-         */
-        return Promise.reject(new UnsupportedOperationException("listen is disabled in local-only JDBC mode"));
+    @Override
+    protected Promise<Void> handleBlob(byte[] blob) {
+        this.queryReadBuffer = blob;
+        this.queryWriteChunks = null;
+        return Promise.resolve(null);
+    }
+
+    @Override
+    protected Promise<byte[]> getWrittenBlob() {
+        if (this.queryWriteChunks == null || this.queryWriteChunks.isEmpty()) {
+            return Promise.resolve(null);
+        }
+        var total = 0;
+        for (var chunk : this.queryWriteChunks) {
+            total += chunk.length;
+        }
+        var merged = new byte[total];
+        var offset = 0;
+        for (var chunk : this.queryWriteChunks) {
+            System.arraycopy(chunk, 0, merged, offset, chunk.length);
+            offset += chunk.length;
+        }
+        this.queryWriteChunks = null;
+        return Promise.resolve(merged);
+    }
+
+    @Override
+    protected Promise<Void> cleanupBlob() {
+        this.queryReadBuffer = null;
+        this.queryWriteChunks = null;
+        return Promise.resolve(null);
     }
 
     @Override
@@ -267,7 +559,39 @@ public class pglite extends base implements interface_.PGliteInterface {
         Consumer<String> callback,
         interface_.Transaction tx
     ) {
-        return Promise.reject(new UnsupportedOperationException("listen is disabled in local-only JDBC mode"));
+        return runWithSemaphore(this.listenMutex, () -> listenInner(channel, callback, tx));
+    }
+
+    private Promise<Function<interface_.Transaction, Promise<Void>>> listenInner(
+        String channel,
+        Consumer<String> callback,
+        interface_.Transaction tx
+    ) {
+        var pgChannel = utils.toPostgresName(channel);
+        var listeners = this.notifyListeners.computeIfAbsent(
+            pgChannel,
+            key -> new CopyOnWriteArrayList<>()
+        );
+        listeners.add(callback);
+
+        var listenFuture = tx != null
+            ? tx.exec("LISTEN " + channel, null).then(ignored -> (Void) null)
+            : this.exec("LISTEN " + channel, null).then(ignored -> (Void) null);
+
+        return listenFuture.then(ignored ->
+            (Function<interface_.Transaction, Promise<Void>>) providedTx ->
+                this.unlisten(channel, callback, providedTx)
+        , error -> {
+            listeners.remove(callback);
+            if (listeners.isEmpty()) {
+                this.notifyListeners.remove(pgChannel);
+            }
+            throw new RuntimeException(
+                error instanceof Throwable
+                    ? (Throwable) error
+                    : new RuntimeException(String.valueOf(error))
+            );
+        });
     }
 
     @Override
@@ -276,25 +600,52 @@ public class pglite extends base implements interface_.PGliteInterface {
         Consumer<String> callback,
         interface_.Transaction tx
     ) {
-        /*
-         * Removed server-side notification unregistration from:
-         * pglite/src/pglite/pglite.ts
-         *
-         * async #unlisten(channel: string, callback?: (payload: string) => void, tx?: Transaction) {
-         *   this.#notifyListeners.delete(pgChannel);
-         * }
-         */
-        return Promise.reject(new UnsupportedOperationException("unlisten is disabled in local-only JDBC mode"));
+        return runWithSemaphore(this.listenMutex, () -> unlistenInner(channel, callback, tx));
+    }
+
+    private Promise<Void> unlistenInner(
+        String channel,
+        Consumer<String> callback,
+        interface_.Transaction tx
+    ) {
+        var pgChannel = utils.toPostgresName(channel);
+        var listeners = this.notifyListeners.get(pgChannel);
+
+        Supplier<Promise<Void>> cleanup = () -> {
+            var execFuture = tx != null
+                ? tx.exec("UNLISTEN " + channel, null).then(ignored -> (Void) null)
+                : this.exec("UNLISTEN " + channel, null).then(ignored -> (Void) null);
+            return execFuture.then(ignored -> {
+                var current = this.notifyListeners.get(pgChannel);
+                if (current != null && current.isEmpty()) {
+                    this.notifyListeners.remove(pgChannel);
+                }
+                return null;
+            });
+        };
+
+        if (callback != null && listeners != null) {
+            listeners.remove(callback);
+            if (listeners.isEmpty()) {
+                return cleanup.get();
+            }
+            return Promise.resolve(null);
+        }
+        return cleanup.get();
     }
 
     @Override
     public Supplier<Void> onNotification(BiConsumer<String, String> callback) {
-        return () -> null;
+        this.globalNotifyListeners.add(callback);
+        return () -> {
+            this.globalNotifyListeners.remove(callback);
+            return null;
+        };
     }
 
     @Override
     public void offNotification(BiConsumer<String, String> callback) {
-        // no-op: notification bridge is disabled in local-only JDBC mode
+        this.globalNotifyListeners.remove(callback);
     }
 
     @Override
@@ -313,114 +664,148 @@ public class pglite extends base implements interface_.PGliteInterface {
     }
 
     public Promise<Void> notify(String channel, String payload) {
-        return Promise.reject(new UnsupportedOperationException("notify is disabled in local-only JDBC mode"));
+        var escapedPayload = payload == null ? "" : payload.replace("'", "''");
+        return this.exec("NOTIFY " + channel + ", '" + escapedPayload + "'", null)
+            .then(ignored -> (Void) null);
     }
 
-    private List<messages.BackendMessage> parseBackendMessagesFromFrontend(
-        byte[] data,
-        byte[] frontendMessage
-    ) {
-        if (data == null || data.length == 0) {
-            return List.of();
-        }
-        var code = data[0] & 0xFF;
-        return switch (code) {
-            case 0x51 -> simulateMessagesForSql(extractCString(data, 5)); // Query
-            case 0x50 -> {
-                preparedQueryText = extractParseQuery(frontendMessage != null ? frontendMessage : data);
-                yield List.of(messages.parseComplete);
+    private void setupReadWriteCallbacks() {
+        this.pgliteWrite = this.mod.addFunction((ptr, length) -> {
+            var bytes = new byte[length];
+            this.mod.copyFromHeap(ptr, bytes, 0, length);
+            this.protocolParser.parse(new Uint8Array(bytes), this::parseMessage);
+            if (this.keepRawResponse) {
+                ensureInputCapacity(length);
+                System.arraycopy(bytes, 0, this.inputData, this.writeOffset, length);
+                this.writeOffset += length;
+                return this.inputData.length;
             }
-            case 0x42 -> List.of(messages.bindComplete); // Bind
-            case 0x44 -> List.of(new messages.ParameterDescriptionMessage(6, 0)); // Describe
-            case 0x45 -> simulateMessagesForSql(preparedQueryText); // Execute
-            case 0x53 -> List.of(new messages.ReadyForQueryMessage(5, "I")); // Sync
-            default -> List.of();
-        };
+            return length;
+        }, "iii");
+
+        this.pgliteRead = this.mod.addFunction((ptr, maxLength) -> {
+            var length = this.outputData.length - this.readOffset;
+            if (length > maxLength) {
+                length = maxLength;
+            }
+            if (length <= 0) {
+                return 0;
+            }
+            this.mod.copyToHeap(ptr, this.outputData, this.readOffset, length);
+            this.readOffset += length;
+            return length;
+        }, "iii");
     }
 
-    private static List<messages.BackendMessage> simulateMessagesForSql(String sql) {
-        var text = sql == null ? "" : sql.trim();
-        if (text.toUpperCase().startsWith("SELECT")) {
-            var out = new ArrayList<messages.BackendMessage>();
-            out.add(buildSingleTextRowDescription("result"));
-            out.add(new messages.DataRowMessage(0, new String[] { simulateSelectValue(text) }));
-            out.add(new messages.CommandCompleteMessage(9, "SELECT 1"));
-            return out;
-        }
-        return List.of(simulateCommandComplete(text));
-    }
+    private void setupBlobDevice() {
+        var runtime = this.mod.runtime();
+        var devId = runtime.makedev(64, 0);
+        runtime.registerDevice(
+            devId,
+            new postgresMod.DeviceOps() {
+                @Override
+                public int read(byte[] buffer, int offset, int length, int position) {
+                    var contents = queryReadBuffer;
+                    if (contents == null) {
+                        throw new RuntimeException("No /dev/blob blob to read");
+                    }
+                    if (position >= contents.length) {
+                        return 0;
+                    }
+                    var size = Math.min(contents.length - position, length);
+                    System.arraycopy(contents, position, buffer, offset, size);
+                    return size;
+                }
 
-    private static messages.CommandCompleteMessage simulateCommandComplete(String sql) {
-        var text = sql == null ? "" : sql.trim().toUpperCase();
-        if (text.startsWith("INSERT")) {
-            return new messages.CommandCompleteMessage(13, "INSERT 0 1");
-        }
-        if (text.startsWith("UPDATE")) {
-            return new messages.CommandCompleteMessage(10, "UPDATE 1");
-        }
-        if (text.startsWith("DELETE")) {
-            return new messages.CommandCompleteMessage(10, "DELETE 1");
-        }
-        if (text.startsWith("COPY")) {
-            return new messages.CommandCompleteMessage(8, "COPY 0");
-        }
-        if (text.startsWith("MERGE")) {
-            return new messages.CommandCompleteMessage(9, "MERGE 0");
-        }
-        return new messages.CommandCompleteMessage(9, "SELECT 0");
-    }
+                @Override
+                public int write(byte[] buffer, int offset, int length, int position) {
+                    if (queryWriteChunks == null) {
+                        queryWriteChunks = new ArrayList<>();
+                    }
+                    var chunk = new byte[length];
+                    System.arraycopy(buffer, offset, chunk, 0, length);
+                    queryWriteChunks.add(chunk);
+                    return length;
+                }
 
-    private static messages.RowDescriptionMessage buildSingleTextRowDescription(String fieldName) {
-        var rowDescription = new messages.RowDescriptionMessage(0, 1);
-        rowDescription.fields[0] = new messages.Field(
-            fieldName,
-            0,
-            0,
-            io.github.hidekatsu_izuno.pglite_jdbc.pglite.types.TEXT,
-            -1,
-            0,
-            types.Mode.text
+                @Override
+                public int llseek(int offset, int whence, int position) {
+                    var contents = queryReadBuffer;
+                    if (contents == null) {
+                        throw new RuntimeException("No /dev/blob blob to llseek");
+                    }
+                    var next = offset;
+                    if (whence == 1) {
+                        next += position;
+                    } else if (whence == 2) {
+                        next = contents.length;
+                    }
+                    if (next < 0) {
+                        throw new RuntimeException("Invalid seek");
+                    }
+                    return next;
+                }
+            }
         );
-        return rowDescription;
+        runtime.mkdev("/dev/blob", devId);
     }
 
-    private static String simulateSelectValue(String sql) {
-        var upper = sql.toUpperCase();
-        if (upper.contains("SELECT 1")) {
-            return "1";
+    private void ensureInputCapacity(int additionalLength) {
+        var requiredSize = this.writeOffset + additionalLength;
+        if (requiredSize <= this.inputData.length) {
+            return;
         }
-        if (upper.contains("SELECT 0")) {
-            return "0";
+        var newSize = this.inputData.length + (this.inputData.length >> 1) + requiredSize;
+        if (newSize > MAX_BUFFER_SIZE) {
+            newSize = MAX_BUFFER_SIZE;
         }
-        if (upper.contains("SELECT TRUE")) {
-            return "t";
+        if (newSize < requiredSize) {
+            throw new IllegalStateException("Protocol response exceeds max buffer size");
         }
-        if (upper.contains("SELECT FALSE")) {
-            return "f";
-        }
-        return "result";
+        var newBuffer = new byte[newSize];
+        System.arraycopy(this.inputData, 0, newBuffer, 0, this.writeOffset);
+        this.inputData = newBuffer;
     }
 
-    private static String extractParseQuery(byte[] bytes) {
-        if (bytes == null || bytes.length <= 5) {
-            return "";
+    private void parseMessage(messages.BackendMessage message) {
+        if (this.currentDatabaseError != null) {
+            return;
         }
-        var idx = 5;
-        while (idx < bytes.length && bytes[idx] != 0) {
-            idx++;
+        if (message instanceof messages.DatabaseError error) {
+            if (this.currentThrowOnError) {
+                this.currentDatabaseError = error;
+            }
+        } else if (message instanceof messages.NoticeMessage notice) {
+            if (this.currentOnNotice != null) {
+                this.currentOnNotice.accept(notice);
+            }
+        } else if (message instanceof messages.CommandCompleteMessage command) {
+            if ("BEGIN".equals(command.text)) {
+                this.inTransaction = true;
+            } else if ("COMMIT".equals(command.text) || "ROLLBACK".equals(command.text)) {
+                this.inTransaction = false;
+            }
+        } else if (message instanceof messages.NotificationResponseMessage notify) {
+            receiveNotification(notify.channel, notify.payload);
         }
-        idx++;
-        return extractCString(bytes, idx);
+        this.currentResults.add(message);
     }
 
-    private static String extractCString(byte[] bytes, int start) {
-        if (bytes == null || start >= bytes.length) {
-            return "";
+    private void receiveNotification(String channel, String payload) {
+        var listeners = this.notifyListeners.get(channel);
+        if (listeners != null) {
+            for (var listener : listeners) {
+                listener.accept(payload);
+            }
         }
-        var end = start;
-        while (end < bytes.length && bytes[end] != 0) {
-            end++;
+        for (var listener : this.globalNotifyListeners) {
+            listener.accept(channel, payload);
         }
-        return new String(bytes, start, end - start, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    private void log(String message) {
+        if (this.debug > 0) {
+            System.out.println(message);
+        }
     }
 }

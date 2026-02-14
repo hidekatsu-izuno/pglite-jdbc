@@ -4,8 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.nodefs;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
+import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -29,28 +31,46 @@ public class NodeFsParityTest {
         assertTrue(quitCalled.get());
     }
 
-    public static class FakeRuntimeFs implements postgresMod.FS {
+    public static class FakeRuntimeFs implements extensionUtils.EmscriptenFS {
         private final AtomicBoolean quitCalled;
 
         FakeRuntimeFs(AtomicBoolean quitCalled) {
             this.quitCalled = quitCalled;
         }
 
+        @SuppressWarnings("unused")
+        public void quit() {
+            quitCalled.set(true);
+        }
+
+        @Override
+        public void createPath(String parent, String path, boolean canRead, boolean canWrite) {}
+
+        @Override
+        public void createDataFile(
+            String path,
+            String name,
+            Object data,
+            boolean canRead,
+            boolean canWrite,
+            boolean canOwn
+        ) {}
+
         @Override
         public void createPreloadedFile(
             String parent,
             String name,
-            byte[] data,
+            Object data,
             boolean canRead,
             boolean canWrite,
-            Runnable onLoad,
-            Runnable onError,
+            extensionUtils.Log onload,
+            extensionUtils.Log onerror,
             boolean dontCreateFile
         ) {}
 
         @Override
-        public postgresMod.PathInfo analyzePath(String path) {
-            return new postgresMod.PathInfo(false);
+        public extensionUtils.AnalyzePathResult analyzePath(String path) {
+            return new extensionUtils.AnalyzePathResult(false);
         }
 
         @Override
@@ -59,10 +79,56 @@ public class NodeFsParityTest {
         @Override
         public void writeFile(String path, byte[] data) {}
 
-        @SuppressWarnings("unused")
-        public void quit() {
-            quitCalled.set(true);
+        @Override
+        public byte[] readFile(String path) {
+            return new byte[0];
         }
+
+        @Override
+        public void unlink(String path) {}
+
+        @Override
+        public void createLazyFile(String parent, String name, Object data, boolean canRead, boolean canWrite) {}
+
+        @Override
+        public void createDevice(String parent, String name, Object input, Object output) {}
+
+        @Override
+        public void mount(Object type, Object opts, String mountpoint) {}
+
+        @Override
+        public void unmount(String mountpoint) {}
+
+        @Override
+        public void symlink(String target, String path) {}
+
+        @Override
+        public extensionUtils.FsStat stat(String path) {
+            return new extensionUtils.FsStat();
+        }
+
+        @Override
+        public String[] readdir(String path) {
+            return new String[0];
+        }
+
+        @Override
+        public void syncfs(boolean populate, extensionUtils.SyncfsCallback done) {
+            if (done != null) {
+                done.apply(null);
+            }
+        }
+
+        @Override
+        public void registerDevice(int devId, Object ops) {}
+
+        @Override
+        public int makedev(int major, int minor) {
+            return 0;
+        }
+
+        @Override
+        public void mkdev(String path, int dev) {}
     }
 
     public static class FakeMod implements postgresMod.PostgresMod {
@@ -78,59 +144,32 @@ public class NodeFsParityTest {
         }
 
         @Override
-        public postgresMod.FS FS() {
-            return fs;
+        public Integer INITIAL_MEMORY() {
+            return 0;
         }
 
         @Override
-        public Map<String, Promise<byte[]>> pg_extensions() {
+        public Integer FD_BUFFER_MAX() {
+            return 0;
+        }
+
+        @Override
+        public void setFD_BUFFER_MAX(Integer value) {}
+
+        @Override
+        public Uint8Array HEAP8() {
+            return new Uint8Array(0);
+        }
+
+        @Override
+        public Uint8Array HEAPU8() {
+            return new Uint8Array(0);
+        }
+
+        @Override
+        public Map<String, CompletableFuture<extensionUtils.ExtensionBlob>> pg_extensions() {
             return Map.of();
         }
-
-        @Override
-        public List<Consumer<postgresMod.PostgresMod>> preInit() {
-            return List.of();
-        }
-
-        @Override
-        public List<Consumer<postgresMod.PostgresMod>> preRun() {
-            return List.of();
-        }
-
-        @Override
-        public List<Consumer<postgresMod.PostgresMod>> postRun() {
-            return List.of();
-        }
-
-        @Override
-        public int INITIAL_MEMORY() {
-            return 0;
-        }
-
-        @Override
-        public int FD_BUFFER_MAX() {
-            return 0;
-        }
-
-        @Override
-        public int addFunction(BiConsumer<Integer, Integer> cb, String signature) {
-            return 0;
-        }
-
-        @Override
-        public void removeFunction(int f) {}
-
-        @Override
-        public void _queue_message(byte[] message) {}
-
-        @Override
-        public void _set_read_write_cbs(int readCb, int writeCb) {}
-
-        @Override
-        public void _interactive_write(int msgLength) {}
-
-        @Override
-        public void _interactive_one(int length, int peek) {}
 
         @Override
         public int _pgl_initdb() {
@@ -142,6 +181,72 @@ public class NodeFsParityTest {
 
         @Override
         public void _pgl_shutdown() {}
+
+        @Override
+        public void _interactive_write(int msgLength) {}
+
+        @Override
+        public void _interactive_one(int length, int peek) {}
+
+        @Override
+        public void _set_read_write_cbs(int read_cb, int write_cb) {}
+
+        @Override
+        public int addFunction(postgresMod.ReadWriteCallback cb, String signature) {
+            return 0;
+        }
+
+        @Override
+        public void removeFunction(int f) {}
+
+        @Override
+        public void copyFromHeap(int ptr, byte[] dest, int destOffset, int length) {}
+
+        @Override
+        public void copyToHeap(int ptr, byte[] src, int srcOffset, int length) {}
+
+        @Override
+        public postgresMod.EmscriptenRuntime runtime() {
+            return new postgresMod.EmscriptenRuntime() {
+                @Override
+                public extensionUtils.EmscriptenFS FS() {
+                    return fs;
+                }
+
+                @Override
+                public byte[] getPreloadedPackage(String name, int size) {
+                    return new byte[0];
+                }
+
+                @Override
+                public void addRunDependency(String key) {}
+
+                @Override
+                public void removeRunDependency(String key) {}
+
+                @Override
+                public void preRun() {}
+
+                @Override
+                public void postRun() {}
+
+                @Override
+                public int makedev(int major, int minor) {
+                    return 0;
+                }
+
+                @Override
+                public void registerDevice(int devId, postgresMod.DeviceOps ops) {}
+
+                @Override
+                public void mkdev(String path, int devId) {}
+            };
+        }
+
+        @Override
+        public extensionUtils.EmscriptenFS FS() {
+            return fs;
+        }
     }
 
     private static class StubPGlite extends pglite {

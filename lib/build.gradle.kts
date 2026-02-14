@@ -44,24 +44,13 @@ tasks.named<Jar>("jar") {
 
 tasks.withType<Test>().configureEach {
     maxHeapSize = "2g"
-    val traceIndirect = System.getProperty("pglite.trace_call_indirect")
-    if (!traceIndirect.isNullOrBlank()) {
-        systemProperty("pglite.trace_call_indirect", traceIndirect)
-    }
-    val traceInvoke = System.getProperty("pglite.trace_invoke")
-    if (!traceInvoke.isNullOrBlank()) {
-        systemProperty("pglite.trace_invoke", traceInvoke)
-    }
-    val traceExec = System.getProperty("pglite.trace_exec")
-    if (!traceExec.isNullOrBlank()) {
-        systemProperty("pglite.trace_exec", traceExec)
-    }
-    val traceHostCalls = System.getProperty("pglite.trace_host_calls")
-    if (!traceHostCalls.isNullOrBlank()) {
-        systemProperty("pglite.trace_host_calls", traceHostCalls)
-    }
-    val traceWasmStdio = System.getProperty("pglite.trace_wasm_stdio")
-    if (!traceWasmStdio.isNullOrBlank()) {
-        systemProperty("pglite.trace_wasm_stdio", traceWasmStdio)
-    }
+    System.getProperties().stringPropertyNames()
+        .asSequence()
+        .filter { it.startsWith("pglite.") }
+        .forEach { key ->
+            val value = System.getProperty(key)
+            if (!value.isNullOrBlank()) {
+                systemProperty(key, value)
+            }
+        }
 }

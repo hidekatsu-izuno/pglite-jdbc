@@ -1,18 +1,138 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pglite;
 
+import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.ArrayBuffer;
+import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
+import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.ByteArrayInputStream;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
-import java.util.zip.GZIPInputStream;
 import java.util.function.Consumer;
+import java.util.zip.GZIPInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 
 public class extensionUtils {
     private extensionUtils() {}
+
+    public interface ExtensionBlob {
+        ArrayBuffer arrayBuffer();
+
+        default byte[] toByteArray() {
+            return new Uint8Array(arrayBuffer()).toByteArray();
+        }
+    }
+
+    @FunctionalInterface
+    public interface Log {
+        void apply(Object... args);
+    }
+
+    @FunctionalInterface
+    public interface SyncfsCallback {
+        void apply(Exception err);
+    }
+
+    public static final class AnalyzePathResult {
+        public boolean exists;
+
+        public AnalyzePathResult() {}
+
+        public AnalyzePathResult(boolean exists) {
+            this.exists = exists;
+        }
+
+        public boolean exists() {
+            return exists;
+        }
+    }
+
+    public static final class FsStat {
+        public long size;
+        public long mtimeMs;
+        public boolean directory;
+    }
+
+    public interface EmscriptenFS {
+        void createPath(String parent, String path, boolean canRead, boolean canWrite);
+
+        void createDataFile(
+            String path,
+            String name,
+            Object data,
+            boolean canRead,
+            boolean canWrite,
+            boolean canOwn
+        );
+
+        void createPreloadedFile(
+            String parent,
+            String name,
+            Object data,
+            boolean canRead,
+            boolean canWrite,
+            Log onload,
+            Log onerror,
+            boolean dontCreateFile
+        );
+
+        AnalyzePathResult analyzePath(String path);
+
+        void mkdirTree(String path);
+
+        void writeFile(String path, byte[] data);
+
+        byte[] readFile(String path);
+
+        void unlink(String path);
+
+        void createLazyFile(
+            String parent,
+            String name,
+            Object data,
+            boolean canRead,
+            boolean canWrite
+        );
+
+        void createDevice(String parent, String name, Object input, Object output);
+
+        void mount(Object type, Object opts, String mountpoint);
+
+        void unmount(String mountpoint);
+
+        void symlink(String target, String path);
+
+        FsStat stat(String path);
+
+        String[] readdir(String path);
+
+        void syncfs(boolean populate, SyncfsCallback done);
+
+        void registerDevice(int devId, Object ops);
+
+        int makedev(int major, int minor);
+
+        void mkdev(String path, int dev);
+    }
+
+    private static final class ByteArrayBlob implements ExtensionBlob {
+        private final ArrayBuffer buffer;
+
+        private ByteArrayBlob(byte[] data) {
+            this.buffer = new Uint8Array(data).buffer;
+        }
+
+        @Override
+        public ArrayBuffer arrayBuffer() {
+            return this.buffer;
+        }
+    }
+
+    public static ExtensionBlob toExtensionBlob(byte[] data) {
+        return new ByteArrayBlob(data != null ? data : new byte[0]);
+    }
 
     public static byte[] loadExtensionBundle(String bundlePath) {
         var path = Path.of(bundlePath);
@@ -34,25 +154,29 @@ public class extensionUtils {
         }
     }
 
-    public static Promise<Void> loadExtensions(
-        postgresMod.PostgresMod mod,
-        Consumer<String> log
-    ) {
+    public static byte[] loadExtensionBundle(URL bundlePath) {
+        return maybeUnzip(utils.readFile(bundlePath));
+    }
+
+    public static Promise<Void> loadExtensions(postgresMod.PostgresMod mod, Consumer<String> log) {
         Consumer<String> logger = log != null ? log : ignored -> {};
         var chain = Promise.resolve((Void) null);
         for (var entry : mod.pg_extensions().entrySet()) {
             var ext = entry.getKey();
-            chain = chain.then(ignored -> entry.getValue().then(bytes -> {
-                if (bytes == null || bytes.length == 0) {
-                    System.err.println("Could not get binary data for extension: " + ext);
+            chain = chain.then(ignored ->
+                entry.getValue().handle((blob, error) -> {
+                    if (error != null) {
+                        System.err.println("Failed to fetch extension: " + ext + " " + error);
+                        return (Void) null;
+                    }
+                    if (blob == null) {
+                        System.err.println("Could not get binary data for extension: " + ext);
+                        return (Void) null;
+                    }
+                    loadExtension(mod, ext, blob.toByteArray(), logger);
                     return (Void) null;
-                }
-                loadExtension(mod, ext, bytes, logger);
-                return (Void) null;
-            }, error -> {
-                System.err.println("Failed to fetch extension: " + ext + " " + error);
-                return (Void) null;
-            }));
+                })
+            );
         }
         return chain;
     }
@@ -87,15 +211,15 @@ public class extensionUtils {
                         fileData,
                         true,
                         true,
-                        () -> log.accept("pgfs:ext OK " + ext + " " + filePath),
-                        () -> log.accept("pgfs:ext FAIL " + ext + " " + filePath),
+                        args -> log.accept("pgfs:ext OK " + ext + " " + filePath),
+                        args -> log.accept("pgfs:ext FAIL " + ext + " " + filePath),
                         false
                     );
                     continue;
                 }
                 try {
                     var dirPath = dirname(filePath);
-                    if (!mod.FS().analyzePath(dirPath).exists()) {
+                    if (!mod.FS().analyzePath(dirPath).exists) {
                         mod.FS().mkdirTree(dirPath);
                     }
                     mod.FS().writeFile(filePath, fileData);

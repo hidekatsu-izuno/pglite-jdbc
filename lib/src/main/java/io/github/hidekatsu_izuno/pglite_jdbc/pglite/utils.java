@@ -3,6 +3,7 @@ package io.github.hidekatsu_izuno.pglite_jdbc.pglite;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
@@ -41,6 +42,17 @@ public class utils {
             if (in == null) {
                 throw new IllegalArgumentException("Resource not found: " + pathOrClasspath);
             }
+            return in.readAllBytes();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static byte[] readFile(URL url) {
+        if (url == null) {
+            throw new IllegalArgumentException("url is null");
+        }
+        try (InputStream in = url.openStream()) {
             return in.readAllBytes();
         } catch (IOException e) {
             throw new RuntimeException(e);
