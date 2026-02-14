@@ -9,7 +9,7 @@ public final class string_utils {
         }
         return value.getBytes(StandardCharsets.UTF_8).length;
     }
-    
+
     private string_utils() {
     }
 }

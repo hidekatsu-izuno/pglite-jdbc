@@ -9,7 +9,7 @@ import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
 import java.util.Map;
 
 public final class serializer {
-    private static enum code {
+    private enum code {
         startup((byte) 0x70),
         query((byte) 0x51),
         parse((byte) 0x50),
@@ -34,7 +34,7 @@ public final class serializer {
 
     // type LegalValue = string | ArrayBuffer | ArrayBufferView | null
 
-    private static Writer writer = new Writer();
+    private static final Writer writer = new Writer();
 
     private static Uint8Array startup(Map<String, String> opts) {
         // protocol version
@@ -91,7 +91,7 @@ public final class serializer {
         public String text;
     }
 
-    private static Object[] emptyValueArray = new Object[0];
+    private static final Object[] emptyValueArray = new Object[0];
 
     private static Uint8Array parse(ParseOpts query) {
         // expect something like this:
@@ -127,7 +127,7 @@ public final class serializer {
         return writer.flush(code.parse.value);
     }
 
-    public static interface ValueMapper {
+    public interface ValueMapper {
         Object map(Object param, int index);
     }
 
@@ -140,10 +140,10 @@ public final class serializer {
         public ValueMapper valueMapper;
     }
 
-    private static Writer paramWriter = new Writer();
+    private static final Writer paramWriter = new Writer();
 
     // make this a const enum so typescript will inline the value
-    private static enum ParamType {
+    private enum ParamType {
         STRING(0),
         BINARY(1),
         ;
@@ -216,7 +216,7 @@ public final class serializer {
         public Integer rows;
     }
 
-    private static Uint8Array emptyExecute = new Uint8Array(new byte[] {
+    private static final Uint8Array emptyExecute = new Uint8Array(new byte[] {
         code.execute.value,
         0x00,
         0x00,

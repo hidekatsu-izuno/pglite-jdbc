@@ -11,6 +11,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 
+@SuppressWarnings("unchecked")
 public class index {
     private index() {}
     private static final int MAX_RETRIES = 5;

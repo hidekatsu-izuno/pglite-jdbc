@@ -1,6 +1,5 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.polyfills;
 
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.function.Consumer;
@@ -81,12 +80,12 @@ public class BroadcastChannel {
         if (closed) {
             return;
         }
-        var event = new MessageEvent<>("message", data, null);
+        var event = new MessageEvent<>("message", data, this);
         var handler = onmessage;
         if (handler != null) {
             handler.accept(event);
         }
-        for (var listener : Set.copyOf(listeners)) {
+        for (var listener : listeners) {
             listener.accept(event);
         }
     }
