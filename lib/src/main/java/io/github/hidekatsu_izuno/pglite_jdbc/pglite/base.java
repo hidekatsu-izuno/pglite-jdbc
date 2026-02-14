@@ -4,7 +4,6 @@ import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages;
 import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.serializer;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,7 +27,10 @@ public abstract class base {
         interface_.ExecProtocolOptions options
     );
 
-    public abstract Promise<byte[]> execProtocolRaw(byte[] message, interface_.ExecProtocolOptions options);
+    public abstract Promise<byte[]> execProtocolRaw(
+        byte[] message,
+        interface_.ExecProtocolOptions options
+    );
 
     public abstract Promise<Void> syncToFs();
 
@@ -60,6 +62,48 @@ public abstract class base {
         return Promise.resolve(null);
     }
 
+    protected interface_.ExecProtocolResult execProtocolSync(
+        byte[] message,
+        interface_.ExecProtocolOptions options
+    ) {
+        return await(this.execProtocol(message, options));
+    }
+
+    protected byte[] execProtocolRawSyncInternal(
+        byte[] message,
+        interface_.ExecProtocolOptions options
+    ) {
+        return await(this.execProtocolRaw(message, options));
+    }
+
+    protected void syncToFsSync() {
+        await(this.syncToFs());
+    }
+
+    protected void handleBlobSync(byte[] blob) {
+        await(this.handleBlob(blob));
+    }
+
+    protected byte[] getWrittenBlobSync() {
+        return await(this.getWrittenBlob());
+    }
+
+    protected void cleanupBlobSync() {
+        await(this.cleanupBlob());
+    }
+
+    protected void checkReadySync() {
+        await(this.checkReady());
+    }
+
+    protected <T> T runExclusiveQuerySync(ThrowingSupplier<T> fn) {
+        return runWithSemaphoreSync(queryMutex, fn);
+    }
+
+    protected <T> T runExclusiveTransactionSync(ThrowingSupplier<T> fn) {
+        return runWithSemaphoreSync(transactionMutex, fn);
+    }
+
     protected <T> Promise<T> runExclusiveQuery(ThrowingSupplier<Promise<T>> fn) {
         return runWithSemaphore(queryMutex, fn);
     }
@@ -68,7 +112,7 @@ public abstract class base {
         return runWithSemaphore(transactionMutex, fn);
     }
 
-    private Promise<List<messages.BackendMessage>> execProtocolNoSync(
+    private List<messages.BackendMessage> execProtocolNoSyncSync(
         byte[] message,
         interface_.QueryOptions options
     ) {
@@ -77,12 +121,19 @@ public abstract class base {
             true,
             options != null ? options.onNotice() : null
         );
-        return this.execProtocol(message, execOptions).then(result -> result.messages());
+        return execProtocolSync(message, execOptions).messages();
     }
 
     public Promise<Void> refreshArrayTypes() {
+        return asPromise(() -> {
+            refreshArrayTypesSync();
+            return null;
+        });
+    }
+
+    protected void refreshArrayTypesSync() {
         if (this.arrayTypesInitialized) {
-            return Promise.resolve(null);
+            return;
         }
         this.arrayTypesInitialized = true;
 
@@ -95,29 +146,27 @@ public abstract class base {
             ORDER BY b.oid
             """;
 
-        return this.query(sql, null, null).then(result -> {
-            for (var rowObj : result.rows()) {
-                if (!(rowObj instanceof Map<?, ?> row)) {
-                    continue;
-                }
-                var oidValue = row.get("oid");
-                var arrayValue = row.get("typarray");
-                if (!(oidValue instanceof Number oidNumber) || !(arrayValue instanceof Number arrayNumber)) {
-                    continue;
-                }
-                var oid = oidNumber.intValue();
-                var typarray = arrayNumber.intValue();
-                this.serializers.put(
-                    typarray,
-                    value -> types.arraySerializer(value, this.serializers.get(oid), typarray)
-                );
-                this.parsers.put(
-                    typarray,
-                    (value, typeId) -> types.arrayParser(value, this.parsers.get(oid), typarray)
-                );
+        var result = this.querySync(sql, null, null);
+        for (var rowObj : result.rows()) {
+            if (!(rowObj instanceof Map<?, ?> row)) {
+                continue;
             }
-            return (Void) null;
-        });
+            var oidValue = row.get("oid");
+            var arrayValue = row.get("typarray");
+            if (!(oidValue instanceof Number oidNumber) || !(arrayValue instanceof Number arrayNumber)) {
+                continue;
+            }
+            var oid = oidNumber.intValue();
+            var typarray = arrayNumber.intValue();
+            this.serializers.put(
+                typarray,
+                value -> types.arraySerializer(value, this.serializers.get(oid), typarray)
+            );
+            this.parsers.put(
+                typarray,
+                (value, typeId) -> types.arrayParser(value, this.parsers.get(oid), typarray)
+            );
+        }
     }
 
     public <T> Promise<interface_.Results<T>> query(
@@ -125,35 +174,50 @@ public abstract class base {
         Object[] params,
         interface_.QueryOptions options
     ) {
-        return checkReady().then(ignored ->
-            runExclusiveTransaction(() -> runQuery(query, params, options))
-        ).then(resultObj -> {
-            @SuppressWarnings("unchecked")
-            var result = (interface_.Results<T>) resultObj;
-            return result;
-        });
+        return asPromise(() -> querySync(query, params, options));
+    }
+
+    public <T> interface_.Results<T> querySync(
+        String query,
+        Object[] params,
+        interface_.QueryOptions options
+    ) {
+        checkReadySync();
+        @SuppressWarnings("unchecked")
+        var result = (interface_.Results<T>) runExclusiveTransactionSync(
+            () -> runQuerySync(query, params, options)
+        );
+        return result;
     }
 
     public Promise<List<interface_.Results<Map<String, Object>>>> exec(
         String query,
         interface_.QueryOptions options
     ) {
-        return checkReady().then(ignored ->
-            runExclusiveTransaction(() -> runExec(query, options))
-        );
+        return asPromise(() -> execSync(query, options));
+    }
+
+    public List<interface_.Results<Map<String, Object>>> execSync(
+        String query,
+        interface_.QueryOptions options
+    ) {
+        checkReadySync();
+        return runExclusiveTransactionSync(() -> runExecSync(query, options));
     }
 
     public <T> Promise<interface_.Results<T>> sql(
         List<String> strings,
         Object... params
     ) {
+        return asPromise(() -> sqlSync(strings, params));
+    }
+
+    public <T> interface_.Results<T> sqlSync(
+        List<String> strings,
+        Object... params
+    ) {
         var templated = templating.query(strings, params);
-        return this.query(templated.query(), templated.params().toArray(), null)
-            .then(resultObj -> {
-                @SuppressWarnings("unchecked")
-                var result = (interface_.Results<T>) resultObj;
-                return result;
-            });
+        return querySync(templated.query(), templated.params().toArray(), null);
     }
 
     public Promise<interface_.DescribeQueryResult> describeQuery(String query) {
@@ -164,9 +228,17 @@ public abstract class base {
         String query,
         interface_.QueryOptions options
     ) {
+        return asPromise(() -> describeQuerySync(query, options));
+    }
+
+    public interface_.DescribeQueryResult describeQuerySync(
+        String query,
+        interface_.QueryOptions options
+    ) {
+        checkReadySync();
         var allMessages = new ArrayList<messages.BackendMessage>();
-        var errorHolder = new Throwable[1];
-        var errorFromSync = new boolean[1];
+        Throwable errorHolder = null;
+        var errorFromSync = false;
 
         var parseOpts = new serializer.ParseOpts();
         parseOpts.text = query;
@@ -177,383 +249,354 @@ public abstract class base {
         var describeOpts = new serializer.PortalOpts();
         describeOpts.type = "S";
 
-        return execProtocolNoSync(serializer.serialize.parse(parseOpts).toByteArray(), options)
-            .then(ignored -> execProtocolNoSync(serializer.serialize.describe(describeOpts).toByteArray(), options))
-            .then(describeMessages -> {
-                allMessages.addAll(castBackendMessages(describeMessages));
-                return (Void) null;
-            }, error -> {
-                errorHolder[0] = unwrap(error);
-                return (Void) null;
-            })
-            .then(ignored -> execProtocolNoSync(serializer.serialize.sync().toByteArray(), options)
-                .then(syncMessages -> {
-                    allMessages.addAll(syncMessages);
-                    return (Void) null;
-                }, syncError -> {
-                    errorHolder[0] = unwrap(syncError);
-                    errorFromSync[0] = true;
-                    return (Void) null;
-                })
-            )
-            .then(ignored -> {
-                if (errorHolder[0] != null) {
-                    var cause = unwrap(errorHolder[0]);
-                    if (!errorFromSync[0] && cause instanceof messages.DatabaseError dbError) {
-                        throw errors.makePGliteError(dbError, query, null, options);
-                    }
-                    throw asRuntime(cause);
-                }
+        try {
+            execProtocolNoSyncSync(serializer.serialize.parse(parseOpts).toByteArray(), options);
+            allMessages.addAll(
+                execProtocolNoSyncSync(serializer.serialize.describe(describeOpts).toByteArray(), options)
+            );
+        } catch (Throwable error) {
+            errorHolder = unwrap(error);
+        }
 
-                messages.ParameterDescriptionMessage paramDescription = null;
-                messages.RowDescriptionMessage rowDescription = null;
-                for (var message : allMessages) {
-                    if (message instanceof messages.ParameterDescriptionMessage pd) {
-                        paramDescription = pd;
-                    } else if (message instanceof messages.RowDescriptionMessage rd) {
-                        rowDescription = rd;
-                    }
-                }
+        try {
+            allMessages.addAll(execProtocolNoSyncSync(serializer.serialize.sync().toByteArray(), options));
+        } catch (Throwable syncError) {
+            errorHolder = unwrap(syncError);
+            errorFromSync = true;
+        }
 
-                var queryParams = new ArrayList<interface_.Field>();
-                if (paramDescription != null) {
-                    for (var typeId : paramDescription.dataTypeIDs) {
-                        queryParams.add(new interface_.Field("", typeId));
-                    }
-                }
+        if (errorHolder != null) {
+            var cause = unwrap(errorHolder);
+            if (!errorFromSync && cause instanceof messages.DatabaseError dbError) {
+                throw errors.makePGliteError(dbError, query, null, options);
+            }
+            throw asRuntime(cause);
+        }
 
-                var resultFields = new ArrayList<interface_.Field>();
-                if (rowDescription != null) {
-                    for (var field : rowDescription.fields) {
-                        resultFields.add(new interface_.Field(field.name, field.dataTypeID));
-                    }
-                }
+        messages.ParameterDescriptionMessage paramDescription = null;
+        messages.RowDescriptionMessage rowDescription = null;
+        for (var message : allMessages) {
+            if (message instanceof messages.ParameterDescriptionMessage pd) {
+                paramDescription = pd;
+            } else if (message instanceof messages.RowDescriptionMessage rd) {
+                rowDescription = rd;
+            }
+        }
 
-                return new interface_.DescribeQueryResult(queryParams, resultFields);
-            });
+        var queryParams = new ArrayList<interface_.Field>();
+        if (paramDescription != null) {
+            for (var typeId : paramDescription.dataTypeIDs) {
+                queryParams.add(new interface_.Field("", typeId));
+            }
+        }
+
+        var resultFields = new ArrayList<interface_.Field>();
+        if (rowDescription != null) {
+            for (var field : rowDescription.fields) {
+                resultFields.add(new interface_.Field(field.name, field.dataTypeID));
+            }
+        }
+
+        return new interface_.DescribeQueryResult(queryParams, resultFields);
     }
 
     public <T> Promise<T> transaction(Function<interface_.Transaction, Promise<T>> callback) {
-        return checkReady().then(ignored ->
-            runExclusiveTransaction(() ->
-                runExec("BEGIN", null).then(ignoredBegin -> {
-                    this.inTransaction = true;
-                    var closed = new AtomicBoolean(false);
+        return asPromise(() -> transactionSync(callback));
+    }
 
-                    Runnable checkClosed = () -> {
-                        if (closed.get()) {
-                            throw new IllegalStateException("Transaction is closed");
-                        }
-                    };
+    public <T> T transactionSync(Function<interface_.Transaction, Promise<T>> callback) {
+        checkReadySync();
+        return runExclusiveTransactionSync(() -> {
+            runExecSync("BEGIN", null);
+            this.inTransaction = true;
+            var closed = new AtomicBoolean(false);
 
-                    var tx = new interface_.Transaction() {
-                        @Override
-                        public <R> Promise<interface_.Results<R>> query(
-                            String query,
-                            Object[] params,
-                            interface_.QueryOptions options
-                        ) {
-                            checkClosed.run();
-                            return base.this.query(query, params, options);
-                        }
+            Runnable checkClosed = () -> {
+                if (closed.get()) {
+                    throw new IllegalStateException("Transaction is closed");
+                }
+            };
 
-                        @Override
-                        public <R> Promise<interface_.Results<R>> sql(List<String> strings, Object... params) {
-                            checkClosed.run();
-                            return base.this.sql(strings, params).then(resultObj -> {
-                                @SuppressWarnings("unchecked")
-                                var cast = (interface_.Results<R>) resultObj;
-                                return cast;
-                            });
-                        }
-
-                        @Override
-                        public Promise<List<interface_.Results<Map<String, Object>>>> exec(
-                            String query,
-                            interface_.QueryOptions options
-                        ) {
-                            checkClosed.run();
-                            return runExec(query, options);
-                        }
-
-                        @Override
-                        public Promise<Void> rollback() {
-                            checkClosed.run();
-                            return runExec("ROLLBACK", null).then(ignoredRollback -> {
-                                closed.set(true);
-                                inTransaction = false;
-                                return null;
-                            });
-                        }
-
-                        @Override
-                        public Promise<Function<interface_.Transaction, Promise<Void>>> listen(
-                            String channel,
-                            Consumer<String> callback
-                        ) {
-                            checkClosed.run();
-                            return base.this.listen(channel, callback, this);
-                        }
-
-                        @Override
-                        public boolean closed() {
-                            return closed.get();
-                        }
-                    };
-
-                    Promise<T> callbackResult;
-                    try {
-                        callbackResult = callback.apply(tx);
-                    } catch (Throwable e) {
-                        callbackResult = Promise.reject(asRuntime(e));
-                    }
-
-                    return callbackResult.then(value -> {
-                        if (!closed.get()) {
-                            closed.set(true);
-                            return runExec("COMMIT", null).then(ignoredCommit -> {
-                                inTransaction = false;
-                                return value;
-                            }, commitError -> {
-                                inTransaction = false;
-                                throw asRuntime(unwrap(commitError));
-                            });
-                        }
-                        inTransaction = false;
-                        return value;
-                    }, callbackError -> {
-                        var cause = unwrap(callbackError);
-                        if (!closed.get()) {
-                            return runExec("ROLLBACK", null).then(ignoredRollback -> {
-                                inTransaction = false;
-                                throw asRuntime(cause);
-                            }, rollbackError -> {
-                                inTransaction = false;
-                                throw asRuntime(cause);
-                            });
-                        }
-                        inTransaction = false;
-                        throw asRuntime(cause);
+            var tx = new interface_.Transaction() {
+                @Override
+                public <R> Promise<interface_.Results<R>> query(
+                    String query,
+                    Object[] params,
+                    interface_.QueryOptions options
+                ) {
+                    return asPromise(() -> {
+                        checkClosed.run();
+                        @SuppressWarnings("unchecked")
+                        var result = (interface_.Results<R>) runQuerySync(query, params, options);
+                        return result;
                     });
-                })
-            )
-        );
+                }
+
+                @Override
+                public <R> Promise<interface_.Results<R>> sql(List<String> strings, Object... params) {
+                    return asPromise(() -> {
+                        checkClosed.run();
+                        @SuppressWarnings("unchecked")
+                        var result = (interface_.Results<R>) sqlSync(strings, params);
+                        return result;
+                    });
+                }
+
+                @Override
+                public Promise<List<interface_.Results<Map<String, Object>>>> exec(
+                    String query,
+                    interface_.QueryOptions options
+                ) {
+                    return asPromise(() -> {
+                        checkClosed.run();
+                        return runExecSync(query, options);
+                    });
+                }
+
+                @Override
+                public Promise<Void> rollback() {
+                    return asPromise(() -> {
+                        checkClosed.run();
+                        runExecSync("ROLLBACK", null);
+                        closed.set(true);
+                        inTransaction = false;
+                        return null;
+                    });
+                }
+
+                @Override
+                public Promise<Function<interface_.Transaction, Promise<Void>>> listen(
+                    String channel,
+                    Consumer<String> callback
+                ) {
+                    checkClosed.run();
+                    return base.this.listen(channel, callback, this);
+                }
+
+                @Override
+                public boolean closed() {
+                    return closed.get();
+                }
+            };
+
+            Promise<T> callbackResult;
+            try {
+                callbackResult = callback.apply(tx);
+            } catch (Throwable e) {
+                callbackResult = Promise.reject(asRuntime(e));
+            }
+
+            try {
+                var value = await(callbackResult);
+                if (!closed.get()) {
+                    closed.set(true);
+                    runExecSync("COMMIT", null);
+                }
+                inTransaction = false;
+                return value;
+            } catch (Throwable callbackError) {
+                var cause = unwrap(callbackError);
+                if (!closed.get()) {
+                    try {
+                        runExecSync("ROLLBACK", null);
+                    } catch (Throwable ignored) {
+                        // Preserve callback failure.
+                    }
+                }
+                inTransaction = false;
+                throw asRuntime(cause);
+            }
+        });
     }
 
     public <T> Promise<T> runExclusive(Function<Void, Promise<T>> fn) {
-        return this.runExclusiveQuery(() -> fn.apply(null));
+        return asPromise(() ->
+            runExclusiveQuerySync(() -> await(fn.apply(null)))
+        );
     }
 
-    protected Promise<interface_.Results<Map<String, Object>>> runQuery(
+    protected interface_.Results<Map<String, Object>> runQuerySync(
         String query,
         Object[] params,
         interface_.QueryOptions options
     ) {
-        return runExclusiveQuery(() -> {
+        return runExclusiveQuerySync(() -> {
             var activeParams = params != null ? params : new Object[0];
-            return handleBlob(options != null ? options.blob() : null).then(ignoredBlob -> {
-                var allMessages = new ArrayList<messages.BackendMessage>();
-                var errorHolder = new Throwable[1];
-                var errorFromSync = new boolean[1];
+            handleBlobSync(options != null ? options.blob() : null);
+            var allMessages = new ArrayList<messages.BackendMessage>();
+            Throwable errorHolder = null;
+            var errorFromSync = false;
 
-                var parseOpts = new serializer.ParseOpts();
-                parseOpts.text = query;
-                if (options != null) {
-                    parseOpts.types = options.paramTypes();
+            var parseOpts = new serializer.ParseOpts();
+            parseOpts.text = query;
+            if (options != null) {
+                parseOpts.types = options.paramTypes();
+            }
+
+            try {
+                allMessages.addAll(
+                    execProtocolNoSyncSync(serializer.serialize.parse(parseOpts).toByteArray(), options)
+                );
+
+                var describeStatementOpts = new serializer.PortalOpts();
+                describeStatementOpts.type = "S";
+                var describeMessages = execProtocolNoSyncSync(
+                    serializer.serialize.describe(describeStatementOpts).toByteArray(),
+                    options
+                );
+                allMessages.addAll(describeMessages);
+                var dataTypeIDs = parse.parseDescribeStatementResults(describeMessages);
+
+                var values = new Object[activeParams.length];
+                for (var i = 0; i < activeParams.length; i++) {
+                    var param = activeParams[i];
+                    if (param == null) {
+                        values[i] = null;
+                        continue;
+                    }
+                    var typeId = i < dataTypeIDs.length ? dataTypeIDs[i] : types.TEXT;
+                    if (options != null && options.serializers() != null) {
+                        var customSerializer = options.serializers().get(typeId);
+                        if (customSerializer != null) {
+                            values[i] = customSerializer.serialize(param);
+                            continue;
+                        }
+                    }
+                    var defaultSerializer = this.serializers.get(typeId);
+                    values[i] = defaultSerializer != null
+                        ? defaultSerializer.serialize(param)
+                        : String.valueOf(param);
                 }
 
-                return execProtocolNoSync(serializer.serialize.parse(parseOpts).toByteArray(), options)
-                    .then(parseMessages -> {
-                        allMessages.addAll(parseMessages);
-                        var describeStatementOpts = new serializer.PortalOpts();
-                        describeStatementOpts.type = "S";
-                        return execProtocolNoSync(
-                            serializer.serialize.describe(describeStatementOpts).toByteArray(),
-                            options
-                        ).then(describeMessages -> {
-                            allMessages.addAll(describeMessages);
-                            var dataTypeIDs = parse.parseDescribeStatementResults(describeMessages);
-                            var values = new Object[activeParams.length];
-                            for (var i = 0; i < activeParams.length; i++) {
-                                var param = activeParams[i];
-                                if (param == null) {
-                                    values[i] = null;
-                                    continue;
-                                }
-                                var typeId = i < dataTypeIDs.length ? dataTypeIDs[i] : types.TEXT;
-                                if (options != null && options.serializers() != null) {
-                                    var customSerializer = options.serializers().get(typeId);
-                                    if (customSerializer != null) {
-                                        values[i] = customSerializer.serialize(param);
-                                        continue;
-                                    }
-                                }
-                                var defaultSerializer = this.serializers.get(typeId);
-                                values[i] = defaultSerializer != null
-                                    ? defaultSerializer.serialize(param)
-                                    : String.valueOf(param);
-                            }
+                var bindOpts = new serializer.BindOpts();
+                bindOpts.values = values;
+                allMessages.addAll(
+                    execProtocolNoSyncSync(serializer.serialize.bind(bindOpts).toByteArray(), options)
+                );
 
-                            var bindOpts = new serializer.BindOpts();
-                            bindOpts.values = values;
-                            return execProtocolNoSync(serializer.serialize.bind(bindOpts).toByteArray(), options)
-                                .then(bindMessages -> {
-                                    allMessages.addAll(bindMessages);
-                                    var describePortalOpts = new serializer.PortalOpts();
-                                    describePortalOpts.type = "P";
-                                    return execProtocolNoSync(
-                                        serializer.serialize.describe(describePortalOpts).toByteArray(),
-                                        options
-                                    );
-                                })
-                                .then(portalMessages -> {
-                                    allMessages.addAll(castBackendMessages(portalMessages));
-                                    return execProtocolNoSync(
-                                        serializer.serialize.execute(new serializer.ExecOpts()).toByteArray(),
-                                        options
-                                    );
-                                })
-                                .then(executeMessages -> {
-                                    allMessages.addAll(castBackendMessages(executeMessages));
-                                    return allMessages;
-                                });
-                        });
-                    }, error -> {
-                        errorHolder[0] = unwrap(error);
-                        return allMessages;
-                    })
-                    .then(ignoredExecute -> execProtocolNoSync(serializer.serialize.sync().toByteArray(), options)
-                        .then(syncMessages -> {
-                            allMessages.addAll(syncMessages);
-                            return allMessages;
-                        }, syncError -> {
-                            errorHolder[0] = unwrap(syncError);
-                            errorFromSync[0] = true;
-                            return allMessages;
-                        })
+                var describePortalOpts = new serializer.PortalOpts();
+                describePortalOpts.type = "P";
+                allMessages.addAll(
+                    execProtocolNoSyncSync(
+                        serializer.serialize.describe(describePortalOpts).toByteArray(),
+                        options
                     )
-                    .then(resultMessages -> {
-                        if (errorHolder[0] != null) {
-                            var cause = unwrap(errorHolder[0]);
-                            if (!errorFromSync[0] && cause instanceof messages.DatabaseError dbError) {
-                                throw errors.makePGliteError(dbError, query, activeParams, options);
-                            }
-                            throw asRuntime(cause);
-                        }
-                        return cleanupBlob().then(ignoredCleanup -> {
-                            var syncFuture = !inTransaction
-                                ? syncToFs()
-                                : Promise.resolve(null);
-                            return syncFuture.then(ignoredSync -> getWrittenBlob().then(blob -> {
-                                var parsed = parse.parseResults(
-                                    castBackendMessages(resultMessages),
-                                    parsers,
-                                    options,
-                                    blob
-                                );
-                                if (parsed.isEmpty()) {
-                                    return new interface_.Results<Map<String, Object>>(
-                                        List.of(),
-                                        0,
-                                        List.of(),
-                                        blob
-                                    );
-                                }
-                                return parsed.getFirst();
-                            }));
-                        });
-                    });
-            });
+                );
+
+                allMessages.addAll(
+                    execProtocolNoSyncSync(
+                        serializer.serialize.execute(new serializer.ExecOpts()).toByteArray(),
+                        options
+                    )
+                );
+            } catch (Throwable error) {
+                errorHolder = unwrap(error);
+            }
+
+            try {
+                allMessages.addAll(execProtocolNoSyncSync(serializer.serialize.sync().toByteArray(), options));
+            } catch (Throwable syncError) {
+                errorHolder = unwrap(syncError);
+                errorFromSync = true;
+            }
+
+            if (errorHolder != null) {
+                var cause = unwrap(errorHolder);
+                if (!errorFromSync && cause instanceof messages.DatabaseError dbError) {
+                    throw errors.makePGliteError(dbError, query, activeParams, options);
+                }
+                throw asRuntime(cause);
+            }
+
+            cleanupBlobSync();
+            if (!inTransaction) {
+                syncToFsSync();
+            }
+            var blob = getWrittenBlobSync();
+            var parsed = parse.parseResults(allMessages, parsers, options, blob);
+            if (parsed.isEmpty()) {
+                return new interface_.Results<Map<String, Object>>(
+                    List.of(),
+                    0,
+                    List.of(),
+                    blob
+                );
+            }
+            return parsed.getFirst();
         });
     }
 
-    protected Promise<List<interface_.Results<Map<String, Object>>>> runExec(
+    protected List<interface_.Results<Map<String, Object>>> runExecSync(
         String query,
         interface_.QueryOptions options
     ) {
-        return runExclusiveQuery(() ->
-            handleBlob(options != null ? options.blob() : null).then(ignoredBlob -> {
-                var allMessages = new ArrayList<messages.BackendMessage>();
-                var errorHolder = new Throwable[1];
-                var errorFromSync = new boolean[1];
+        return runExclusiveQuerySync(() -> {
+            handleBlobSync(options != null ? options.blob() : null);
+            var allMessages = new ArrayList<messages.BackendMessage>();
+            Throwable errorHolder = null;
+            var errorFromSync = false;
 
-                return execProtocolNoSync(serializer.serialize.query(query).toByteArray(), options)
-                    .then(execMessages -> {
-                        allMessages.addAll(execMessages);
-                        return allMessages;
-                    }, error -> {
-                        errorHolder[0] = unwrap(error);
-                        return allMessages;
-                    })
-                    .then(ignoredExec -> execProtocolNoSync(serializer.serialize.sync().toByteArray(), options)
-                        .then(syncMessages -> {
-                            allMessages.addAll(syncMessages);
-                            return allMessages;
-                        }, syncError -> {
-                            errorHolder[0] = unwrap(syncError);
-                            errorFromSync[0] = true;
-                            return allMessages;
-                        })
-                    )
-                    .then(resultMessages -> {
-                        if (errorHolder[0] != null) {
-                            var cause = unwrap(errorHolder[0]);
-                            if (!errorFromSync[0] && cause instanceof messages.DatabaseError dbError) {
-                                throw errors.makePGliteError(dbError, query, null, options);
-                            }
-                            throw asRuntime(cause);
-                        }
-                        return cleanupBlob().then(ignoredCleanup -> {
-                            var syncFuture = !inTransaction
-                                ? syncToFs()
-                                : Promise.resolve(null);
-                            return syncFuture.then(ignoredSync -> getWrittenBlob().then(blob ->
-                                parse.parseResults(castBackendMessages(resultMessages), parsers, options, blob)
-                            ));
-                        });
-                    });
-            })
-        );
+            try {
+                allMessages.addAll(
+                    execProtocolNoSyncSync(serializer.serialize.query(query).toByteArray(), options)
+                );
+            } catch (Throwable error) {
+                errorHolder = unwrap(error);
+            }
+
+            try {
+                allMessages.addAll(execProtocolNoSyncSync(serializer.serialize.sync().toByteArray(), options));
+            } catch (Throwable syncError) {
+                errorHolder = unwrap(syncError);
+                errorFromSync = true;
+            }
+
+            if (errorHolder != null) {
+                var cause = unwrap(errorHolder);
+                if (!errorFromSync && cause instanceof messages.DatabaseError dbError) {
+                    throw errors.makePGliteError(dbError, query, null, options);
+                }
+                throw asRuntime(cause);
+            }
+
+            cleanupBlobSync();
+            if (!inTransaction) {
+                syncToFsSync();
+            }
+            var blob = getWrittenBlobSync();
+            return parse.parseResults(allMessages, parsers, options, blob);
+        });
+    }
+
+    protected static <T> T runWithSemaphoreSync(
+        Semaphore semaphore,
+        ThrowingSupplier<T> fn
+    ) {
+        try {
+            semaphore.acquire();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(e);
+        }
+
+        try {
+            return fn.get();
+        } catch (RuntimeException | Error e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        } finally {
+            semaphore.release();
+        }
     }
 
     protected static <T> Promise<T> runWithSemaphore(
         Semaphore semaphore,
         ThrowingSupplier<Promise<T>> fn
     ) {
-        return new Promise<>((resolve, reject) -> {
-            try {
-                semaphore.acquire();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                reject.run(e);
-                return;
-            }
-
-            Promise<T> promise;
-            try {
-                promise = fn.get();
-            } catch (Throwable e) {
-                semaphore.release();
-                reject.run(e);
-                return;
-            }
-
-            if (promise == null) {
-                semaphore.release();
-                resolve.run(null);
-                return;
-            }
-
-            promise.then(value -> {
-                semaphore.release();
-                resolve.run(value);
-                return null;
-            }, error -> {
-                semaphore.release();
-                reject.run(unwrap(error));
-                return null;
-            });
-        });
+        return asPromise(() ->
+            runWithSemaphoreSync(semaphore, () -> await(fn.get()))
+        );
     }
 
     protected static Throwable unwrap(Throwable error) {
@@ -572,6 +615,21 @@ public abstract class base {
             return runtime;
         }
         return new RuntimeException(error);
+    }
+
+    protected static <T> Promise<T> asPromise(ThrowingSupplier<T> fn) {
+        try {
+            return Promise.resolve(fn.get());
+        } catch (Throwable e) {
+            return Promise.reject(unwrap(e));
+        }
+    }
+
+    protected static <T> T await(Promise<T> promise) {
+        if (promise == null) {
+            return null;
+        }
+        return promise.join();
     }
 
     @SuppressWarnings("unchecked")

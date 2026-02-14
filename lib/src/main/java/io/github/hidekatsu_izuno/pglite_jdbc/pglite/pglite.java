@@ -13,10 +13,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -26,6 +29,10 @@ public class pglite extends base implements interface_.PGliteInterface {
     protected static final int DEFAULT_RECV_BUF_SIZE = 1024 * 1024;
     protected static final int MAX_BUFFER_SIZE = 1 << 30;
     private static final boolean TRACE_INIT = Boolean.getBoolean("pglite.trace_init");
+    private static final long NATIVE_CALL_TIMEOUT_MS = Long.getLong(
+        "pglite.native_call_timeout_ms",
+        120_000L
+    );
 
     protected Filesystem fs;
     protected postgresMod.PostgresMod mod;
@@ -106,151 +113,130 @@ public class pglite extends base implements interface_.PGliteInterface {
     }
 
     protected Promise<Void> init(PGliteOptions options) {
-        return new Promise<>((resolve, reject) -> {
-            try {
-                traceInit("init:start");
-                if (options.fs != null) {
-                    this.fs = options.fs;
-                } else {
-                    var parsed = io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.index.parseDataDir(options.dataDir);
-                    this.fs = io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.index.loadFs(
-                        parsed.dataDir(),
-                        parsed.fsType()
-                    );
+        return new Promise<>((resolve, reject) ->
+            Promise.executor().submit(() -> {
+                try {
+                    initSync(options);
+                    resolve.run(null);
+                } catch (Throwable e) {
+                    reject.run(e);
                 }
-                traceInit("init:fs-ready type=" + this.fs.getClass().getSimpleName());
+            })
+        );
+    }
 
-                var overrides = new postgresMod.PartialPostgresMod();
-                overrides.WASM_PREFIX = io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.base.WASM_PREFIX;
-                overrides.INITIAL_MEMORY = options.initialMemory != null
-                    ? options.initialMemory
-                    : 64 * 1024 * 1024;
-                overrides.noExitRuntime = true;
-                overrides.arguments = buildModuleArguments(options);
+    private void initSync(PGliteOptions options) {
+        traceInit("init:start");
+        if (options.fs != null) {
+            this.fs = options.fs;
+        } else {
+            var parsed = io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.index.parseDataDir(options.dataDir);
+            this.fs = io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.index.loadFs(
+                parsed.dataDir(),
+                parsed.fsType()
+            );
+        }
+        traceInit("init:fs-ready type=" + this.fs.getClass().getSimpleName());
 
-                var setupPromises = new ArrayList<Promise<Void>>();
-                var extPromises =
-                    new ConcurrentHashMap<String, CompletableFuture<extensionUtils.ExtensionBlob>>();
-                var emscriptenOptions = new ConcurrentHashMap<String, Object>();
+        var overrides = new postgresMod.PartialPostgresMod();
+        overrides.WASM_PREFIX = io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.base.WASM_PREFIX;
+        overrides.INITIAL_MEMORY = options.initialMemory != null
+            ? options.initialMemory
+            : 64 * 1024 * 1024;
+        overrides.noExitRuntime = true;
+        overrides.arguments = buildModuleArguments(options);
 
-                if (options.extensions != null) {
-                    for (var entry : options.extensions.entrySet()) {
-                        var extName = entry.getKey();
-                        var extension = entry.getValue();
-                        if (extension == null) {
-                            continue;
+        var extPromises =
+            new ConcurrentHashMap<String, CompletableFuture<extensionUtils.ExtensionBlob>>();
+        var emscriptenOptions = new ConcurrentHashMap<String, Object>();
+
+        if (options.extensions != null) {
+            for (var entry : options.extensions.entrySet()) {
+                var extName = entry.getKey();
+                var extension = entry.getValue();
+                if (extension == null) {
+                    continue;
+                }
+                var result = await(extension.setup().setup(this, overrides, false));
+                if (result == null) {
+                    continue;
+                }
+                if (result.emscriptenOpts() instanceof Map<?, ?> mapOpts) {
+                    for (var opt : mapOpts.entrySet()) {
+                        if (opt.getKey() instanceof String key) {
+                            emscriptenOptions.put(key, opt.getValue());
                         }
-                        Promise<Void> setupPromise = extension.setup()
-                            .setup(this, overrides, false)
-                            .then(resultObj -> {
-                                var result = (interface_.ExtensionSetupResult) resultObj;
-                                if (result == null) {
-                                    return (Void) null;
-                                }
-                                if (result.emscriptenOpts() instanceof Map<?, ?> mapOpts) {
-                                    for (var opt : mapOpts.entrySet()) {
-                                        if (opt.getKey() instanceof String key) {
-                                            emscriptenOptions.put(key, opt.getValue());
-                                        }
-                                    }
-                                }
-                                if (result.bundlePath() != null) {
-                                    var bytes = extensionUtils.loadExtensionBundle(result.bundlePath());
-                                    extPromises.put(
-                                        extName,
-                                        CompletableFuture.completedFuture(
-                                            extensionUtils.toExtensionBlob(bytes)
-                                        )
-                                    );
-                                }
-                                if (result.init() != null) {
-                                    extensionInitializers.add(result.init());
-                                }
-                                if (result.close() != null) {
-                                    extensionClosers.add(result.close());
-                                }
-                                return (Void) null;
-                            })
-                            .then(ignored2 -> (Void) null);
-                        setupPromises.add(setupPromise);
                     }
                 }
-                overrides.pg_extensions = extPromises;
-
-                Promise.all(setupPromises)
-                    .then(ignored -> {
-                        traceInit("init:extensions-setup-done");
-                        return this.fs.init(this, emscriptenOptions);
-                    })
-                    .then(initResultObj -> {
-                        traceInit("init:fs-init-done");
-                        return fs.initialSyncFs().then(ignore -> {
-                            traceInit("init:fs-initial-sync-done");
-                            return initResultObj;
-                        });
-                    })
-                    .then(initResultObj -> {
-                        traceInit("init:build-runtime-start");
-                        var initResult =
-                            (io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.base.InitResult) initResultObj;
-                        if (initResult.emscriptenOpts() != null) {
-                            if (initResult.emscriptenOpts().get("WASM_PREFIX") instanceof String prefix) {
-                                overrides.WASM_PREFIX = prefix;
-                            }
-                            if (initResult.emscriptenOpts().get("INITIAL_MEMORY") instanceof Number memory) {
-                                overrides.INITIAL_MEMORY = memory.intValue();
-                            }
-                        }
-                        return io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.pglite
-                            .PostgresModFactory(overrides);
-                    })
-                    .then(factoryResult -> {
-                        traceInit("init:build-runtime-done");
-                        traceInit("init:prop trace_host_calls=" + Boolean.getBoolean("pglite.trace_host_calls"));
-                        this.mod = (postgresMod.PostgresMod) factoryResult;
-                        setupBlobDevice();
-                        setupReadWriteCallbacks();
-                        this.mod._set_read_write_cbs(this.pgliteRead, this.pgliteWrite);
-                        traceInit("init:callbacks-ready");
-                        return extensionUtils.loadExtensions(this.mod, this::log);
-                    })
-                    .then(ignored -> {
-                        traceInit("init:extensions-load-done");
-                        var idb = this.mod._pgl_initdb();
-                        traceInit("init:initdb-done status=" + idb);
-                        if (idb == 0) {
-                            throw new IllegalStateException("INITDB failed to return value");
-                        }
-                        if ((idb & 0b0001) != 0) {
-                            throw new IllegalStateException("INITDB failed: status=" + idb);
-                        }
-                        this.mod._pgl_backend();
-                        traceInit("init:backend-done");
-                        this.ready = true;
-                        return this.exec("SET search_path TO public;", null)
-                            .then(ignoredExec -> {
-                                traceInit("init:set-search-path-done");
-                                return refreshArrayTypes();
-                            })
-                            .then(ignoredInit -> runExtensionInitializers());
-                    })
-                    .then(ignored -> {
-                        traceInit("init:done");
-                        resolve.run(null);
-                        return null;
-                    }, error -> {
-                        traceInit("init:error " + error);
-                        reject.run(error instanceof Throwable
-                            ? (Throwable) error
-                            : new RuntimeException(String.valueOf(error))
-                        );
-                        return null;
-                    });
-            } catch (Throwable e) {
-                traceInit("init:exception " + e);
-                reject.run(e);
+                if (result.bundlePath() != null) {
+                    var bytes = extensionUtils.loadExtensionBundle(result.bundlePath());
+                    extPromises.put(
+                        extName,
+                        CompletableFuture.completedFuture(
+                            extensionUtils.toExtensionBlob(bytes)
+                        )
+                    );
+                }
+                if (result.init() != null) {
+                    extensionInitializers.add(result.init());
+                }
+                if (result.close() != null) {
+                    extensionClosers.add(result.close());
+                }
             }
+        }
+        overrides.pg_extensions = extPromises;
+        traceInit("init:extensions-setup-done");
+
+        var initResult = await(this.fs.init(this, emscriptenOptions));
+        traceInit("init:fs-init-done");
+        await(fs.initialSyncFs());
+        traceInit("init:fs-initial-sync-done");
+
+        traceInit("init:build-runtime-start");
+        if (initResult != null && initResult.emscriptenOpts() != null) {
+            if (initResult.emscriptenOpts().get("WASM_PREFIX") instanceof String prefix) {
+                overrides.WASM_PREFIX = prefix;
+            }
+            if (initResult.emscriptenOpts().get("INITIAL_MEMORY") instanceof Number memory) {
+                overrides.INITIAL_MEMORY = memory.intValue();
+            }
+        }
+        this.mod = io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.pglite
+            .PostgresModFactory(overrides)
+            .join();
+
+        traceInit("init:build-runtime-done");
+        traceInit("init:prop trace_host_calls=" + Boolean.getBoolean("pglite.trace_host_calls"));
+        setupBlobDevice();
+        setupReadWriteCallbacks();
+        this.mod._set_read_write_cbs(this.pgliteRead, this.pgliteWrite);
+        traceInit("init:callbacks-ready");
+
+        await(extensionUtils.loadExtensions(this.mod, this::log));
+        traceInit("init:extensions-load-done");
+
+        var idb = runNativeWithTimeout("pgl_initdb", this.mod::_pgl_initdb);
+        traceInit("init:initdb-done status=" + idb);
+        if (idb == 0) {
+            throw new IllegalStateException("INITDB failed to return value");
+        }
+        if ((idb & 0b0001) != 0) {
+            throw new IllegalStateException("INITDB failed: status=" + idb);
+        }
+        runNativeWithTimeout("pgl_backend", () -> {
+            this.mod._pgl_backend();
+            return null;
         });
+        traceInit("init:backend-done");
+        this.ready = true;
+
+        this.execSync("SET search_path TO public;", null);
+        traceInit("init:set-search-path-done");
+        refreshArrayTypesSync();
+        runExtensionInitializersSync();
+
+        traceInit("init:done");
     }
 
     private static void traceInit(String message) {
@@ -289,15 +275,24 @@ public class pglite extends base implements interface_.PGliteInterface {
         return args.toArray(String[]::new);
     }
 
-    private Promise<Void> runExtensionInitializers() {
-        var chain = Promise.resolve((Void) null);
-        for (var initializer : extensionInitializers) {
-            chain = chain.then(ignored -> {
-                initializer.run();
-                return (Void) null;
-            });
+    private <T> T runNativeWithTimeout(String name, Callable<T> callable) {
+        var future = Promise.executor().submit(callable);
+        try {
+            return future.get(NATIVE_CALL_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException timeout) {
+            future.cancel(true);
+            throw new RuntimeException(
+                "Native call timed out: " + name + " (" + NATIVE_CALL_TIMEOUT_MS + "ms)"
+            );
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
-        return chain;
+    }
+
+    private void runExtensionInitializersSync() {
+        for (var initializer : extensionInitializers) {
+            initializer.run();
+        }
     }
 
     @Override
@@ -322,62 +317,61 @@ public class pglite extends base implements interface_.PGliteInterface {
 
     @Override
     public Promise<Void> close() {
+        return asPromise(() -> {
+            closeSync();
+            return null;
+        });
+    }
+
+    private void closeSync() {
         if (closed) {
-            return Promise.resolve(null);
+            return;
         }
         closing = true;
-        return Promise.resolve(null)
-            .then(ignored -> {
-                for (var closer : extensionClosers) {
-                    closer.run();
-                }
-                return null;
-            })
-            .then(ignored -> {
-                if (this.mod != null) {
-                    this.mod._pgl_shutdown();
-                }
-                return null;
-            })
-            .then(ignored -> {
-                if (this.mod != null && this.pgliteRead >= 0) {
-                    this.mod.removeFunction(this.pgliteRead);
-                    this.pgliteRead = -1;
-                }
-                if (this.mod != null && this.pgliteWrite >= 0) {
-                    this.mod.removeFunction(this.pgliteWrite);
-                    this.pgliteWrite = -1;
-                }
-                return null;
-            })
-            .then(ignored -> fs != null ? fs.closeFs() : Promise.resolve(null))
-            .then(ignored -> {
-                closed = true;
-                closing = false;
-                ready = false;
-                return null;
-            }, error -> {
-                closing = false;
-                throw new RuntimeException(
-                    error instanceof Throwable
-                        ? (Throwable) error
-                        : new RuntimeException(String.valueOf(error))
-                );
-            });
+        try {
+            for (var closer : extensionClosers) {
+                closer.run();
+            }
+            if (this.mod != null) {
+                this.mod._pgl_shutdown();
+            }
+            if (this.mod != null && this.pgliteRead >= 0) {
+                this.mod.removeFunction(this.pgliteRead);
+                this.pgliteRead = -1;
+            }
+            if (this.mod != null && this.pgliteWrite >= 0) {
+                this.mod.removeFunction(this.pgliteWrite);
+                this.pgliteWrite = -1;
+            }
+            if (fs != null) {
+                await(fs.closeFs());
+            }
+            closed = true;
+            ready = false;
+        } finally {
+            closing = false;
+        }
     }
 
     @Override
     protected Promise<Void> checkReady() {
+        return asPromise(() -> {
+            checkReadySync();
+            return null;
+        });
+    }
+
+    @Override
+    protected void checkReadySync() {
         if (this.closing) {
-            return Promise.reject(new IllegalStateException("PGlite is closing"));
+            throw new IllegalStateException("PGlite is closing");
         }
         if (this.closed) {
-            return Promise.reject(new IllegalStateException("PGlite is closed"));
+            throw new IllegalStateException("PGlite is closed");
         }
         if (!ready) {
-            return waitReady;
+            await(waitReady);
         }
-        return Promise.resolve(null);
     }
 
     public byte[] execProtocolRawSync(byte[] message) {
@@ -404,13 +398,77 @@ public class pglite extends base implements interface_.PGliteInterface {
     @Override
     public Promise<byte[]> execProtocolRaw(byte[] message, interface_.ExecProtocolOptions options) {
         var resolved = resolveExecProtocolOptions(options);
-        return checkReady().then(ignored -> {
-            var data = execProtocolRawSync(message);
-            if (resolved.syncToFs()) {
-                return syncToFs().then(ignoreSync -> data);
+        return asPromise(() -> execProtocolRawResolvedSync(message, resolved));
+    }
+
+    private byte[] execProtocolRawResolvedSync(
+        byte[] message,
+        interface_.ExecProtocolOptions options
+    ) {
+        checkReadySync();
+        var data = execProtocolRawSync(message);
+        if (options.syncToFs()) {
+            syncToFsSync();
+        }
+        return data;
+    }
+
+    private void resetProtocolState() {
+        this.currentResults.clear();
+        this.currentThrowOnError = false;
+        this.currentOnNotice = null;
+        this.currentDatabaseError = null;
+    }
+
+    private interface_.ExecProtocolResult execProtocolSyncInternal(
+        byte[] message,
+        interface_.ExecProtocolOptions options
+    ) {
+        this.currentThrowOnError = options.throwOnError();
+        this.currentOnNotice = options.onNotice();
+        this.currentResults.clear();
+        this.currentDatabaseError = null;
+
+        try {
+            var data = this.execProtocolRawResolvedSync(message, options);
+            var dbError = this.currentDatabaseError;
+            var result = new interface_.ExecProtocolResult(
+                List.copyOf(this.currentResults),
+                data
+            );
+            if (options.throwOnError() && dbError != null) {
+                this.protocolParser = new parser.Parser();
+                throw dbError;
             }
-            return data;
-        });
+            return result;
+        } finally {
+            resetProtocolState();
+        }
+    }
+
+    private List<messages.BackendMessage> execProtocolStreamSyncInternal(
+        byte[] message,
+        interface_.ExecProtocolOptions options
+    ) {
+        this.currentThrowOnError = options.throwOnError();
+        this.currentOnNotice = options.onNotice();
+        this.currentResults.clear();
+        this.currentDatabaseError = null;
+        this.keepRawResponse = false;
+
+        try {
+            this.execProtocolRawResolvedSync(message, options);
+            var dbError = this.currentDatabaseError;
+            var result = List.copyOf(this.currentResults);
+            if (options.throwOnError() && dbError != null) {
+                this.protocolParser = new parser.Parser();
+                throw dbError;
+            }
+            return result;
+        } finally {
+            this.keepRawResponse = true;
+            resetProtocolState();
+        }
     }
 
     @Override
@@ -419,37 +477,7 @@ public class pglite extends base implements interface_.PGliteInterface {
         interface_.ExecProtocolOptions options
     ) {
         var resolved = resolveExecProtocolOptions(options);
-        this.currentThrowOnError = resolved.throwOnError();
-        this.currentOnNotice = resolved.onNotice();
-        this.currentResults.clear();
-        this.currentDatabaseError = null;
-
-        return this.execProtocolRaw(message, resolved).then(data -> {
-            var dbError = this.currentDatabaseError;
-            var result = new interface_.ExecProtocolResult(
-                List.copyOf(this.currentResults),
-                data
-            );
-            this.currentResults.clear();
-            this.currentThrowOnError = false;
-            this.currentOnNotice = null;
-            this.currentDatabaseError = null;
-            if (resolved.throwOnError() && dbError != null) {
-                this.protocolParser = new parser.Parser();
-                throw dbError;
-            }
-            return result;
-        }, error -> {
-            this.currentResults.clear();
-            this.currentThrowOnError = false;
-            this.currentOnNotice = null;
-            this.currentDatabaseError = null;
-            throw new RuntimeException(
-                error instanceof Throwable
-                    ? (Throwable) error
-                    : new RuntimeException(String.valueOf(error))
-            );
-        });
+        return asPromise(() -> execProtocolSyncInternal(message, resolved));
     }
 
     public Promise<List<messages.BackendMessage>> execProtocolStream(
@@ -457,37 +485,7 @@ public class pglite extends base implements interface_.PGliteInterface {
         interface_.ExecProtocolOptions options
     ) {
         var resolved = resolveExecProtocolOptions(options);
-        this.currentThrowOnError = resolved.throwOnError();
-        this.currentOnNotice = resolved.onNotice();
-        this.currentResults.clear();
-        this.currentDatabaseError = null;
-        this.keepRawResponse = false;
-
-        return this.execProtocolRaw(message, resolved).then(ignored -> {
-            this.keepRawResponse = true;
-            var dbError = this.currentDatabaseError;
-            var result = List.copyOf(this.currentResults);
-            this.currentResults.clear();
-            this.currentThrowOnError = false;
-            this.currentOnNotice = null;
-            this.currentDatabaseError = null;
-            if (resolved.throwOnError() && dbError != null) {
-                this.protocolParser = new parser.Parser();
-                throw dbError;
-            }
-            return result;
-        }, error -> {
-            this.keepRawResponse = true;
-            this.currentResults.clear();
-            this.currentThrowOnError = false;
-            this.currentOnNotice = null;
-            this.currentDatabaseError = null;
-            throw new RuntimeException(
-                error instanceof Throwable
-                    ? (Throwable) error
-                    : new RuntimeException(String.valueOf(error))
-            );
-        });
+        return asPromise(() -> execProtocolStreamSyncInternal(message, resolved));
     }
 
     private interface_.ExecProtocolOptions resolveExecProtocolOptions(interface_.ExecProtocolOptions options) {
@@ -497,40 +495,72 @@ public class pglite extends base implements interface_.PGliteInterface {
         return new interface_.ExecProtocolOptions(true, true, null);
     }
 
+    private void performSyncToFsSync() {
+        runWithSemaphoreSync(this.fsSyncMutex, () -> {
+            this.fsSyncScheduled = false;
+            await(this.fs.syncToFs(this.relaxedDurability));
+            return null;
+        });
+    }
+
     @Override
     public Promise<Void> syncToFs() {
-        if (this.fs == null) {
+        if (this.relaxedDurability) {
+            syncToFsSync();
             return Promise.resolve(null);
         }
+        return asPromise(() -> {
+            syncToFsSync();
+            return null;
+        });
+    }
+
+    @Override
+    protected void syncToFsSync() {
+        if (this.fs == null) {
+            return;
+        }
         if (this.fsSyncScheduled) {
-            return Promise.resolve(null);
+            return;
         }
         this.fsSyncScheduled = true;
 
-        Supplier<Promise<Void>> doSync = () ->
-            runWithSemaphore(this.fsSyncMutex, () -> {
-                this.fsSyncScheduled = false;
-                return this.fs.syncToFs(this.relaxedDurability);
-            });
-
         if (this.relaxedDurability) {
-            doSync.get();
-            return Promise.resolve(null);
+            Promise.executor().submit(() -> {
+                try {
+                    performSyncToFsSync();
+                } catch (Throwable ignored) {
+                    // Best effort in relaxed durability mode.
+                }
+            });
+            return;
         }
-        return doSync.get();
+        performSyncToFsSync();
     }
 
     @Override
     protected Promise<Void> handleBlob(byte[] blob) {
+        return asPromise(() -> {
+            handleBlobSync(blob);
+            return null;
+        });
+    }
+
+    @Override
+    protected void handleBlobSync(byte[] blob) {
         this.queryReadBuffer = blob;
         this.queryWriteChunks = null;
-        return Promise.resolve(null);
     }
 
     @Override
     protected Promise<byte[]> getWrittenBlob() {
+        return asPromise(this::getWrittenBlobSync);
+    }
+
+    @Override
+    protected byte[] getWrittenBlobSync() {
         if (this.queryWriteChunks == null || this.queryWriteChunks.isEmpty()) {
-            return Promise.resolve(null);
+            return null;
         }
         var total = 0;
         for (var chunk : this.queryWriteChunks) {
@@ -543,14 +573,21 @@ public class pglite extends base implements interface_.PGliteInterface {
             offset += chunk.length;
         }
         this.queryWriteChunks = null;
-        return Promise.resolve(merged);
+        return merged;
     }
 
     @Override
     protected Promise<Void> cleanupBlob() {
+        return asPromise(() -> {
+            cleanupBlobSync();
+            return null;
+        });
+    }
+
+    @Override
+    protected void cleanupBlobSync() {
         this.queryReadBuffer = null;
         this.queryWriteChunks = null;
-        return Promise.resolve(null);
     }
 
     @Override
@@ -559,10 +596,12 @@ public class pglite extends base implements interface_.PGliteInterface {
         Consumer<String> callback,
         interface_.Transaction tx
     ) {
-        return runWithSemaphore(this.listenMutex, () -> listenInner(channel, callback, tx));
+        return asPromise(() ->
+            runWithSemaphoreSync(this.listenMutex, () -> listenInnerSync(channel, callback, tx))
+        );
     }
 
-    private Promise<Function<interface_.Transaction, Promise<Void>>> listenInner(
+    private Function<interface_.Transaction, Promise<Void>> listenInnerSync(
         String channel,
         Consumer<String> callback,
         interface_.Transaction tx
@@ -574,24 +613,21 @@ public class pglite extends base implements interface_.PGliteInterface {
         );
         listeners.add(callback);
 
-        var listenFuture = tx != null
-            ? tx.exec("LISTEN " + channel, null).then(ignored -> (Void) null)
-            : this.exec("LISTEN " + channel, null).then(ignored -> (Void) null);
-
-        return listenFuture.then(ignored ->
-            (Function<interface_.Transaction, Promise<Void>>) providedTx ->
-                this.unlisten(channel, callback, providedTx)
-        , error -> {
+        try {
+            if (tx != null) {
+                await(tx.exec("LISTEN " + channel, null));
+            } else {
+                this.execSync("LISTEN " + channel, null);
+            }
+        } catch (Throwable error) {
             listeners.remove(callback);
             if (listeners.isEmpty()) {
                 this.notifyListeners.remove(pgChannel);
             }
-            throw new RuntimeException(
-                error instanceof Throwable
-                    ? (Throwable) error
-                    : new RuntimeException(String.valueOf(error))
-            );
-        });
+            throw asRuntime(unwrap(error));
+        }
+
+        return providedTx -> this.unlisten(channel, callback, providedTx);
     }
 
     @Override
@@ -600,10 +636,16 @@ public class pglite extends base implements interface_.PGliteInterface {
         Consumer<String> callback,
         interface_.Transaction tx
     ) {
-        return runWithSemaphore(this.listenMutex, () -> unlistenInner(channel, callback, tx));
+        return asPromise(() -> {
+            runWithSemaphoreSync(this.listenMutex, () -> {
+                unlistenInnerSync(channel, callback, tx);
+                return null;
+            });
+            return null;
+        });
     }
 
-    private Promise<Void> unlistenInner(
+    private void unlistenInnerSync(
         String channel,
         Consumer<String> callback,
         interface_.Transaction tx
@@ -611,27 +653,23 @@ public class pglite extends base implements interface_.PGliteInterface {
         var pgChannel = utils.toPostgresName(channel);
         var listeners = this.notifyListeners.get(pgChannel);
 
-        Supplier<Promise<Void>> cleanup = () -> {
-            var execFuture = tx != null
-                ? tx.exec("UNLISTEN " + channel, null).then(ignored -> (Void) null)
-                : this.exec("UNLISTEN " + channel, null).then(ignored -> (Void) null);
-            return execFuture.then(ignored -> {
-                var current = this.notifyListeners.get(pgChannel);
-                if (current != null && current.isEmpty()) {
-                    this.notifyListeners.remove(pgChannel);
-                }
-                return null;
-            });
-        };
-
         if (callback != null && listeners != null) {
             listeners.remove(callback);
-            if (listeners.isEmpty()) {
-                return cleanup.get();
+            if (!listeners.isEmpty()) {
+                return;
             }
-            return Promise.resolve(null);
         }
-        return cleanup.get();
+
+        if (tx != null) {
+            await(tx.exec("UNLISTEN " + channel, null));
+        } else {
+            this.execSync("UNLISTEN " + channel, null);
+        }
+
+        var current = this.notifyListeners.get(pgChannel);
+        if (current != null && current.isEmpty()) {
+            this.notifyListeners.remove(pgChannel);
+        }
     }
 
     @Override
@@ -650,23 +688,31 @@ public class pglite extends base implements interface_.PGliteInterface {
 
     @Override
     public <T> Promise<T> runExclusive(Supplier<Promise<T>> fn) {
-        return runExclusiveQuery(() -> fn.get());
+        return asPromise(() ->
+            runExclusiveQuerySync(() -> await(fn.get()))
+        );
     }
 
     @Override
     public Promise<byte[]> dumpDataDir(String compression) {
+        return asPromise(() -> dumpDataDirSync(compression));
+    }
+
+    private byte[] dumpDataDirSync(String compression) {
         var option = switch (compression == null ? "auto" : compression) {
             case "none" -> io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.tarUtils.DumpTarCompressionOptions.none;
             case "gzip" -> io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.tarUtils.DumpTarCompressionOptions.gzip;
             default -> io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.tarUtils.DumpTarCompressionOptions.auto;
         };
-        return fs.dumpTar("pgdata", option);
+        return await(fs.dumpTar("pgdata", option));
     }
 
     public Promise<Void> notify(String channel, String payload) {
-        var escapedPayload = payload == null ? "" : payload.replace("'", "''");
-        return this.exec("NOTIFY " + channel + ", '" + escapedPayload + "'", null)
-            .then(ignored -> (Void) null);
+        return asPromise(() -> {
+            var escapedPayload = payload == null ? "" : payload.replace("'", "''");
+            this.execSync("NOTIFY " + channel + ", '" + escapedPayload + "'", null);
+            return null;
+        });
     }
 
     private void setupReadWriteCallbacks() {
