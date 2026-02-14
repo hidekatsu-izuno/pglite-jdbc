@@ -3,8 +3,6 @@ package io.github.hidekatsu_izuno.pglite_jdbc;
 import io.github.hidekatsu_izuno.pglite_jdbc.core.ConnectionFactory;
 import io.github.hidekatsu_izuno.pglite_jdbc.core.QueryExecutor;
 import io.github.hidekatsu_izuno.pglite_jdbc.jdbc.PgConnection;
-import io.github.hidekatsu_izuno.pglite_jdbc.util.PSQLException;
-import io.github.hidekatsu_izuno.pglite_jdbc.util.PSQLState;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
@@ -14,6 +12,8 @@ import java.sql.SQLException;
 import java.util.Map;
 import java.util.Properties;
 import java.util.logging.Logger;
+import org.postgresql.util.PSQLException;
+import org.postgresql.util.PSQLState;
 
 public class Driver implements java.sql.Driver {
     public static final String URL_PREFIX = "jdbc:pglite:";

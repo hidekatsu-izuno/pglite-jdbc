@@ -4,12 +4,11 @@ import io.github.hidekatsu_izuno.pglite_jdbc.core.QueryExecutor;
 import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.pglite;
-import io.github.hidekatsu_izuno.pglite_jdbc.util.PSQLException;
-import io.github.hidekatsu_izuno.pglite_jdbc.util.PSQLState;
-import io.github.hidekatsu_izuno.pglite_jdbc.util.ServerErrorMessage;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
+import org.postgresql.util.PSQLException;
+import org.postgresql.util.PSQLState;
 
 public final class QueryExecutorImpl implements QueryExecutor {
     private final pglite db;
@@ -81,11 +80,29 @@ public final class QueryExecutorImpl implements QueryExecutor {
             return sqlException;
         }
         if (cause instanceof messages.DatabaseError databaseError) {
-            var serverError = ServerErrorMessage.fromDatabaseError(databaseError);
-            return new PSQLException(serverError, databaseError);
+            var severity = databaseError.severity();
+            var prefix = severity == null || severity.isBlank() ? "" : (severity + ": ");
+            var message = prefix + databaseError.message();
+            return new PSQLException(
+                message,
+                resolveState(databaseError.code()),
+                databaseError
+            );
         }
         var message = cause.getMessage() != null ? cause.getMessage() : cause.toString();
         return new PSQLException(message, PSQLState.UNEXPECTED_ERROR, cause);
+    }
+
+    private static PSQLState resolveState(String stateCode) {
+        if (stateCode == null || stateCode.isBlank()) {
+            return PSQLState.UNEXPECTED_ERROR;
+        }
+        for (var candidate : PSQLState.values()) {
+            if (stateCode.equals(candidate.getState())) {
+                return candidate;
+            }
+        }
+        return PSQLState.UNEXPECTED_ERROR;
     }
 
     private static Throwable unwrap(Throwable error) {

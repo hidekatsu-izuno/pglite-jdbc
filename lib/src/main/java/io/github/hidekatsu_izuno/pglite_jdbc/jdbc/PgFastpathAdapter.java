@@ -1,7 +1,5 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.jdbc;
 
-import io.github.hidekatsu_izuno.pglite_jdbc.util.PSQLException;
-import io.github.hidekatsu_izuno.pglite_jdbc.util.PSQLState;
 import java.lang.reflect.Field;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -10,6 +8,8 @@ import java.sql.SQLFeatureNotSupportedException;
 import java.util.concurrent.atomic.AtomicReference;
 import org.postgresql.fastpath.Fastpath;
 import org.postgresql.fastpath.FastpathArg;
+import org.postgresql.util.PSQLException;
+import org.postgresql.util.PSQLState;
 
 final class PgFastpathAdapter extends Fastpath {
     private static final Field ARG_BYTES;

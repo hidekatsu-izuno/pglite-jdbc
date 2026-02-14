@@ -5,8 +5,6 @@ import io.github.hidekatsu_izuno.pglite_jdbc.PGNotification;
 import io.github.hidekatsu_izuno.pglite_jdbc.core.BaseConnection;
 import io.github.hidekatsu_izuno.pglite_jdbc.core.QueryExecutor;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_;
-import io.github.hidekatsu_izuno.pglite_jdbc.util.PSQLException;
-import io.github.hidekatsu_izuno.pglite_jdbc.util.PSQLState;
 import java.lang.reflect.Array;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -27,6 +25,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.postgresql.jdbc.AutoSave;
 import org.postgresql.jdbc.PreferQueryMode;
+import org.postgresql.util.PSQLException;
+import org.postgresql.util.PSQLState;
 
 public final class PgConnection implements InvocationHandler {
     private static final PGNotification[] EMPTY_NOTIFICATIONS = new PGNotification[0];
