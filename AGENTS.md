@@ -28,4 +28,6 @@
 - Do not add code to your application just to pass the test.
 - Use DataView for the pg-protocol BufferWriter buffer view.
 - Use var for local variables.
+- Remove server-oriented features (network-facing worker/server behavior) from the Java migration target.
+- Remove browser-specific features, and keep corresponding source TypeScript snippets as commented references in Java files when removed.
 </workflow>
