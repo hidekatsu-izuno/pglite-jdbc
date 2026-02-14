@@ -3,6 +3,7 @@ package io.github.hidekatsu_izuno.pglite_jdbc;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.hidekatsu_izuno.pglite_jdbc.ds.PGSimpleDataSource;
 import java.sql.DriverManager;
 import org.junit.jupiter.api.Test;
 
@@ -22,7 +23,7 @@ public class JdbcSmokeTest {
 
     @Test
     void shouldUseDataSourceAndRollbackTransaction() throws Exception {
-        var dataSource = new PgliteDataSource();
+        var dataSource = new PGSimpleDataSource();
         dataSource.setUrl("jdbc:pglite:");
 
         try (var connection = dataSource.getConnection()) {
