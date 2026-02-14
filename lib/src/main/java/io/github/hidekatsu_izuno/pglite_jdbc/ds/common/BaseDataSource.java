@@ -1,7 +1,6 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.ds.common;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.Driver;
-import io.github.hidekatsu_izuno.pglite_jdbc.PGProperty;
 import java.io.PrintWriter;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -21,6 +20,12 @@ public abstract class BaseDataSource implements CommonDataSource {
     private PrintWriter logWriter;
     private int loginTimeout;
     private final Properties properties = new Properties();
+    private static final String PROP_USER = "user";
+    private static final String PROP_PASSWORD = "password";
+    private static final String PROP_DATABASE = "database";
+    private static final String PROP_DATA_DIR = "dataDir";
+    private static final String PROP_DEBUG = "debug";
+    private static final String PROP_RELAXED_DURABILITY = "relaxedDurability";
 
     static {
         try {
@@ -77,36 +82,37 @@ public abstract class BaseDataSource implements CommonDataSource {
     }
 
     public String getDatabaseName() {
-        return PGProperty.DATABASE.getOrDefault(properties);
+        return getOrDefault(properties, PROP_DATABASE, "template1");
     }
 
     public void setDatabaseName(String databaseName) {
-        PGProperty.DATABASE.set(properties, databaseName);
+        setPropertyOrRemove(properties, PROP_DATABASE, databaseName);
     }
 
     public String getDataDir() {
-        return PGProperty.DATA_DIR.getOrDefault(properties);
+        return getOrDefault(properties, PROP_DATA_DIR, null);
     }
 
     public void setDataDir(String dataDir) {
-        PGProperty.DATA_DIR.set(properties, dataDir);
+        setPropertyOrRemove(properties, PROP_DATA_DIR, dataDir);
     }
 
     public Integer getDebug() {
-        return PGProperty.DEBUG.getInt(properties);
+        return parseInteger(getOrDefault(properties, PROP_DEBUG, null));
     }
 
     public void setDebug(Integer debug) {
-        PGProperty.DEBUG.set(properties, debug != null ? String.valueOf(debug) : null);
+        setPropertyOrRemove(properties, PROP_DEBUG, debug != null ? String.valueOf(debug) : null);
     }
 
     public Boolean getRelaxedDurability() {
-        return PGProperty.RELAXED_DURABILITY.getBooleanObject(properties);
+        return parseBoolean(getOrDefault(properties, PROP_RELAXED_DURABILITY, null));
     }
 
     public void setRelaxedDurability(Boolean relaxedDurability) {
-        PGProperty.RELAXED_DURABILITY.set(
+        setPropertyOrRemove(
             properties,
+            PROP_RELAXED_DURABILITY,
             relaxedDurability != null ? String.valueOf(relaxedDurability) : null
         );
     }
@@ -169,15 +175,49 @@ public abstract class BaseDataSource implements CommonDataSource {
         }
 
         if (requestedUser != null) {
-            PGProperty.USER.set(out, requestedUser);
+            out.setProperty(PROP_USER, requestedUser);
         } else if (user != null) {
-            PGProperty.USER.set(out, user);
+            out.setProperty(PROP_USER, user);
         }
         if (requestedPassword != null) {
-            PGProperty.PASSWORD.set(out, requestedPassword);
+            out.setProperty(PROP_PASSWORD, requestedPassword);
         } else if (password != null) {
-            PGProperty.PASSWORD.set(out, password);
+            out.setProperty(PROP_PASSWORD, password);
         }
         return out;
+    }
+
+    private static String getOrDefault(Properties properties, String key, String defaultValue) {
+        if (properties == null) {
+            return defaultValue;
+        }
+        var value = properties.getProperty(key);
+        return value != null ? value : defaultValue;
+    }
+
+    private static void setPropertyOrRemove(Properties properties, String key, String value) {
+        if (value == null) {
+            properties.remove(key);
+            return;
+        }
+        properties.setProperty(key, value);
+    }
+
+    private static Integer parseInteger(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(value.trim());
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private static Boolean parseBoolean(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return Boolean.valueOf(value.trim());
     }
 }

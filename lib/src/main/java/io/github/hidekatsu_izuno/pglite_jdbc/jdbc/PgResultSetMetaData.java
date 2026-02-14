@@ -1,6 +1,5 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.jdbc;
 
-import io.github.hidekatsu_izuno.pglite_jdbc.PGResultSetMetaData;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -19,7 +18,6 @@ final class PgResultSetMetaData implements InvocationHandler {
             PgResultSetMetaData.class.getClassLoader(),
             new Class<?>[] {
                 ResultSetMetaData.class,
-                PGResultSetMetaData.class,
                 org.postgresql.PGResultSetMetaData.class,
             },
             new PgResultSetMetaData(columns)

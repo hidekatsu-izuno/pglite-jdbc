@@ -220,7 +220,7 @@ public final class PgConnection implements InvocationHandler {
             }
             case "isClosed" -> closed;
             case "createStatement" -> PgStatement.create(this, null);
-            case "prepareStatement" -> PgPreparedStatement.create(this, (String) args[0]);
+            case "prepareStatement" -> (java.sql.PreparedStatement) PgStatement.create(this, (String) args[0]);
             case "prepareCall" -> throw JdbcCompat.unsupported(name);
             case "nativeSQL" -> args[0];
             case "setAutoCommit" -> {

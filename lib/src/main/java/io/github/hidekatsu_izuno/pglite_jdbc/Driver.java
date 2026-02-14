@@ -17,6 +17,18 @@ import org.postgresql.util.PSQLState;
 
 public class Driver implements java.sql.Driver {
     public static final String URL_PREFIX = "jdbc:pglite:";
+    private static final String PROP_USER = "user";
+    private static final String PROP_PASSWORD = "password";
+    private static final String PROP_DATABASE = "database";
+    private static final String PROP_DATA_DIR = "dataDir";
+    private static final String PROP_DEBUG = "debug";
+    private static final String PROP_RELAXED_DURABILITY = "relaxedDurability";
+    private static final String PROP_DEFAULT_ROW_FETCH_SIZE = "defaultRowFetchSize";
+    private static final String PROP_QUERY_TIMEOUT = "queryTimeout";
+    private static final String PROP_AUTOSAVE = "autosave";
+    private static final String PROP_PREFER_QUERY_MODE = "preferQueryMode";
+    private static final String PROP_CURRENT_SCHEMA = "currentSchema";
+    private static final String PROP_APPLICATION_NAME = "ApplicationName";
     private static final Logger PARENT_LOGGER = Logger.getLogger(
         "io.github.hidekatsu_izuno.pglite_jdbc"
     );
@@ -53,8 +65,8 @@ public class Driver implements java.sql.Driver {
         }
 
         var properties = mergeUrlProperties(url, info);
-        var user = PGProperty.USER.getOrDefault(properties);
-        var database = PGProperty.DATABASE.getOrDefault(properties);
+        var user = getOrDefault(properties, PROP_USER, "postgres");
+        var database = getOrDefault(properties, PROP_DATABASE, "template1");
         QueryExecutor queryExecutor = ConnectionFactory.openConnection(url, properties);
         return PgConnection.create(queryExecutor, url, user, database, properties);
     }
@@ -71,18 +83,18 @@ public class Driver implements java.sql.Driver {
             properties = mergeUrlProperties(url, properties);
         }
         return new DriverPropertyInfo[] {
-            PGProperty.USER.toDriverPropertyInfo(properties),
-            PGProperty.PASSWORD.toDriverPropertyInfo(properties),
-            PGProperty.DATABASE.toDriverPropertyInfo(properties),
-            PGProperty.DATA_DIR.toDriverPropertyInfo(properties),
-            PGProperty.DEBUG.toDriverPropertyInfo(properties),
-            PGProperty.RELAXED_DURABILITY.toDriverPropertyInfo(properties),
-            PGProperty.DEFAULT_ROW_FETCH_SIZE.toDriverPropertyInfo(properties),
-            PGProperty.QUERY_TIMEOUT.toDriverPropertyInfo(properties),
-            PGProperty.AUTOSAVE.toDriverPropertyInfo(properties),
-            PGProperty.PREFER_QUERY_MODE.toDriverPropertyInfo(properties),
-            PGProperty.CURRENT_SCHEMA.toDriverPropertyInfo(properties),
-            PGProperty.APPLICATION_NAME.toDriverPropertyInfo(properties),
+            toDriverPropertyInfo(properties, PROP_USER, "postgres", "Database user"),
+            toDriverPropertyInfo(properties, PROP_PASSWORD, null, "Database password"),
+            toDriverPropertyInfo(properties, PROP_DATABASE, "template1", "Database name"),
+            toDriverPropertyInfo(properties, PROP_DATA_DIR, null, "pglite data directory (e.g. memory://, file:///tmp/db)"),
+            toDriverPropertyInfo(properties, PROP_DEBUG, null, "Debug level"),
+            toDriverPropertyInfo(properties, PROP_RELAXED_DURABILITY, null, "Enable relaxed durability mode"),
+            toDriverPropertyInfo(properties, PROP_DEFAULT_ROW_FETCH_SIZE, "0", "Default row fetch size"),
+            toDriverPropertyInfo(properties, PROP_QUERY_TIMEOUT, "0", "Statement query timeout in seconds"),
+            toDriverPropertyInfo(properties, PROP_AUTOSAVE, "never", "Autosave mode: never/always/conservative"),
+            toDriverPropertyInfo(properties, PROP_PREFER_QUERY_MODE, "extended", "Preferred query mode"),
+            toDriverPropertyInfo(properties, PROP_CURRENT_SCHEMA, null, "Current schema(search_path)"),
+            toDriverPropertyInfo(properties, PROP_APPLICATION_NAME, null, "Application name"),
         };
     }
 
@@ -122,7 +134,7 @@ public class Driver implements java.sql.Driver {
         var queryIndex = body.indexOf('?');
         var rawPath = queryIndex >= 0 ? body.substring(0, queryIndex).trim() : body.trim();
         if (!rawPath.isEmpty()) {
-            PGProperty.DATA_DIR.set(properties, rawPath);
+            setPropertyOrRemove(properties, PROP_DATA_DIR, rawPath);
         }
 
         if (queryIndex >= 0 && queryIndex + 1 < body.length()) {
@@ -131,8 +143,8 @@ public class Driver implements java.sql.Driver {
         normalizePropertyAliases(properties);
 
         applyDefaults(properties, Map.of(
-            PGProperty.USER, "postgres",
-            PGProperty.DATABASE, "template1"
+            PROP_USER, "postgres",
+            PROP_DATABASE, "template1"
         ));
         return properties;
     }
@@ -178,10 +190,10 @@ public class Driver implements java.sql.Driver {
 
     private static void applyDefaults(
         Properties properties,
-        Map<PGProperty, String> defaults
+        Map<String, String> defaults
     ) {
         for (var entry : defaults.entrySet()) {
-            var key = entry.getKey().getName();
+            var key = entry.getKey();
             var value = properties.getProperty(key);
             if (value == null || value.isBlank()) {
                 properties.setProperty(key, entry.getValue());
@@ -211,5 +223,32 @@ public class Driver implements java.sql.Driver {
         } catch (IllegalArgumentException e) {
             throw new SQLException("Invalid URL encoding in JDBC URL", e);
         }
+    }
+
+    private static String getOrDefault(Properties properties, String name, String defaultValue) {
+        if (properties == null) {
+            return defaultValue;
+        }
+        var value = properties.getProperty(name);
+        return value != null ? value : defaultValue;
+    }
+
+    private static DriverPropertyInfo toDriverPropertyInfo(
+        Properties properties,
+        String name,
+        String defaultValue,
+        String description
+    ) {
+        var info = new DriverPropertyInfo(name, getOrDefault(properties, name, defaultValue));
+        info.description = description;
+        return info;
+    }
+
+    private static void setPropertyOrRemove(Properties properties, String name, String value) {
+        if (value == null) {
+            properties.remove(name);
+            return;
+        }
+        properties.setProperty(name, value);
     }
 }
