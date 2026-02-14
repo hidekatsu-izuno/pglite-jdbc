@@ -10,8 +10,6 @@ final class PgLargeObjectManagerAdapter extends org.postgresql.largeobject.Large
 
     static org.postgresql.largeobject.LargeObjectManager create(PgConnection connection)
         throws SQLException {
-        connection.ensureFastpathAPI();
-        var baseConnection = (org.postgresql.core.BaseConnection) connection.proxy();
-        return new PgLargeObjectManagerAdapter(baseConnection);
+        return new PgLargeObjectManagerAdapter((org.postgresql.core.BaseConnection)connection.proxy());
     }
 }

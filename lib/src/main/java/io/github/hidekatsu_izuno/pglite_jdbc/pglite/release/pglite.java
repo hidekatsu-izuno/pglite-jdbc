@@ -23,7 +23,6 @@ import com.dylibso.chicory.wasm.types.FunctionType;
 import com.dylibso.chicory.wasm.types.FunctionImport;
 import com.dylibso.chicory.wasm.types.GlobalImport;
 import com.dylibso.chicory.wasm.types.MemoryImport;
-import com.dylibso.chicory.wasm.types.MutabilityType;
 import com.dylibso.chicory.wasm.types.Table;
 import com.dylibso.chicory.wasm.types.TableImport;
 import com.dylibso.chicory.wasm.types.UnknownCustomSection;

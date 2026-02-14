@@ -1,6 +1,5 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.jdbc;
 
-import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;

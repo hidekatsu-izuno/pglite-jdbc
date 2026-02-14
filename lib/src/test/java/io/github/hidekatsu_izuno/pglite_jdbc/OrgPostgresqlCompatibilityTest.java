@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTimeout;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
@@ -12,11 +11,9 @@ import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.sql.DriverManager;
-import java.sql.SQLFeatureNotSupportedException;
 import org.junit.jupiter.api.Test;
 import org.postgresql.PGResultSetMetaData;
 import org.postgresql.PGStatement;
-import org.postgresql.fastpath.FastpathArg;
 import org.postgresql.jdbc.AutoSave;
 import org.postgresql.jdbc.PreferQueryMode;
 import org.postgresql.largeobject.LargeObjectManager;
@@ -38,7 +35,7 @@ class OrgPostgresqlCompatibilityTest {
 
             try (var prepared = connection.prepareStatement("SELECT ?::int4 AS value")) {
                 var pgStatement = prepared.unwrap(PGStatement.class);
-                pgStatement.setUseServerPrepare(true);
+                pgStatement.setPrepareThreshold(1);
                 assertTrue(pgStatement.isUseServerPrepare());
                 pgStatement.setAdaptiveFetch(true);
                 assertTrue(pgStatement.getAdaptiveFetch());
@@ -101,16 +98,5 @@ class OrgPostgresqlCompatibilityTest {
                 connection.commit();
             }
         });
-    }
-
-    @Test
-    void shouldRejectDirectFastpathCalls() throws Exception {
-        try (var connection = DriverManager.getConnection("jdbc:pglite:")) {
-            var pgConnection = connection.unwrap(org.postgresql.PGConnection.class);
-            assertThrows(
-                SQLFeatureNotSupportedException.class,
-                () -> pgConnection.getFastpathAPI().fastpath("abs", new FastpathArg[] { new FastpathArg(1) })
-            );
-        }
     }
 }

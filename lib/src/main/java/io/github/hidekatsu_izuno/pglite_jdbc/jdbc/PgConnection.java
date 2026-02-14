@@ -8,7 +8,6 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
-import java.sql.DatabaseMetaData;
 import java.sql.SQLFeatureNotSupportedException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -56,9 +55,7 @@ public final class PgConnection implements InvocationHandler {
     private AutoSave autosave = AutoSave.NEVER;
     private PreferQueryMode preferQueryMode = PreferQueryMode.EXTENDED;
     private String currentSchema;
-    private String applicationName;
     private org.postgresql.copy.CopyManager copyApi;
-    private org.postgresql.fastpath.Fastpath fastpathApi;
     private org.postgresql.largeobject.LargeObjectManager largeObjectApi;
     private final org.postgresql.core.TypeInfo typeInfo = createTypeInfo();
     private final LruCache<org.postgresql.jdbc.FieldMetadata.Key, org.postgresql.jdbc.FieldMetadata>
@@ -314,7 +311,7 @@ public final class PgConnection implements InvocationHandler {
             case "escapeIdentifier" -> '"' + String.valueOf(args[0]).replace("\"", "\"\"") + '"';
             case "escapeLiteral" -> '\'' + String.valueOf(args[0]).replace("'", "''") + '\'';
             case "getCopyAPI" -> getCopyAPI();
-            case "getFastpathAPI" -> getFastpathAPI();
+            case "getFastpathAPI" -> unsupportedCore("getFastpathAPI");
             case "getLargeObjectAPI" -> getLargeObjectAPI();
             case "execSQLQuery" -> unsupportedCore("execSQLQuery");
             case "execSQLUpdate" -> {
@@ -392,7 +389,6 @@ public final class PgConnection implements InvocationHandler {
             properties.getProperty("pgliteProtocolTimeoutMs") == null) {
             protocolTimeoutMillis = Math.max(protocolTimeoutMillis, queryTimeout * 1000L);
         }
-        applicationName = trimToNull(properties.getProperty("applicationName"));
         currentSchema = trimToNull(properties.getProperty("currentSchema"));
 
         var autosaveValue = trimToNull(properties.getProperty("autosave"));
@@ -532,18 +528,6 @@ public final class PgConnection implements InvocationHandler {
             copyApi = new PgCopyManagerAdapter(this);
         }
         return copyApi;
-    }
-
-    private org.postgresql.fastpath.Fastpath getFastpathAPI() throws SQLException {
-        ensureOpen();
-        if (fastpathApi == null) {
-            fastpathApi = PgFastpathAdapter.create(this);
-        }
-        return fastpathApi;
-    }
-
-    org.postgresql.fastpath.Fastpath ensureFastpathAPI() throws SQLException {
-        return getFastpathAPI();
     }
 
     private org.postgresql.largeobject.LargeObjectManager getLargeObjectAPI() throws SQLException {
