@@ -47,12 +47,18 @@ final class PgStatement implements InvocationHandler {
 
     static Statement create(PgConnection connection, String preparedSql) {
         var interfaces = preparedSql == null
-            ? new Class<?>[] { Statement.class, BaseStatement.class, PGStatement.class }
+            ? new Class<?>[] {
+                Statement.class,
+                BaseStatement.class,
+                PGStatement.class,
+                org.postgresql.PGStatement.class,
+            }
             : new Class<?>[] {
                 PreparedStatement.class,
                 Statement.class,
                 BaseStatement.class,
                 PGStatement.class,
+                org.postgresql.PGStatement.class,
             };
         var handler = new PgStatement(connection, preparedSql);
         var proxy = (Statement) Proxy.newProxyInstance(
@@ -185,6 +191,11 @@ final class PgStatement implements InvocationHandler {
                 yield null;
             }
             case "getPrepareThreshold" -> prepareThreshold;
+            case "setUseServerPrepare" -> {
+                prepareThreshold = Boolean.TRUE.equals(args[0]) ? 1 : 0;
+                yield null;
+            }
+            case "isUseServerPrepare" -> prepareThreshold != 0;
             case "setAdaptiveFetch" -> {
                 adaptiveFetch = (Boolean) args[0];
                 yield null;

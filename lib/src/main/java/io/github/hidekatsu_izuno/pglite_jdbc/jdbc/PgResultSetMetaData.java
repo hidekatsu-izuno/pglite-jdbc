@@ -17,7 +17,11 @@ final class PgResultSetMetaData implements InvocationHandler {
     static ResultSetMetaData create(List<Column> columns) {
         return (ResultSetMetaData) Proxy.newProxyInstance(
             PgResultSetMetaData.class.getClassLoader(),
-            new Class<?>[] { ResultSetMetaData.class, PGResultSetMetaData.class },
+            new Class<?>[] {
+                ResultSetMetaData.class,
+                PGResultSetMetaData.class,
+                org.postgresql.PGResultSetMetaData.class,
+            },
             new PgResultSetMetaData(columns)
         );
     }
@@ -50,6 +54,9 @@ final class PgResultSetMetaData implements InvocationHandler {
             case "isReadOnly" -> true;
             case "isWritable", "isDefinitelyWritable" -> false;
             case "getColumnClassName" -> Object.class.getName();
+            case "getBaseColumnName" -> columns.get(((Integer) args[0]) - 1).label();
+            case "getBaseTableName", "getBaseSchemaName" -> "";
+            case "getFormat" -> 0;
             case "unwrap" -> {
                 var iface = (Class<?>) args[0];
                 if (iface.isInstance(proxy)) {

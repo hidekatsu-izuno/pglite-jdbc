@@ -5,6 +5,37 @@ pglite-jdbc is a library that enables calling pglite (https://github.com/electri
 ## Dependencies
 
 - chicory: WASM runtime.
+- pgjdbc public API: `org.postgresql:postgresql:42.7.3` (for `org.postgresql.*` compatibility types).
+
+## Migration from pgjdbc
+
+You can migrate existing pgjdbc-based code with minimal application changes:
+
+1. Change JDBC URL to `jdbc:pglite:...`.
+2. Use `io.github.hidekatsu_izuno.pglite_jdbc.Driver` as the JDBC driver class.
+3. Existing `org.postgresql.PGConnection/PGStatement/PGResultSetMetaData` casts are supported.
+
+Supported `org.postgresql.PGConnection` extensions:
+
+- `getCopyAPI()` (`COPY IN/OUT`, text/csv)
+- `getLargeObjectAPI()` (LO SQL-function based path)
+- `getFastpathAPI()` (LO-internal calls only; generic fastpath calls are rejected)
+- `getPreferQueryMode()/getAutosave()/setAutosave(...)`
+
+Property aliases supported for easier migration:
+
+- `defaultRowFetchSize` (alias of `defaultFetchSize`)
+- `queryTimeout`
+- `autosave`
+- `preferQueryMode`
+- `currentSchema`
+- `ApplicationName`
+
+Not supported in this compatibility scope:
+
+- remote PostgreSQL connection path
+- replication, SSL/GSS/socket-based features
+- `org.postgresql.ds.*` class-name compatibility (use `io.github.hidekatsu_izuno.pglite_jdbc.ds.PGSimpleDataSource`)
 
 ## License
 

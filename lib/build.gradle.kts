@@ -9,6 +9,7 @@ repositories {
 }
 
 dependencies {
+    api("org.postgresql:postgresql:42.7.3")
     implementation("com.dylibso.chicory:runtime:1.6.1")
     implementation("com.dylibso.chicory:wasm:1.6.1")
     implementation("com.dylibso.chicory:wasi:1.6.1")

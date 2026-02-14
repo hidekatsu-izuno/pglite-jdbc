@@ -3,6 +3,8 @@ package io.github.hidekatsu_izuno.pglite_jdbc;
 import io.github.hidekatsu_izuno.pglite_jdbc.core.ConnectionFactory;
 import io.github.hidekatsu_izuno.pglite_jdbc.core.QueryExecutor;
 import io.github.hidekatsu_izuno.pglite_jdbc.jdbc.PgConnection;
+import io.github.hidekatsu_izuno.pglite_jdbc.util.PSQLException;
+import io.github.hidekatsu_izuno.pglite_jdbc.util.PSQLState;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
@@ -54,7 +56,7 @@ public class Driver implements java.sql.Driver {
         var user = PGProperty.USER.getOrDefault(properties);
         var database = PGProperty.DATABASE.getOrDefault(properties);
         QueryExecutor queryExecutor = ConnectionFactory.openConnection(url, properties);
-        return PgConnection.create(queryExecutor, url, user, database);
+        return PgConnection.create(queryExecutor, url, user, database, properties);
     }
 
     @Override
@@ -75,6 +77,12 @@ public class Driver implements java.sql.Driver {
             PGProperty.DATA_DIR.toDriverPropertyInfo(properties),
             PGProperty.DEBUG.toDriverPropertyInfo(properties),
             PGProperty.RELAXED_DURABILITY.toDriverPropertyInfo(properties),
+            PGProperty.DEFAULT_ROW_FETCH_SIZE.toDriverPropertyInfo(properties),
+            PGProperty.QUERY_TIMEOUT.toDriverPropertyInfo(properties),
+            PGProperty.AUTOSAVE.toDriverPropertyInfo(properties),
+            PGProperty.PREFER_QUERY_MODE.toDriverPropertyInfo(properties),
+            PGProperty.CURRENT_SCHEMA.toDriverPropertyInfo(properties),
+            PGProperty.APPLICATION_NAME.toDriverPropertyInfo(properties),
         };
     }
 
@@ -120,12 +128,52 @@ public class Driver implements java.sql.Driver {
         if (queryIndex >= 0 && queryIndex + 1 < body.length()) {
             parseQueryString(body.substring(queryIndex + 1), properties);
         }
+        normalizePropertyAliases(properties);
 
         applyDefaults(properties, Map.of(
             PGProperty.USER, "postgres",
             PGProperty.DATABASE, "template1"
         ));
         return properties;
+    }
+
+    private static void normalizePropertyAliases(Properties properties) throws SQLException {
+        alias(properties, "defaultRowFetchSize", "defaultFetchSize");
+        alias(properties, "ApplicationName", "applicationName");
+        validateEnumProperty(
+            properties,
+            "autosave",
+            new String[] { "always", "never", "conservative" }
+        );
+    }
+
+    private static void alias(Properties properties, String from, String to) {
+        var fromValue = properties.getProperty(from);
+        if ((properties.getProperty(to) == null || properties.getProperty(to).isBlank()) &&
+            fromValue != null &&
+            !fromValue.isBlank()) {
+            properties.setProperty(to, fromValue);
+        }
+    }
+
+    private static void validateEnumProperty(
+        Properties properties,
+        String property,
+        String[] allowedValues
+    ) throws SQLException {
+        var value = properties.getProperty(property);
+        if (value == null || value.isBlank()) {
+            return;
+        }
+        for (var allowed : allowedValues) {
+            if (allowed.equalsIgnoreCase(value)) {
+                return;
+            }
+        }
+        throw new PSQLException(
+            "Invalid value for property '" + property + "': " + value,
+            PSQLState.INVALID_PARAMETER_VALUE
+        );
     }
 
     private static void applyDefaults(
