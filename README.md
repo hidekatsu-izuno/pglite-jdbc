@@ -4,8 +4,17 @@ pglite-jdbc is a library that enables calling pglite (https://github.com/electri
 
 ## Dependencies
 
-- chicory: WASM runtime.
+- wasmer C API (`libwasmer.so`) + JNA bridge.
 - pgjdbc public API: `org.postgresql:postgresql:42.7.3` (for `org.postgresql.*` compatibility types).
+
+WASM runtime properties:
+
+- `pglite.wasmer.lib.path`: absolute path override for `libwasmer.so` (or compatible `libwasmer*.so`).
+- `pglite.wasmer.trace`: enables Wasmer native loader diagnostics.
+- `pglite.wasmer.perf.tests=true`: enables perf-only test suite (`@Tag("wasmer-perf")`).
+
+The runtime is Wasmer-only. Startup runs Wasmer import/export preflight before initialization.
+Wasmer module lookup prefers `native/linux-x86_64/pglite.wasmu` (loaded via `wasm_module_deserialize`) and falls back to `pglite.wasm`.
 
 ## Migration from pgjdbc
 

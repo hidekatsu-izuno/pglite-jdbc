@@ -53,11 +53,6 @@ public final class postgresMod {
         int apply(int ptr, int length);
     }
 
-    @FunctionalInterface
-    public interface PostgresFactory<T extends PostgresMod> {
-        CompletableFuture<T> create(PartialPostgresMod moduleOverrides);
-    }
-
     public static final class PartialPostgresMod {
         public String WASM_PREFIX;
         public String[] arguments;

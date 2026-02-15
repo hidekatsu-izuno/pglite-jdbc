@@ -1,6 +1,6 @@
 <tech_stack>
 - Java 21
-- Chicory 1.6.1: WASM engine
+- wasmer: WASM engine
 - commons-compress: alternative for tinytar
 </tech_stack>
 
@@ -12,7 +12,7 @@
 </project_layout>
 
 <commands>
-- gradle build: Build and run tests
+- mise x -- gradle build: Build and run tests
 </commands>
 
 <conversion_hints>
@@ -27,6 +27,7 @@
 <workflow>
 - Output temporary code to ./tmp. And Do not delete files that are not in ./tmp.
 - Do not add code to your application just to pass the test.
+- Do not use simplified or fallback implementations, as they prevent proper evaluation of the final result.
 - Use DataView for the pg-protocol BufferWriter buffer view.
 - Use var for local variables.
 - Remove server-oriented features (network-facing worker/server behavior) from the Java migration target.

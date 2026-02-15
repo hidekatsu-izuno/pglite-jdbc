@@ -2,10 +2,11 @@ package io.github.hidekatsu_izuno.pglite_jdbc.pglite;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages;
 import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.parser;
-import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.serializer;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.base.Filesystem;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.pglite.PostgresModFactory;
+
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -202,9 +203,7 @@ public class pglite extends base implements interface_.PGliteInterface {
                 overrides.INITIAL_MEMORY = memory.intValue();
             }
         }
-        this.mod = io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.pglite
-            .PostgresModFactory(overrides)
-            .join();
+        this.mod = PostgresModFactory.create(overrides);
 
         traceInit("init:build-runtime-done");
         traceInit("init:prop trace_host_calls=" + Boolean.getBoolean("pglite.trace_host_calls"));
