@@ -1,6 +1,22 @@
 import { PATH } from "./path.ts";
 
-export const createSYSCALLS = ({ getFS, getHEAP32, getHEAPU32, getHEAP64, getHEAP8, getHEAPU8, UTF8ToString }) => {
+export const createSYSCALLS = ({
+  getFS,
+  getHEAP32,
+  getHEAPU32,
+  getHEAP64,
+  getHEAP8,
+  getHEAPU8,
+  UTF8ToString,
+}: {
+  getFS: () => any;
+  getHEAP32: () => Int32Array;
+  getHEAPU32: () => Uint32Array;
+  getHEAP64: () => BigInt64Array;
+  getHEAP8: () => Int8Array;
+  getHEAPU8: () => Uint8Array;
+  UTF8ToString: (ptr: number, maxBytesToRead?: number) => string;
+}) => {
   const FS = new Proxy({}, {
     get: (_, prop) => getFS()[prop],
   });

@@ -1,4 +1,12 @@
-export const createPIPEFS = ({ getFS, assert, getHEAP32 }) => {
+export const createPIPEFS = ({
+  getFS,
+  assert,
+  getHEAP32,
+}: {
+  getFS: () => any;
+  assert: (check: any, message?: string) => void;
+  getHEAP32: () => Int32Array;
+}) => {
   const FS = new Proxy({}, {
     get: (_, prop) => getFS()[prop],
   });

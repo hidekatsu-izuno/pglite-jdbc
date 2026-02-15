@@ -1,4 +1,34 @@
-export const createAddrInfoFunctions = ({ _malloc, HEAP32, HEAPU32, UTF8ToString, inetNtop6, inetNtop4, writeSockaddr, assert, _htonl, inetPton4, inetPton6, DNS, readSockaddr, stringToUTF8 }) => {
+export const createAddrInfoFunctions = ({
+  _malloc,
+  HEAP32,
+  HEAPU32,
+  UTF8ToString,
+  inetNtop6,
+  inetNtop4,
+  writeSockaddr,
+  assert,
+  _htonl,
+  inetPton4,
+  inetPton6,
+  DNS,
+  readSockaddr,
+  stringToUTF8,
+}: {
+  _malloc: (size: number) => number;
+  HEAP32: Int32Array;
+  HEAPU32: Uint32Array;
+  UTF8ToString: (ptr: number, maxBytesToRead?: number) => string;
+  inetNtop6: (ints: number[]) => string;
+  inetNtop4: (addr: number) => string;
+  writeSockaddr: (...args: any[]) => number;
+  assert: (check: any, message?: string) => void;
+  _htonl: (value: number) => number;
+  inetPton4: (str: string) => number | null;
+  inetPton6: (str: string) => number[] | null;
+  DNS: any;
+  readSockaddr: (...args: any[]) => any;
+  stringToUTF8: (str: string, outPtr: number, maxBytesToWrite: number) => number;
+}) => {
 var _getaddrinfo = (node, service, hint, out) => {
         var addr = 0;
         var port = 0;

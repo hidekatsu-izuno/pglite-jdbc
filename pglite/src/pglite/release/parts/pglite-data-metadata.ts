@@ -1,4 +1,7 @@
-export const PGLITE_DATA_METADATA = {
+export const PGLITE_DATA_METADATA: {
+	files: Array<{ filename: string; start: number; end: number; audio?: number }>;
+	remote_package_size: number;
+} = {
 	files:[{
 		filename:"/home/web_user/.pgpass",start:0,end:204
 	},{

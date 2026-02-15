@@ -1,4 +1,4 @@
-export const ERRNO_CODES_MAP = {
+export const ERRNO_CODES_MAP: Record<string, number> = {
 	EPERM: 63,
 	ENOENT: 44,
 	ESRCH: 71,

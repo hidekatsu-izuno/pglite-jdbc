@@ -1,4 +1,12 @@
-export const runDataPackageBootstrap = ({ Module, PGLITE_DATA_METADATA, require }) => {
+export const runDataPackageBootstrap = ({
+  Module,
+  PGLITE_DATA_METADATA,
+  require,
+}: {
+  Module: Record<string, any>;
+  PGLITE_DATA_METADATA: { files: Array<Record<string, any>>; remote_package_size: number };
+  require?: (id: string) => any;
+}) => {
 
     var isPthread = typeof ENVIRONMENT_IS_PTHREAD != "undefined" && ENVIRONMENT_IS_PTHREAD;
     var isWasmWorker = typeof ENVIRONMENT_IS_WASM_WORKER != "undefined" && ENVIRONMENT_IS_WASM_WORKER;

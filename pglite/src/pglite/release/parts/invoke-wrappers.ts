@@ -1,4 +1,14 @@
-export const createInvokeWrappers = ({ stackSave, stackRestore, getWasmTableEntry, _setThrew }) => {
+export const createInvokeWrappers = ({
+  stackSave,
+  stackRestore,
+  getWasmTableEntry,
+  _setThrew,
+}: {
+  stackSave: () => number;
+  stackRestore: (sp: number) => void;
+  getWasmTableEntry: (funcPtr: number) => (...args: any[]) => any;
+  _setThrew: (threw: number, value: number) => void;
+}) => {
 function invoke_iii(index, a1, a2) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1, a2) } catch (e) {

@@ -20,6 +20,26 @@ export const createRuntimeUtils = ({
   SYSCALLS,
   FS,
   getEmscriptenTimeout,
+}: {
+  Module: Record<string, any>;
+  getABORT: () => boolean;
+  setABORT: (value: boolean) => void;
+  getEXITSTATUS: () => number;
+  setEXITSTATUS: (value: number) => void;
+  getNoExitRuntime: () => boolean;
+  setNoExitRuntime: (value: boolean) => void;
+  quit_: (status: number, toThrow: any) => never;
+  ENVIRONMENT_IS_NODE: boolean;
+  UTF8ToString: (ptr: number, maxBytesToRead?: number) => string;
+  require?: (id: string) => any;
+  bigintToI53Checked: (num: number | bigint) => number;
+  HEAP32: Int32Array;
+  HEAP64: BigInt64Array;
+  HEAPU32: Uint32Array;
+  stringToUTF8: (str: string, outPtr: number, maxBytesToWrite: number) => number;
+  SYSCALLS: any;
+  FS: any;
+  getEmscriptenTimeout: () => (...args: any[]) => any;
 }) => {
   var runtimeKeepaliveCounter = 0;
   var __emscripten_runtime_keepalive_clear = () => {

@@ -1,4 +1,20 @@
-export const createFdWasiFunctions = ({ SYSCALLS, FS, HEAPU32, HEAP64, HEAP16, HEAP8, bigintToI53Checked }) => {
+export const createFdWasiFunctions = ({
+  SYSCALLS,
+  FS,
+  HEAPU32,
+  HEAP64,
+  HEAP16,
+  HEAP8,
+  bigintToI53Checked,
+}: {
+  SYSCALLS: any;
+  FS: any;
+  HEAPU32: Uint32Array;
+  HEAP64: BigInt64Array;
+  HEAP16: Int16Array;
+  HEAP8: Int8Array;
+  bigintToI53Checked: (num: number | bigint) => number;
+}) => {
 function _fd_close(fd) {
         try {
           var stream = SYSCALLS.getStreamFromFD(fd);

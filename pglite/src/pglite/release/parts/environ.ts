@@ -1,4 +1,14 @@
-export const createEnviron = ({ thisProgram, ENV, HEAP8, HEAPU32 }) => {
+export const createEnviron = ({
+  thisProgram,
+  ENV,
+  HEAP8,
+  HEAPU32,
+}: {
+  thisProgram: string;
+  ENV: Record<string, string | undefined>;
+  HEAP8: Int8Array | Uint8Array;
+  HEAPU32: Uint32Array;
+}) => {
 var getExecutableName = () => thisProgram || "./this.program";
       var getEnvStrings = () => {
         if (!getEnvStrings.strings) {

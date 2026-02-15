@@ -6,6 +6,14 @@ export const createSOCKFS = ({
   assert,
   HEAP32,
   TextEncoder
+}: {
+  FS: any;
+  Module: Record<string, any>;
+  ENVIRONMENT_IS_NODE: boolean;
+  require?: (id: string) => any;
+  assert: (check: any, message?: string) => void;
+  HEAP32: Int32Array;
+  TextEncoder: { new (): { encode(input?: string): Uint8Array } };
 }) => {
   var SOCKFS = {
     websocketArgs: {}, callbacks: {}, on(event, callback) { SOCKFS.callbacks[event] = callback }, emit(event, param) { SOCKFS.callbacks[event]?.(param) }, mount(mount) {

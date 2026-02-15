@@ -1,4 +1,16 @@
-export const createTTY = ({ getFS, FS_stdin_getChar, UTF8ArrayToString, out, err }) => {
+export const createTTY = ({
+  getFS,
+  FS_stdin_getChar,
+  UTF8ArrayToString,
+  out,
+  err,
+}: {
+  getFS: () => any;
+  FS_stdin_getChar: () => number | null | undefined;
+  UTF8ArrayToString: (heapOrArray: any, idx?: number, maxBytesToRead?: number) => string;
+  out: (...args: any[]) => void;
+  err: (...args: any[]) => void;
+}) => {
   const FS = new Proxy({}, {
     get: (_, prop) => getFS()[prop],
   });

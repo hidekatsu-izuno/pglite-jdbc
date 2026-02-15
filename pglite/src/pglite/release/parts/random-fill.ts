@@ -1,4 +1,12 @@
-export const createRandomFill = ({ ENVIRONMENT_IS_NODE, require, abort }) => {
+export const createRandomFill = ({
+  ENVIRONMENT_IS_NODE,
+  require,
+  abort,
+}: {
+  ENVIRONMENT_IS_NODE: boolean;
+  require?: (id: string) => any;
+  abort: (message?: string) => never;
+}) => {
 var initRandomFill = () => {
         if (typeof crypto == "object" && typeof crypto["getRandomValues"] == "function") { return view => crypto.getRandomValues(view) } else if (ENVIRONMENT_IS_NODE) {
           try {

@@ -21,6 +21,26 @@ export const createFS = ({
   out,
   fflush,
   ENVIRONMENT_IS_WORKER
+}: {
+  PATH_FS: any;
+  MEMFS: any;
+  IDBFS: any;
+  NODEFS: any;
+  TTY: any;
+  randomFill: (view: Uint8Array) => Uint8Array;
+  FS_modeStringToFlags: (mode: string) => number;
+  FS_getMode: (canRead: boolean, canWrite: boolean) => number;
+  UTF8ArrayToString: (heapOrArray: any, idx?: number, maxBytesToRead?: number) => string;
+  lengthBytesUTF8: (str: string) => number;
+  stringToUTF8Array: (str: string, heap: any, outIdx: number, maxBytesToWrite: number) => number;
+  readBinary: (filename: string | URL) => Uint8Array;
+  intArrayFromString: (stringy: string, dontAddNull?: boolean, length?: number) => number[];
+  mmapAlloc: (size: number) => number;
+  HEAP8: Int8Array;
+  Module: Record<string, any>;
+  out: (...args: any[]) => void;
+  fflush: (...args: any[]) => any;
+  ENVIRONMENT_IS_WORKER: boolean;
 }) => {
   var FS = {
     root: null, mounts: [], devices: {}, streams: [], nextInode: 1, nameTable: null, currentPath: "/", initialized: false, ignorePermissions: true, ErrnoError: class {
@@ -1236,6 +1256,24 @@ export const createFSRuntime = ({
   fflush,
   ENVIRONMENT_IS_WORKER,
   fs
+}: {
+  PATH_FS: any;
+  TTY: any;
+  randomFill: (view: Uint8Array) => Uint8Array;
+  FS_modeStringToFlags: (mode: string) => number;
+  FS_getMode: (canRead: boolean, canWrite: boolean) => number;
+  UTF8ArrayToString: (heapOrArray: any, idx?: number, maxBytesToRead?: number) => string;
+  lengthBytesUTF8: (str: string) => number;
+  stringToUTF8Array: (str: string, heap: any, outIdx: number, maxBytesToWrite: number) => number;
+  readBinary: (filename: string | URL) => Uint8Array;
+  intArrayFromString: (stringy: string, dontAddNull?: boolean, length?: number) => number[];
+  mmapAlloc: (size: number) => number;
+  HEAP8: Int8Array;
+  Module: Record<string, any>;
+  out: (...args: any[]) => void;
+  fflush: (...args: any[]) => any;
+  ENVIRONMENT_IS_WORKER: boolean;
+  fs: any;
 }) => {
   var { MEMFS, bindMEMFSFS } = createMEMFSInternal({ HEAP8, mmapAlloc });
   var { IDBFS, bindIDBFSFS } = createIDBFSInternal({ MEMFS });

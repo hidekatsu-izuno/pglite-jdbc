@@ -3,7 +3,11 @@ import { createRandomFill } from "./random-fill.ts";
 import { createTTY } from "./tty.ts";
 import { UTF8ArrayToString, intArrayFromString } from "./text-codec.ts";
 
-export const initializeRuntimeEnvironment = async ({ importMetaUrl }) => {
+export const initializeRuntimeEnvironment = async ({
+  importMetaUrl,
+}: {
+  importMetaUrl: string;
+}) => {
   var ENVIRONMENT_IS_WEB = typeof window == "object";
   var ENVIRONMENT_IS_WORKER = typeof WorkerGlobalScope != "undefined";
   var ENVIRONMENT_IS_NODE = typeof process == "object" && typeof process.versions == "object" && typeof process.versions.node == "string" && process.type != "renderer";
@@ -30,6 +34,17 @@ export const initializeRuntimeHost = async ({
   scriptName,
   importMetaUrl,
   environment,
+}: {
+  Module: Record<string, any>;
+  moduleOverrides: Record<string, any> | null;
+  scriptName?: string;
+  importMetaUrl: string;
+  environment: {
+    ENVIRONMENT_IS_WEB: boolean;
+    ENVIRONMENT_IS_WORKER: boolean;
+    ENVIRONMENT_IS_NODE: boolean;
+    require?: (id: string) => any;
+  };
 }) => {
   var { ENVIRONMENT_IS_WEB, ENVIRONMENT_IS_WORKER, ENVIRONMENT_IS_NODE, require } = environment;
   var arguments_ = [];
@@ -158,6 +173,23 @@ export const createRuntimeHostFsSupport = ({
   getUniqueRunDependency,
   preloadPlugins,
   asyncLoad,
+}: {
+  getFS: () => any;
+  Module: Record<string, any>;
+  ENVIRONMENT_IS_NODE: boolean;
+  require?: (id: string) => any;
+  abort: (message?: string) => never;
+  fs: any;
+  out: (...args: any[]) => void;
+  err: (...args: any[]) => void;
+  HEAPU8: Uint8Array;
+  alignMemory: (size: number, alignment: number) => number;
+  emscriptenBuiltinMemalign: (alignment: number, size: number) => number;
+  addRunDependency: (id: string) => void;
+  removeRunDependency: (id: string) => void;
+  getUniqueRunDependency: (id: string) => string;
+  preloadPlugins: Array<Record<string, any>>;
+  asyncLoad: (url: string) => Promise<Uint8Array>;
 }) => {
   var { randomFill } = createRandomFill({ ENVIRONMENT_IS_NODE, require, abort });
   var PATH_FS = {

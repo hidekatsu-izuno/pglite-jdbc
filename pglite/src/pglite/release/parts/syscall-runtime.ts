@@ -22,6 +22,26 @@ export const createSyscallImplementations = ({
   zeroMemory,
   assert,
   abort
+}: {
+  FS: any;
+  SYSCALLS: any;
+  HEAP32: Int32Array;
+  HEAP16: Int16Array;
+  HEAPU16: Uint16Array;
+  HEAP8: Int8Array;
+  HEAPU8: Uint8Array;
+  HEAP64: BigInt64Array;
+  lengthBytesUTF8: (str: string) => number;
+  stringToUTF8Array: (str: string, heap: any, outIdx: number, maxBytesToWrite: number) => number;
+  Module: Record<string, any>;
+  ENVIRONMENT_IS_NODE: boolean;
+  require?: (id: string) => any;
+  TextEncoder: { new (): { encode(input?: string): Uint8Array } };
+  _ntohs: (value: number) => number;
+  _htons: (value: number) => number;
+  zeroMemory: (address: number, size: number) => void;
+  assert: (check: any, message?: string) => void;
+  abort: (message?: string) => never;
 }) => {
   var ___syscall__newselect = function (nfds, readfds, writefds, exceptfds, timeout) {
     try {

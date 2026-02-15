@@ -1,4 +1,22 @@
-export const createSocketAddressUtils = ({ HEAP16, HEAPU16, HEAP32, _ntohs, _htons, assert, FS, zeroMemory }) => {
+export const createSocketAddressUtils = ({
+  HEAP16,
+  HEAPU16,
+  HEAP32,
+  _ntohs,
+  _htons,
+  assert,
+  FS,
+  zeroMemory,
+}: {
+  HEAP16: Int16Array;
+  HEAPU16: Uint16Array;
+  HEAP32: Int32Array;
+  _ntohs: (value: number) => number;
+  _htons: (value: number) => number;
+  assert: (check: any, message?: string) => void;
+  FS: any;
+  zeroMemory: (address: number, size: number) => void;
+}) => {
 var inetNtop4 = addr => (addr & 255) + "." + (addr >> 8 & 255) + "." + (addr >> 16 & 255) + "." + (addr >> 24 & 255);
       var inetNtop6 = ints => {
         var str = "";
