@@ -1,19 +1,143 @@
 export const createTTY = ({
-  getFS,
-  FS_stdin_getChar,
-  UTF8ArrayToString,
-  out,
-  err,
+	getFS,
+	FS_stdin_getChar,
+	UTF8ArrayToString,
+	out,
+	err,
 }: {
-  getFS: () => any;
-  FS_stdin_getChar: () => number | null | undefined;
-  UTF8ArrayToString: (heapOrArray: any, idx?: number, maxBytesToRead?: number) => string;
-  out: (...args: any[]) => void;
-  err: (...args: any[]) => void;
+	getFS: () => any;
+	FS_stdin_getChar: () => number | null | undefined;
+	UTF8ArrayToString: (
+		heapOrArray: any,
+		idx?: number,
+		maxBytesToRead?: number,
+	) => string;
+	out: (...args: any[]) => void;
+	err: (...args: any[]) => void;
 }) => {
-  const FS = new Proxy({}, {
-    get: (_: any, prop: any) => getFS()[prop],
-  });
-  const TTY = {ttys:[],init(){},shutdown(){},register(dev,ops){TTY.ttys[dev]={input:[],output:[],ops};FS.registerDevice(dev,TTY.stream_ops)},stream_ops:{open(stream){var tty=TTY.ttys[stream.node.rdev];if(!tty){throw new FS.ErrnoError(43)}stream.tty=tty;stream.seekable=false},close(stream){stream.tty.ops.fsync(stream.tty)},fsync(stream){stream.tty.ops.fsync(stream.tty)},read(stream,buffer,offset,length,pos){if(!stream.tty||!stream.tty.ops.get_char){throw new FS.ErrnoError(60)}var bytesRead=0;for(var i=0;i<length;i++){var result;try{result=stream.tty.ops.get_char(stream.tty)}catch(e){throw new FS.ErrnoError(29)}if(result===undefined&&bytesRead===0){throw new FS.ErrnoError(6)}if(result===null||result===undefined)break;bytesRead++;buffer[offset+i]=result}if(bytesRead){stream.node.atime=Date.now()}return bytesRead},write(stream,buffer,offset,length,pos){if(!stream.tty||!stream.tty.ops.put_char){throw new FS.ErrnoError(60)}try{for(var i=0;i<length;i++){stream.tty.ops.put_char(stream.tty,buffer[offset+i])}}catch(e){throw new FS.ErrnoError(29)}if(length){stream.node.mtime=stream.node.ctime=Date.now()}return i}},default_tty_ops:{get_char(tty){return FS_stdin_getChar()},put_char(tty,val){if(val===null||val===10){out(UTF8ArrayToString(tty.output));tty.output=[]}else{if(val!=0)tty.output.push(val)}},fsync(tty){if(tty.output&&tty.output.length>0){out(UTF8ArrayToString(tty.output));tty.output=[]}},ioctl_tcgets(tty){return{c_iflag:25856,c_oflag:5,c_cflag:191,c_lflag:35387,c_cc:[3,28,127,21,4,0,1,0,17,19,26,0,18,15,23,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}},ioctl_tcsets(tty,optional_actions,data){return 0},ioctl_tiocgwinsz(tty){return[24,80]}},default_tty1_ops:{put_char(tty,val){if(val===null||val===10){err(UTF8ArrayToString(tty.output));tty.output=[]}else{if(val!=0)tty.output.push(val)}},fsync(tty){if(tty.output&&tty.output.length>0){err(UTF8ArrayToString(tty.output));tty.output=[]}}}};
-  return TTY;
+	const FS = new Proxy(
+		{},
+		{
+			get: (_: any, prop: any) => getFS()[prop],
+		},
+	);
+	const TTY = {
+		ttys: [],
+		init() {},
+		shutdown() {},
+		register(dev, ops) {
+			TTY.ttys[dev] = { input: [], output: [], ops };
+			FS.registerDevice(dev, TTY.stream_ops);
+		},
+		stream_ops: {
+			open(stream) {
+				var tty = TTY.ttys[stream.node.rdev];
+				if (!tty) {
+					throw new FS.ErrnoError(43);
+				}
+				stream.tty = tty;
+				stream.seekable = false;
+			},
+			close(stream) {
+				stream.tty.ops.fsync(stream.tty);
+			},
+			fsync(stream) {
+				stream.tty.ops.fsync(stream.tty);
+			},
+			read(stream, buffer, offset, length, pos) {
+				if (!stream.tty || !stream.tty.ops.get_char) {
+					throw new FS.ErrnoError(60);
+				}
+				var bytesRead = 0;
+				for (var i = 0; i < length; i++) {
+					var result;
+					try {
+						result = stream.tty.ops.get_char(stream.tty);
+					} catch (e) {
+						throw new FS.ErrnoError(29);
+					}
+					if (result === undefined && bytesRead === 0) {
+						throw new FS.ErrnoError(6);
+					}
+					if (result === null || result === undefined) break;
+					bytesRead++;
+					buffer[offset + i] = result;
+				}
+				if (bytesRead) {
+					stream.node.atime = Date.now();
+				}
+				return bytesRead;
+			},
+			write(stream, buffer, offset, length, pos) {
+				if (!stream.tty || !stream.tty.ops.put_char) {
+					throw new FS.ErrnoError(60);
+				}
+				try {
+					for (var i = 0; i < length; i++) {
+						stream.tty.ops.put_char(stream.tty, buffer[offset + i]);
+					}
+				} catch (e) {
+					throw new FS.ErrnoError(29);
+				}
+				if (length) {
+					stream.node.mtime = stream.node.ctime = Date.now();
+				}
+				return i;
+			},
+		},
+		default_tty_ops: {
+			get_char(tty) {
+				return FS_stdin_getChar();
+			},
+			put_char(tty, val) {
+				if (val === null || val === 10) {
+					out(UTF8ArrayToString(tty.output));
+					tty.output = [];
+				} else {
+					if (val != 0) tty.output.push(val);
+				}
+			},
+			fsync(tty) {
+				if (tty.output && tty.output.length > 0) {
+					out(UTF8ArrayToString(tty.output));
+					tty.output = [];
+				}
+			},
+			ioctl_tcgets(tty) {
+				return {
+					c_iflag: 25856,
+					c_oflag: 5,
+					c_cflag: 191,
+					c_lflag: 35387,
+					c_cc: [
+						3, 28, 127, 21, 4, 0, 1, 0, 17, 19, 26, 0, 18, 15, 23, 22, 0, 0, 0,
+						0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+					],
+				};
+			},
+			ioctl_tcsets(tty, optional_actions, data) {
+				return 0;
+			},
+			ioctl_tiocgwinsz(tty) {
+				return [24, 80];
+			},
+		},
+		default_tty1_ops: {
+			put_char(tty, val) {
+				if (val === null || val === 10) {
+					err(UTF8ArrayToString(tty.output));
+					tty.output = [];
+				} else {
+					if (val != 0) tty.output.push(val);
+				}
+			},
+			fsync(tty) {
+				if (tty.output && tty.output.length > 0) {
+					err(UTF8ArrayToString(tty.output));
+					tty.output = [];
+				}
+			},
+		},
+	};
+	return TTY;
 };

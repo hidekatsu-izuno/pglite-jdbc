@@ -4,7 +4,10 @@ export const runDataPackageBootstrap = ({
 	require,
 }: {
 	Module: Record<string, any>;
-	PGLITE_DATA_METADATA: { files: Array<Record<string, any>>; remote_package_size: number };
+	PGLITE_DATA_METADATA: {
+		files: Array<Record<string, any>>;
+		remote_package_size: number;
+	};
 	require?: (id: string) => any;
 }) => {
 	const isPthread = Boolean((globalThis as any).ENVIRONMENT_IS_PTHREAD);
@@ -46,9 +49,13 @@ export const runDataPackageBootstrap = ({
 					window.location.pathname.lastIndexOf("/"),
 				) + "/",
 			);
-		} else if (typeof processRef === "undefined" && typeof location !== "undefined") {
+		} else if (
+			typeof processRef === "undefined" &&
+			typeof location !== "undefined"
+		) {
 			PACKAGE_PATH = encodeURIComponent(
-				location.pathname.substring(0, location.pathname.lastIndexOf("/")) + "/",
+				location.pathname.substring(0, location.pathname.lastIndexOf("/")) +
+					"/",
 			);
 		}
 		const PACKAGE_NAME = "pglite.data";
@@ -101,7 +108,9 @@ export const runDataPackageBootstrap = ({
 				)
 				.then((response: Response) => {
 					if (!response.ok) {
-						return Promise.reject(new Error(`${response.status}: ${response.url}`));
+						return Promise.reject(
+							new Error(`${response.status}: ${response.url}`),
+						);
 					}
 					if (!response.body && response.arrayBuffer) {
 						return response.arrayBuffer().then(callback);
@@ -112,14 +121,17 @@ export const runDataPackageBootstrap = ({
 					const total = Number(headers.get("Content-Length") ?? packageSize);
 					let loaded = 0;
 					const iterate = () =>
-						reader.read().then(handleChunk).catch((cause: unknown) =>
-							Promise.reject(
-								new Error(
-									`Unexpected error while handling : ${response.url}${cause}`,
-									{ cause },
+						reader
+							.read()
+							.then(handleChunk)
+							.catch((cause: unknown) =>
+								Promise.reject(
+									new Error(
+										`Unexpected error while handling : ${response.url}${cause}`,
+										{ cause },
+									),
 								),
-							),
-						);
+							);
 					const handleChunk = ({
 						done,
 						value,
@@ -161,11 +173,11 @@ export const runDataPackageBootstrap = ({
 		}
 
 		let fetchedCallback: FetchCallback | null = null;
-			let fetched = Module["getPreloadedPackage"]
-				? (Module["getPreloadedPackage"](
-						REMOTE_PACKAGE_NAME,
-						REMOTE_PACKAGE_SIZE,
-					) as ArrayBufferLike | null)
+		let fetched = Module["getPreloadedPackage"]
+			? (Module["getPreloadedPackage"](
+					REMOTE_PACKAGE_NAME,
+					REMOTE_PACKAGE_SIZE,
+				) as ArrayBufferLike | null)
 			: null;
 		if (!fetched) {
 			fetchRemotePackage(
@@ -195,8 +207,18 @@ export const runDataPackageBootstrap = ({
 			module["FS_createPath"]("/tmp/pglite", "lib", true, true);
 			module["FS_createPath"]("/tmp/pglite/lib", "postgresql", true, true);
 			module["FS_createPath"]("/tmp/pglite/lib/postgresql", "pgxs", true, true);
-			module["FS_createPath"]("/tmp/pglite/lib/postgresql/pgxs", "config", true, true);
-			module["FS_createPath"]("/tmp/pglite/lib/postgresql/pgxs", "src", true, true);
+			module["FS_createPath"](
+				"/tmp/pglite/lib/postgresql/pgxs",
+				"config",
+				true,
+				true,
+			);
+			module["FS_createPath"](
+				"/tmp/pglite/lib/postgresql/pgxs",
+				"src",
+				true,
+				true,
+			);
 			module["FS_createPath"](
 				"/tmp/pglite/lib/postgresql/pgxs/src",
 				"makefiles",
@@ -265,7 +287,12 @@ export const runDataPackageBootstrap = ({
 				true,
 				true,
 			);
-			module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Asia", true, true);
+			module["FS_createPath"](
+				"/tmp/pglite/share/postgresql/timezone",
+				"Asia",
+				true,
+				true,
+			);
 			module["FS_createPath"](
 				"/tmp/pglite/share/postgresql/timezone",
 				"Atlantic",
@@ -296,7 +323,12 @@ export const runDataPackageBootstrap = ({
 				true,
 				true,
 			);
-			module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Etc", true, true);
+			module["FS_createPath"](
+				"/tmp/pglite/share/postgresql/timezone",
+				"Etc",
+				true,
+				true,
+			);
 			module["FS_createPath"](
 				"/tmp/pglite/share/postgresql/timezone",
 				"Europe",
@@ -321,7 +353,12 @@ export const runDataPackageBootstrap = ({
 				true,
 				true,
 			);
-			module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "US", true, true);
+			module["FS_createPath"](
+				"/tmp/pglite/share/postgresql/timezone",
+				"US",
+				true,
+				true,
+			);
 			module["FS_createPath"](
 				"/tmp/pglite/share/postgresql",
 				"timezonesets",
@@ -335,7 +372,12 @@ export const runDataPackageBootstrap = ({
 				true,
 			);
 
-			function DataRequest(this: DataRequestRecord, start: number, end: number, audio: number) {
+			function DataRequest(
+				this: DataRequestRecord,
+				start: number,
+				end: number,
+				audio: number,
+			) {
 				this.start = start;
 				this.end = end;
 				this.audio = audio;
@@ -344,8 +386,12 @@ export const runDataPackageBootstrap = ({
 				requests: {} as Record<string, DataRequestRecord | null>,
 				open: function (this: DataRequestRecord, _mode: string, name: string) {
 					this.name = name;
-					((DataRequest as any).prototype.requests as Record<string, DataRequestRecord | null>)[name] =
-						this;
+					(
+						(DataRequest as any).prototype.requests as Record<
+							string,
+							DataRequestRecord | null
+						>
+					)[name] = this;
 					module["addRunDependency"](`fp ${this.name}`);
 				},
 				send: function (this: DataRequestRecord) {
@@ -356,12 +402,21 @@ export const runDataPackageBootstrap = ({
 					this.finish(byteArray);
 				},
 				finish: function (this: DataRequestRecord, byteArray: Uint8Array) {
-					const that = this;
-					module["FS_createDataFile"](this.name, null, byteArray, true, true, true);
-					module["removeRunDependency"](`fp ${that.name}`);
-					((DataRequest as any).prototype.requests as Record<string, DataRequestRecord | null>)[
-						this.name
-					] = null;
+					module["FS_createDataFile"](
+						this.name,
+						null,
+						byteArray,
+						true,
+						true,
+						true,
+					);
+					module["removeRunDependency"](`fp ${this.name}`);
+					(
+						(DataRequest as any).prototype.requests as Record<
+							string,
+							DataRequestRecord | null
+						>
+					)[this.name] = null;
 				},
 			};
 
@@ -384,10 +439,12 @@ export const runDataPackageBootstrap = ({
 				(DataRequest as any).prototype.byteArray = byteArray;
 				const dataFiles = metadata["files"];
 				for (let i = 0; i < dataFiles.length; ++i) {
-					((DataRequest as any).prototype.requests as Record<
-						string,
-						{ onload: () => void } | null
-					>)[dataFiles[i].filename]?.onload();
+					(
+						(DataRequest as any).prototype.requests as Record<
+							string,
+							{ onload: () => void } | null
+						>
+					)[dataFiles[i].filename]?.onload();
 				}
 				module["removeRunDependency"]("datafile_pglite.data");
 			}

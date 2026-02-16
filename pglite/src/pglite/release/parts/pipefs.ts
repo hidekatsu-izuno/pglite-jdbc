@@ -1,19 +1,208 @@
 export const createPIPEFS = ({
-  getFS,
-  assert,
-  getHEAP32,
+	getFS,
+	assert,
+	getHEAP32,
 }: {
-  getFS: () => any;
-  assert: (check: any, message?: string) => void;
-  getHEAP32: () => Int32Array;
+	getFS: () => any;
+	assert: (check: any, message?: string) => void;
+	getHEAP32: () => Int32Array;
 }) => {
-  const FS = new Proxy({}, {
-    get: (_: any, prop: any) => getFS()[prop],
-  });
-  const HEAP32 = new Proxy({}, {
-    get: (_: any, prop: any) => getHEAP32()[prop],
-    set: (_: any, prop: any, value: any) => { getHEAP32()[prop] = value; return true; },
-  });
-  const PIPEFS: any = {BUCKET_BUFFER_SIZE:8192,mount(mount){return FS.createNode(null,"/",16384|511,0)},createPipe(){var pipe={buckets:[],refcnt:2};pipe.buckets.push({buffer:new Uint8Array(PIPEFS.BUCKET_BUFFER_SIZE),offset:0,roffset:0});var rName=PIPEFS.nextname();var wName=PIPEFS.nextname();var rNode=FS.createNode(PIPEFS.root,rName,4096,0);var wNode=FS.createNode(PIPEFS.root,wName,4096,0);rNode.pipe=pipe;wNode.pipe=pipe;var readableStream=FS.createStream({path:rName,node:rNode,flags:0,seekable:false,stream_ops:PIPEFS.stream_ops});rNode.stream=readableStream;var writableStream=FS.createStream({path:wName,node:wNode,flags:1,seekable:false,stream_ops:PIPEFS.stream_ops});wNode.stream=writableStream;return{readable_fd:readableStream.fd,writable_fd:writableStream.fd}},stream_ops:{poll(stream){var pipe=stream.node.pipe;if((stream.flags&2097155)===1){return 256|4}if(pipe.buckets.length>0){for(var i=0;i<pipe.buckets.length;i++){var bucket=pipe.buckets[i];if(bucket.offset-bucket.roffset>0){return 64|1}}}return 0},ioctl(stream,request,varargs){return 28},fsync(stream){return 28},read(stream,buffer,offset,length,position){var pipe=stream.node.pipe;var currentLength=0;for(var i=0;i<pipe.buckets.length;i++){var bucket=pipe.buckets[i];currentLength+=bucket.offset-bucket.roffset}var data=buffer.subarray(offset,offset+length);if(length<=0){return 0}if(currentLength==0){throw new FS.ErrnoError(6)}var toRead=Math.min(currentLength,length);var totalRead=toRead;var toRemove=0;for(var i=0;i<pipe.buckets.length;i++){var currBucket=pipe.buckets[i];var bucketSize=currBucket.offset-currBucket.roffset;if(toRead<=bucketSize){var tmpSlice=currBucket.buffer.subarray(currBucket.roffset,currBucket.offset);if(toRead<bucketSize){tmpSlice=tmpSlice.subarray(0,toRead);currBucket.roffset+=toRead}else{toRemove++}data.set(tmpSlice);break}else{var tmpSlice=currBucket.buffer.subarray(currBucket.roffset,currBucket.offset);data.set(tmpSlice);data=data.subarray(tmpSlice.byteLength);toRead-=tmpSlice.byteLength;toRemove++}}if(toRemove&&toRemove==pipe.buckets.length){toRemove--;pipe.buckets[toRemove].offset=0;pipe.buckets[toRemove].roffset=0}pipe.buckets.splice(0,toRemove);return totalRead},write(stream,buffer,offset,length,position){var pipe=stream.node.pipe;var data=buffer.subarray(offset,offset+length);var dataLen=data.byteLength;if(dataLen<=0){return 0}var currBucket=null;if(pipe.buckets.length==0){currBucket={buffer:new Uint8Array(PIPEFS.BUCKET_BUFFER_SIZE),offset:0,roffset:0};pipe.buckets.push(currBucket)}else{currBucket=pipe.buckets[pipe.buckets.length-1]}assert(currBucket.offset<=PIPEFS.BUCKET_BUFFER_SIZE);var freeBytesInCurrBuffer=PIPEFS.BUCKET_BUFFER_SIZE-currBucket.offset;if(freeBytesInCurrBuffer>=dataLen){currBucket.buffer.set(data,currBucket.offset);currBucket.offset+=dataLen;return dataLen}else if(freeBytesInCurrBuffer>0){currBucket.buffer.set(data.subarray(0,freeBytesInCurrBuffer),currBucket.offset);currBucket.offset+=freeBytesInCurrBuffer;data=data.subarray(freeBytesInCurrBuffer,data.byteLength)}var numBuckets=data.byteLength/PIPEFS.BUCKET_BUFFER_SIZE|0;var remElements=data.byteLength%PIPEFS.BUCKET_BUFFER_SIZE;for(var i=0;i<numBuckets;i++){var newBucket={buffer:new Uint8Array(PIPEFS.BUCKET_BUFFER_SIZE),offset:PIPEFS.BUCKET_BUFFER_SIZE,roffset:0};pipe.buckets.push(newBucket);newBucket.buffer.set(data.subarray(0,PIPEFS.BUCKET_BUFFER_SIZE));data=data.subarray(PIPEFS.BUCKET_BUFFER_SIZE,data.byteLength)}if(remElements>0){newBucket={buffer:new Uint8Array(PIPEFS.BUCKET_BUFFER_SIZE),offset:data.byteLength,roffset:0};pipe.buckets.push(newBucket);newBucket.buffer.set(data)}return dataLen},close(stream){var pipe=stream.node.pipe;pipe.refcnt--;if(pipe.refcnt===0){pipe.buckets=null}}},nextname(){if(!PIPEFS.nextname.current){PIPEFS.nextname.current=0}return"pipe["+PIPEFS.nextname.current+++"]"}};
-  return PIPEFS;
+	const FS = new Proxy(
+		{},
+		{
+			get: (_: any, prop: any) => getFS()[prop],
+		},
+	);
+	const HEAP32 = new Proxy(
+		{},
+		{
+			get: (_: any, prop: any) => getHEAP32()[prop],
+			set: (_: any, prop: any, value: any) => {
+				getHEAP32()[prop] = value;
+				return true;
+			},
+		},
+	);
+	const PIPEFS: any = {
+		BUCKET_BUFFER_SIZE: 8192,
+		mount(mount) {
+			return FS.createNode(null, "/", 16384 | 511, 0);
+		},
+		createPipe() {
+			var pipe = { buckets: [], refcnt: 2 };
+			pipe.buckets.push({
+				buffer: new Uint8Array(PIPEFS.BUCKET_BUFFER_SIZE),
+				offset: 0,
+				roffset: 0,
+			});
+			var rName = PIPEFS.nextname();
+			var wName = PIPEFS.nextname();
+			var rNode = FS.createNode(PIPEFS.root, rName, 4096, 0);
+			var wNode = FS.createNode(PIPEFS.root, wName, 4096, 0);
+			rNode.pipe = pipe;
+			wNode.pipe = pipe;
+			var readableStream = FS.createStream({
+				path: rName,
+				node: rNode,
+				flags: 0,
+				seekable: false,
+				stream_ops: PIPEFS.stream_ops,
+			});
+			rNode.stream = readableStream;
+			var writableStream = FS.createStream({
+				path: wName,
+				node: wNode,
+				flags: 1,
+				seekable: false,
+				stream_ops: PIPEFS.stream_ops,
+			});
+			wNode.stream = writableStream;
+			return { readable_fd: readableStream.fd, writable_fd: writableStream.fd };
+		},
+		stream_ops: {
+			poll(stream) {
+				var pipe = stream.node.pipe;
+				if ((stream.flags & 2097155) === 1) {
+					return 256 | 4;
+				}
+				if (pipe.buckets.length > 0) {
+					for (var i = 0; i < pipe.buckets.length; i++) {
+						var bucket = pipe.buckets[i];
+						if (bucket.offset - bucket.roffset > 0) {
+							return 64 | 1;
+						}
+					}
+				}
+				return 0;
+			},
+			ioctl(stream, request, varargs) {
+				return 28;
+			},
+			fsync(stream) {
+				return 28;
+			},
+			read(stream, buffer, offset, length, position) {
+				var pipe = stream.node.pipe;
+				var currentLength = 0;
+				for (var i = 0; i < pipe.buckets.length; i++) {
+					var bucket = pipe.buckets[i];
+					currentLength += bucket.offset - bucket.roffset;
+				}
+				var data = buffer.subarray(offset, offset + length);
+				if (length <= 0) {
+					return 0;
+				}
+				if (currentLength == 0) {
+					throw new FS.ErrnoError(6);
+				}
+				var toRead = Math.min(currentLength, length);
+				var totalRead = toRead;
+				var toRemove = 0;
+				for (var i = 0; i < pipe.buckets.length; i++) {
+					var currBucket = pipe.buckets[i];
+					var bucketSize = currBucket.offset - currBucket.roffset;
+					if (toRead <= bucketSize) {
+						var tmpSlice = currBucket.buffer.subarray(
+							currBucket.roffset,
+							currBucket.offset,
+						);
+						if (toRead < bucketSize) {
+							tmpSlice = tmpSlice.subarray(0, toRead);
+							currBucket.roffset += toRead;
+						} else {
+							toRemove++;
+						}
+						data.set(tmpSlice);
+						break;
+					} else {
+						var tmpSlice = currBucket.buffer.subarray(
+							currBucket.roffset,
+							currBucket.offset,
+						);
+						data.set(tmpSlice);
+						data = data.subarray(tmpSlice.byteLength);
+						toRead -= tmpSlice.byteLength;
+						toRemove++;
+					}
+				}
+				if (toRemove && toRemove == pipe.buckets.length) {
+					toRemove--;
+					pipe.buckets[toRemove].offset = 0;
+					pipe.buckets[toRemove].roffset = 0;
+				}
+				pipe.buckets.splice(0, toRemove);
+				return totalRead;
+			},
+			write(stream, buffer, offset, length, position) {
+				var pipe = stream.node.pipe;
+				var data = buffer.subarray(offset, offset + length);
+				var dataLen = data.byteLength;
+				if (dataLen <= 0) {
+					return 0;
+				}
+				var currBucket = null;
+				if (pipe.buckets.length == 0) {
+					currBucket = {
+						buffer: new Uint8Array(PIPEFS.BUCKET_BUFFER_SIZE),
+						offset: 0,
+						roffset: 0,
+					};
+					pipe.buckets.push(currBucket);
+				} else {
+					currBucket = pipe.buckets[pipe.buckets.length - 1];
+				}
+				assert(currBucket.offset <= PIPEFS.BUCKET_BUFFER_SIZE);
+				var freeBytesInCurrBuffer =
+					PIPEFS.BUCKET_BUFFER_SIZE - currBucket.offset;
+				if (freeBytesInCurrBuffer >= dataLen) {
+					currBucket.buffer.set(data, currBucket.offset);
+					currBucket.offset += dataLen;
+					return dataLen;
+				} else if (freeBytesInCurrBuffer > 0) {
+					currBucket.buffer.set(
+						data.subarray(0, freeBytesInCurrBuffer),
+						currBucket.offset,
+					);
+					currBucket.offset += freeBytesInCurrBuffer;
+					data = data.subarray(freeBytesInCurrBuffer, data.byteLength);
+				}
+				var numBuckets = (data.byteLength / PIPEFS.BUCKET_BUFFER_SIZE) | 0;
+				var remElements = data.byteLength % PIPEFS.BUCKET_BUFFER_SIZE;
+				for (var i = 0; i < numBuckets; i++) {
+					var newBucket = {
+						buffer: new Uint8Array(PIPEFS.BUCKET_BUFFER_SIZE),
+						offset: PIPEFS.BUCKET_BUFFER_SIZE,
+						roffset: 0,
+					};
+					pipe.buckets.push(newBucket);
+					newBucket.buffer.set(data.subarray(0, PIPEFS.BUCKET_BUFFER_SIZE));
+					data = data.subarray(PIPEFS.BUCKET_BUFFER_SIZE, data.byteLength);
+				}
+				if (remElements > 0) {
+					newBucket = {
+						buffer: new Uint8Array(PIPEFS.BUCKET_BUFFER_SIZE),
+						offset: data.byteLength,
+						roffset: 0,
+					};
+					pipe.buckets.push(newBucket);
+					newBucket.buffer.set(data);
+				}
+				return dataLen;
+			},
+			close(stream) {
+				var pipe = stream.node.pipe;
+				pipe.refcnt--;
+				if (pipe.refcnt === 0) {
+					pipe.buckets = null;
+				}
+			},
+		},
+		nextname() {
+			if (!PIPEFS.nextname.current) {
+				PIPEFS.nextname.current = 0;
+			}
+			return "pipe[" + PIPEFS.nextname.current++ + "]";
+		},
+	};
+	return PIPEFS;
 };

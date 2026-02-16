@@ -30,10 +30,8 @@ function _fd_close(fd: any) {
           var rightsBase = 0;
           var rightsInheriting = 0;
           var flags = 0;
-          {
             var stream = SYSCALLS.getStreamFromFD(fd);
-            var type = stream.tty ? 2 : FS.isDir(stream.mode) ? 3 : FS.isLink(stream.mode) ? 7 : 4
-          } HEAP8[pbuf] = type;
+            var type = stream.tty ? 2 : FS.isDir(stream.mode) ? 3 : FS.isLink(stream.mode) ? 7 : 4HEAP8[pbuf] = type;
           HEAP16[pbuf + 2 >> 1] = flags;
           HEAP64[pbuf + 8 >> 3] = BigInt(rightsBase);
           HEAP64[pbuf + 16 >> 3] = BigInt(rightsInheriting);
