@@ -17,8 +17,8 @@ export const createSocketAddressUtils = ({
   FS: any;
   zeroMemory: (address: number, size: number) => void;
 }) => {
-var inetNtop4 = addr => (addr & 255) + "." + (addr >> 8 & 255) + "." + (addr >> 16 & 255) + "." + (addr >> 24 & 255);
-      var inetNtop6 = ints => {
+var inetNtop4 = (addr: any) => (addr & 255) + "." + (addr >> 8 & 255) + "." + (addr >> 16 & 255) + "." + (addr >> 24 & 255);
+      var inetNtop6 = (ints: any) => {
         var str = "";
         var word = 0;
         var longest = 0;
@@ -76,10 +76,10 @@ var inetNtop4 = addr => (addr & 255) + "." + (addr >> 8 & 255) + "." + (addr >> 
           str += word < 7 ? ":" : ""
         } return str
       };
-      var readSockaddr = (sa, salen) => {
+      var readSockaddr = (sa: any, salen: any) => {
         var family = HEAP16[sa >> 1];
         var port = _ntohs(HEAPU16[sa + 2 >> 1]);
-        var addr;
+        var addr: any;
         switch (family) {
           case 2: if (salen !== 16) { return { errno: 28 } } addr = HEAP32[sa + 4 >> 2];
             addr = inetNtop4(addr);
@@ -90,7 +90,7 @@ var inetNtop4 = addr => (addr & 255) + "." + (addr >> 8 & 255) + "." + (addr >> 
           default: return { errno: 5 }
         }return { family, addr, port }
       };
-      var inetPton4 = str => {
+      var inetPton4 = (str: any) => {
         var b = str.split(".");
         for (var i = 0;
           i < 4;
@@ -100,8 +100,8 @@ var inetNtop4 = addr => (addr & 255) + "." + (addr >> 8 & 255) + "." + (addr >> 
           b[i] = tmp
         } return (b[0] | b[1] << 8 | b[2] << 16 | b[3] << 24) >>> 0
       };
-      var jstoi_q = str => parseInt(str);
-      var inetPton6 = str => {
+      var jstoi_q = (str: any) => parseInt(str);
+      var inetPton6 = (str: any) => {
         var words;
         var w, offset, z;
         var valid6regx = /^((?=.*::)(?!.*::.+::)(::)?([\dA-F]{1,4}:(:|\b)|){5}|([\dA-F]{1,4}:){6})((([\dA-F]{1,4}((?!\3)::|:\b|$))|(?!\2\3)){2}|(((2[0-4]|1\d|[1-9])?\d|25[0-5])\.?\b){4})$/i;
@@ -131,9 +131,9 @@ var inetNtop4 = addr => (addr & 255) + "." + (addr >> 8 & 255) + "." + (addr >> 
       };
       var DNS = {
         address_map: { id: 1, addrs: {}, names: {} }, lookup_name(name) {
-          var res = inetPton4(name);
+        var res: any = inetPton4(name);
           if (res !== null) { return name } res = inetPton6(name);
-          if (res !== null) { return name } var addr;
+        if (res !== null) { return name } var addr: any;
           if (DNS.address_map.addrs[name]) { addr = DNS.address_map.addrs[name] } else {
             var id = DNS.address_map.id++;
             assert(id < 65535, "exceeded max address mappings of 65535");
@@ -143,14 +143,14 @@ var inetNtop4 = addr => (addr & 255) + "." + (addr >> 8 & 255) + "." + (addr >> 
           } return addr
         }, lookup_addr(addr) { if (DNS.address_map.names[addr]) { return DNS.address_map.names[addr] } return null }
       };
-      var getSocketAddress = (addrp, addrlen) => {
+      var getSocketAddress = (addrp: any, addrlen: any) => {
         var info = readSockaddr(addrp, addrlen);
         if (info.errno) throw new FS.ErrnoError(info.errno);
         info.addr = DNS.lookup_addr(info.addr) || info.addr;
         return info
       };
       
-var writeSockaddr = (sa, family, addr, port, addrlen) => {
+var writeSockaddr = (sa: any, family: any, addr: any, port: any, addrlen: any) => {
         switch (family) {
           case 2: addr = inetPton4(addr);
             zeroMemory(sa, 16);

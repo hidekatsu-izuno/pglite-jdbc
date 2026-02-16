@@ -1,4 +1,4 @@
-import PostgresModFactory from "./release/pglite.js";
+import PostgresModFactory from "./release/pglite.ts";
 
 type IDBFS = Emscripten.FileSystemType & {
 	quit: () => void;

@@ -29,15 +29,15 @@ export const createAddrInfoFunctions = ({
   readSockaddr: (...args: any[]) => any;
   stringToUTF8: (str: string, outPtr: number, maxBytesToWrite: number) => number;
 }) => {
-var _getaddrinfo = (node, service, hint, out) => {
-        var addr = 0;
+var _getaddrinfo: any = (node: any, service: any, hint: any, out: any) => {
+        var addr: any = 0;
         var port = 0;
         var flags = 0;
         var family = 0;
         var type = 0;
         var proto = 0;
         var ai;
-        function allocaddrinfo(family, type, proto, canon, addr, port) {
+        function allocaddrinfo(family: any, type: any, proto: any, canon: any, addr: any, port: any) {
           var sa, salen, ai;
           var errno;
           salen = family === 10 ? 28 : 16;
@@ -103,7 +103,7 @@ var _getaddrinfo = (node, service, hint, out) => {
         return 0
       };
       _getaddrinfo.sig = "ipppp";
-      var _getnameinfo = (sa, salen, node, nodelen, serv, servlen, flags) => {
+      var _getnameinfo: any = (sa: any, salen: any, node: any, nodelen: any, serv: any, servlen: any, flags: any) => {
         var info = readSockaddr(sa, salen);
         if (info.errno) { return -6 } var port = info.port;
         var addr = info.addr;

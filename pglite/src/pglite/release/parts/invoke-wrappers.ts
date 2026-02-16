@@ -9,7 +9,7 @@ export const createInvokeWrappers = ({
   getWasmTableEntry: (funcPtr: number) => (...args: any[]) => any;
   _setThrew: (threw: number, value: number) => void;
 }) => {
-function invoke_iii(index, a1, a2) {
+function invoke_iii(index: any, a1: any, a2: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1, a2) } catch (e) {
           stackRestore(sp);
@@ -17,7 +17,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_viiii(index, a1, a2, a3, a4) {
+      function invoke_viiii(index: any, a1: any, a2: any, a3: any, a4: any) {
         var sp = stackSave();
         try { getWasmTableEntry(index)(a1, a2, a3, a4) } catch (e) {
           stackRestore(sp);
@@ -25,7 +25,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_vi(index, a1) {
+      function invoke_vi(index: any, a1: any) {
         var sp = stackSave();
         try { getWasmTableEntry(index)(a1) } catch (e) {
           stackRestore(sp);
@@ -33,7 +33,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_v(index) {
+      function invoke_v(index: any) {
         var sp = stackSave();
         try { getWasmTableEntry(index)() } catch (e) {
           stackRestore(sp);
@@ -41,7 +41,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_j(index) {
+      function invoke_j(index: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)() } catch (e) {
           stackRestore(sp);
@@ -50,7 +50,7 @@ function invoke_iii(index, a1, a2) {
           return 0n
         }
       }
-      function invoke_viiiiii(index, a1, a2, a3, a4, a5, a6) {
+      function invoke_viiiiii(index: any, a1: any, a2: any, a3: any, a4: any, a5: any, a6: any) {
         var sp = stackSave();
         try { getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6) } catch (e) {
           stackRestore(sp);
@@ -58,7 +58,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_vii(index, a1, a2) {
+      function invoke_vii(index: any, a1: any, a2: any) {
         var sp = stackSave();
         try { getWasmTableEntry(index)(a1, a2) } catch (e) {
           stackRestore(sp);
@@ -66,7 +66,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_iiiiii(index, a1, a2, a3, a4, a5) {
+      function invoke_iiiiii(index: any, a1: any, a2: any, a3: any, a4: any, a5: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1, a2, a3, a4, a5) } catch (e) {
           stackRestore(sp);
@@ -74,7 +74,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_i(index) {
+      function invoke_i(index: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)() } catch (e) {
           stackRestore(sp);
@@ -82,7 +82,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_ii(index, a1) {
+      function invoke_ii(index: any, a1: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1) } catch (e) {
           stackRestore(sp);
@@ -90,7 +90,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_viii(index, a1, a2, a3) {
+      function invoke_viii(index: any, a1: any, a2: any, a3: any) {
         var sp = stackSave();
         try { getWasmTableEntry(index)(a1, a2, a3) } catch (e) {
           stackRestore(sp);
@@ -98,7 +98,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_vji(index, a1, a2) {
+      function invoke_vji(index: any, a1: any, a2: any) {
         var sp = stackSave();
         try { getWasmTableEntry(index)(a1, a2) } catch (e) {
           stackRestore(sp);
@@ -106,7 +106,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_iiii(index, a1, a2, a3) {
+      function invoke_iiii(index: any, a1: any, a2: any, a3: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1, a2, a3) } catch (e) {
           stackRestore(sp);
@@ -114,7 +114,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_iiiiiiii(index, a1, a2, a3, a4, a5, a6, a7) {
+      function invoke_iiiiiiii(index: any, a1: any, a2: any, a3: any, a4: any, a5: any, a6: any, a7: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7) } catch (e) {
           stackRestore(sp);
@@ -122,7 +122,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_iiiii(index, a1, a2, a3, a4) {
+      function invoke_iiiii(index: any, a1: any, a2: any, a3: any, a4: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1, a2, a3, a4) } catch (e) {
           stackRestore(sp);
@@ -130,7 +130,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_viiiiiiiii(index, a1, a2, a3, a4, a5, a6, a7, a8, a9) {
+      function invoke_viiiiiiiii(index: any, a1: any, a2: any, a3: any, a4: any, a5: any, a6: any, a7: any, a8: any, a9: any) {
         var sp = stackSave();
         try { getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8, a9) } catch (e) {
           stackRestore(sp);
@@ -138,7 +138,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_viiiii(index, a1, a2, a3, a4, a5) {
+      function invoke_viiiii(index: any, a1: any, a2: any, a3: any, a4: any, a5: any) {
         var sp = stackSave();
         try { getWasmTableEntry(index)(a1, a2, a3, a4, a5) } catch (e) {
           stackRestore(sp);
@@ -146,7 +146,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_jii(index, a1, a2) {
+      function invoke_jii(index: any, a1: any, a2: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1, a2) } catch (e) {
           stackRestore(sp);
@@ -155,7 +155,7 @@ function invoke_iii(index, a1, a2) {
           return 0n
         }
       }
-      function invoke_ji(index, a1) {
+      function invoke_ji(index: any, a1: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1) } catch (e) {
           stackRestore(sp);
@@ -164,7 +164,7 @@ function invoke_iii(index, a1, a2) {
           return 0n
         }
       }
-      function invoke_jiiiiiiiii(index, a1, a2, a3, a4, a5, a6, a7, a8, a9) {
+      function invoke_jiiiiiiiii(index: any, a1: any, a2: any, a3: any, a4: any, a5: any, a6: any, a7: any, a8: any, a9: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8, a9) } catch (e) {
           stackRestore(sp);
@@ -173,7 +173,7 @@ function invoke_iii(index, a1, a2) {
           return 0n
         }
       }
-      function invoke_jiiiiii(index, a1, a2, a3, a4, a5, a6) {
+      function invoke_jiiiiii(index: any, a1: any, a2: any, a3: any, a4: any, a5: any, a6: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6) } catch (e) {
           stackRestore(sp);
@@ -182,7 +182,7 @@ function invoke_iii(index, a1, a2) {
           return 0n
         }
       }
-      function invoke_iiiiiiiiiiiiii(index, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13) {
+      function invoke_iiiiiiiiiiiiii(index: any, a1: any, a2: any, a3: any, a4: any, a5: any, a6: any, a7: any, a8: any, a9: any, a10: any, a11: any, a12: any, a13: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13) } catch (e) {
           stackRestore(sp);
@@ -190,7 +190,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_iiiijii(index, a1, a2, a3, a4, a5, a6) {
+      function invoke_iiiijii(index: any, a1: any, a2: any, a3: any, a4: any, a5: any, a6: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6) } catch (e) {
           stackRestore(sp);
@@ -198,7 +198,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_vijiji(index, a1, a2, a3, a4, a5) {
+      function invoke_vijiji(index: any, a1: any, a2: any, a3: any, a4: any, a5: any) {
         var sp = stackSave();
         try { getWasmTableEntry(index)(a1, a2, a3, a4, a5) } catch (e) {
           stackRestore(sp);
@@ -206,7 +206,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_viji(index, a1, a2, a3) {
+      function invoke_viji(index: any, a1: any, a2: any, a3: any) {
         var sp = stackSave();
         try { getWasmTableEntry(index)(a1, a2, a3) } catch (e) {
           stackRestore(sp);
@@ -214,7 +214,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_iiji(index, a1, a2, a3) {
+      function invoke_iiji(index: any, a1: any, a2: any, a3: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1, a2, a3) } catch (e) {
           stackRestore(sp);
@@ -222,7 +222,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_iiiiiiiii(index, a1, a2, a3, a4, a5, a6, a7, a8) {
+      function invoke_iiiiiiiii(index: any, a1: any, a2: any, a3: any, a4: any, a5: any, a6: any, a7: any, a8: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8) } catch (e) {
           stackRestore(sp);
@@ -230,7 +230,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_iiiiiiiiiiiiiiiiii(index, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17) {
+      function invoke_iiiiiiiiiiiiiiiiii(index: any, a1: any, a2: any, a3: any, a4: any, a5: any, a6: any, a7: any, a8: any, a9: any, a10: any, a11: any, a12: any, a13: any, a14: any, a15: any, a16: any, a17: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17) } catch (e) {
           stackRestore(sp);
@@ -238,7 +238,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_iiiij(index, a1, a2, a3, a4) {
+      function invoke_iiiij(index: any, a1: any, a2: any, a3: any, a4: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1, a2, a3, a4) } catch (e) {
           stackRestore(sp);
@@ -246,7 +246,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_iiiiiii(index, a1, a2, a3, a4, a5, a6) {
+      function invoke_iiiiiii(index: any, a1: any, a2: any, a3: any, a4: any, a5: any, a6: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6) } catch (e) {
           stackRestore(sp);
@@ -254,7 +254,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_vj(index, a1) {
+      function invoke_vj(index: any, a1: any) {
         var sp = stackSave();
         try { getWasmTableEntry(index)(a1) } catch (e) {
           stackRestore(sp);
@@ -262,7 +262,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_iiiiiiiiii(index, a1, a2, a3, a4, a5, a6, a7, a8, a9) {
+      function invoke_iiiiiiiiii(index: any, a1: any, a2: any, a3: any, a4: any, a5: any, a6: any, a7: any, a8: any, a9: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8, a9) } catch (e) {
           stackRestore(sp);
@@ -270,7 +270,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_viiji(index, a1, a2, a3, a4) {
+      function invoke_viiji(index: any, a1: any, a2: any, a3: any, a4: any) {
         var sp = stackSave();
         try { getWasmTableEntry(index)(a1, a2, a3, a4) } catch (e) {
           stackRestore(sp);
@@ -278,7 +278,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_viiiiiiii(index, a1, a2, a3, a4, a5, a6, a7, a8) {
+      function invoke_viiiiiiii(index: any, a1: any, a2: any, a3: any, a4: any, a5: any, a6: any, a7: any, a8: any) {
         var sp = stackSave();
         try { getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8) } catch (e) {
           stackRestore(sp);
@@ -286,7 +286,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_vij(index, a1, a2) {
+      function invoke_vij(index: any, a1: any, a2: any) {
         var sp = stackSave();
         try { getWasmTableEntry(index)(a1, a2) } catch (e) {
           stackRestore(sp);
@@ -294,7 +294,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_ij(index, a1) {
+      function invoke_ij(index: any, a1: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1) } catch (e) {
           stackRestore(sp);
@@ -302,7 +302,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_viiiiiii(index, a1, a2, a3, a4, a5, a6, a7) {
+      function invoke_viiiiiii(index: any, a1: any, a2: any, a3: any, a4: any, a5: any, a6: any, a7: any) {
         var sp = stackSave();
         try { getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7) } catch (e) {
           stackRestore(sp);
@@ -310,7 +310,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_viiiji(index, a1, a2, a3, a4, a5) {
+      function invoke_viiiji(index: any, a1: any, a2: any, a3: any, a4: any, a5: any) {
         var sp = stackSave();
         try { getWasmTableEntry(index)(a1, a2, a3, a4, a5) } catch (e) {
           stackRestore(sp);
@@ -318,7 +318,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_iiij(index, a1, a2, a3) {
+      function invoke_iiij(index: any, a1: any, a2: any, a3: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1, a2, a3) } catch (e) {
           stackRestore(sp);
@@ -326,7 +326,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_vid(index, a1, a2) {
+      function invoke_vid(index: any, a1: any, a2: any) {
         var sp = stackSave();
         try { getWasmTableEntry(index)(a1, a2) } catch (e) {
           stackRestore(sp);
@@ -334,7 +334,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_ijiiiiii(index, a1, a2, a3, a4, a5, a6, a7) {
+      function invoke_ijiiiiii(index: any, a1: any, a2: any, a3: any, a4: any, a5: any, a6: any, a7: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7) } catch (e) {
           stackRestore(sp);
@@ -342,7 +342,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_viijii(index, a1, a2, a3, a4, a5) {
+      function invoke_viijii(index: any, a1: any, a2: any, a3: any, a4: any, a5: any) {
         var sp = stackSave();
         try { getWasmTableEntry(index)(a1, a2, a3, a4, a5) } catch (e) {
           stackRestore(sp);
@@ -350,7 +350,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_iiiiiji(index, a1, a2, a3, a4, a5, a6) {
+      function invoke_iiiiiji(index: any, a1: any, a2: any, a3: any, a4: any, a5: any, a6: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6) } catch (e) {
           stackRestore(sp);
@@ -358,7 +358,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_viijiiii(index, a1, a2, a3, a4, a5, a6, a7) {
+      function invoke_viijiiii(index: any, a1: any, a2: any, a3: any, a4: any, a5: any, a6: any, a7: any) {
         var sp = stackSave();
         try { getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7) } catch (e) {
           stackRestore(sp);
@@ -366,7 +366,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_viij(index, a1, a2, a3) {
+      function invoke_viij(index: any, a1: any, a2: any, a3: any) {
         var sp = stackSave();
         try { getWasmTableEntry(index)(a1, a2, a3) } catch (e) {
           stackRestore(sp);
@@ -374,7 +374,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_jiiii(index, a1, a2, a3, a4) {
+      function invoke_jiiii(index: any, a1: any, a2: any, a3: any, a4: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1, a2, a3, a4) } catch (e) {
           stackRestore(sp);
@@ -383,7 +383,7 @@ function invoke_iii(index, a1, a2) {
           return 0n
         }
       }
-      function invoke_viiiiiiiiiiii(index, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12) {
+      function invoke_viiiiiiiiiiii(index: any, a1: any, a2: any, a3: any, a4: any, a5: any, a6: any, a7: any, a8: any, a9: any, a10: any, a11: any, a12: any) {
         var sp = stackSave();
         try { getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12) } catch (e) {
           stackRestore(sp);
@@ -391,7 +391,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_di(index, a1) {
+      function invoke_di(index: any, a1: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1) } catch (e) {
           stackRestore(sp);
@@ -399,7 +399,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_id(index, a1) {
+      function invoke_id(index: any, a1: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1) } catch (e) {
           stackRestore(sp);
@@ -407,7 +407,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_ijiiiii(index, a1, a2, a3, a4, a5, a6) {
+      function invoke_ijiiiii(index: any, a1: any, a2: any, a3: any, a4: any, a5: any, a6: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6) } catch (e) {
           stackRestore(sp);
@@ -415,7 +415,7 @@ function invoke_iii(index, a1, a2) {
           _setThrew(1, 0)
         }
       }
-      function invoke_iiiiiiiiiii(index, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) {
+      function invoke_iiiiiiiiiii(index: any, a1: any, a2: any, a3: any, a4: any, a5: any, a6: any, a7: any, a8: any, a9: any, a10: any) {
         var sp = stackSave();
         try { return getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) } catch (e) {
           stackRestore(sp);

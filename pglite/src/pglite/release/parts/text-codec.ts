@@ -1,7 +1,7 @@
 var UTF8Decoder = typeof TextDecoder != "undefined" ? new TextDecoder : undefined;
 
 export var UTF8ArrayToString = (
-  heapOrArray: Uint8Array | Int8Array | number[],
+  heapOrArray: Uint8Array | Int8Array,
   idx: number = 0,
   maxBytesToRead: number = NaN,
 ): string => {
@@ -80,12 +80,8 @@ export var stringToUTF8Array = (
   return outIdx - startIdx
 };
 
-export function intArrayFromString(
-  stringy: string,
-  dontAddNull?: boolean,
-  length?: number,
-): number[] {
-  var len = length > 0 ? length : lengthBytesUTF8(stringy) + 1;
+export function intArrayFromString(stringy: string, dontAddNull?: boolean, length?: number, ): number[] {
+  var len = length !== undefined && length > 0 ? length : lengthBytesUTF8(stringy) + 1;
   var u8array = new Array(len);
   var numBytesWritten = stringToUTF8Array(stringy, u8array, 0, u8array.length);
   if (dontAddNull) u8array.length = numBytesWritten;

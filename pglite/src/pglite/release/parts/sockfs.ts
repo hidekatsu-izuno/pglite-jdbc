@@ -15,7 +15,7 @@ export const createSOCKFS = ({
   HEAP32: Int32Array;
   TextEncoder: { new (): { encode(input?: string): Uint8Array } };
 }) => {
-  var SOCKFS = {
+  var SOCKFS: any = {
     websocketArgs: {}, callbacks: {}, on(event, callback) { SOCKFS.callbacks[event] = callback }, emit(event, param) { SOCKFS.callbacks[event]?.(param) }, mount(mount) {
       SOCKFS.websocketArgs = Module["websocket"] || {};
       (Module["websocket"] ??= {})["on"] = SOCKFS.on;
@@ -23,7 +23,7 @@ export const createSOCKFS = ({
     }, createSocket(family, type, protocol) {
       type &= ~526336;
       var streaming = type == 1;
-      if (streaming && protocol && protocol != 6) { throw new FS.ErrnoError(66) } var sock = { family, type, protocol, server: null, error: null, peers: {}, pending: [], recv_queue: [], sock_ops: SOCKFS.websocket_sock_ops };
+      if (streaming && protocol && protocol != 6) { throw new FS.ErrnoError(66) } var sock: any = { family, type, protocol, server: null, error: null, peers: {}, pending: [], recv_queue: [], sock_ops: SOCKFS.websocket_sock_ops };
       var name = SOCKFS.nextname();
       var node = FS.createNode(SOCKFS.root, name, 49152, 0);
       node.sock = sock;
@@ -53,7 +53,7 @@ export const createSOCKFS = ({
         sock.sock_ops.close(sock)
       }
     }, nextname() { if (!SOCKFS.nextname.current) { SOCKFS.nextname.current = 0 } return `socket[${SOCKFS.nextname.current++}]` }, websocket_sock_ops: {
-      createPeer(sock, addr, port) {
+      createPeer(sock, addr, port?) {
         var ws;
         if (typeof addr == "object") {
           ws = addr;
@@ -72,7 +72,7 @@ export const createSOCKFS = ({
         } else {
           try {
             var url = "ws:#".replace("#", "//");
-            var subProtocols = "binary";
+            var subProtocols: any = "binary";
             var opts = undefined;
             if (SOCKFS.websocketArgs["url"]) { url = SOCKFS.websocketArgs["url"] }
             if (SOCKFS.websocketArgs["subprotocol"]) { subProtocols = SOCKFS.websocketArgs["subprotocol"] } else if (SOCKFS.websocketArgs["subprotocol"] === null) { subProtocols = "null" }
@@ -104,7 +104,7 @@ export const createSOCKFS = ({
             }
           } catch (e) { peer.socket.close() }
         };
-        function handleMessage(data) {
+        function handleMessage(data: any) {
           if (typeof data == "string") {
             var encoder = new TextEncoder;
             data = encoder.encode(data)
@@ -133,7 +133,7 @@ export const createSOCKFS = ({
         } else {
           peer.socket.onopen = handleOpen;
           peer.socket.onclose = function () { SOCKFS.emit("close", sock.stream.fd) };
-          peer.socket.onmessage = function peer_socket_onmessage(event) { handleMessage(event.data) };
+          peer.socket.onmessage = function peer_socket_onmessage(event: any) { handleMessage(event.data) };
           peer.socket.onerror = function (error) {
             sock.error = 14;
             SOCKFS.emit("error", [sock.stream.fd, sock.error, "ECONNREFUSED: Connection refused"])

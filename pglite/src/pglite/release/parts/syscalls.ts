@@ -18,11 +18,11 @@ export const createSYSCALLS = ({
   UTF8ToString: (ptr: number, maxBytesToRead?: number) => string;
 }) => {
   const FS = new Proxy({}, {
-    get: (_, prop) => getFS()[prop],
+    get: (_: any, prop: any) => getFS()[prop],
   });
-  const createHeap = (getter) => new Proxy({}, {
-    get: (_, prop) => getter()[prop],
-    set: (_, prop, value) => { getter()[prop] = value; return true; },
+  const createHeap = (getter: any) => new Proxy({}, {
+    get: (_: any, prop: any) => getter()[prop],
+    set: (_: any, prop: any, value: any) => { getter()[prop] = value; return true; },
   });
   const HEAP32 = createHeap(getHEAP32);
   const HEAPU32 = createHeap(getHEAPU32);

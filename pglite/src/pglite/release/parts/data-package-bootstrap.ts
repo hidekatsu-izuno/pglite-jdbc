@@ -1,202 +1,411 @@
 export const runDataPackageBootstrap = ({
-  Module,
-  PGLITE_DATA_METADATA,
-  require,
+	Module,
+	PGLITE_DATA_METADATA,
+	require,
 }: {
-  Module: Record<string, any>;
-  PGLITE_DATA_METADATA: { files: Array<Record<string, any>>; remote_package_size: number };
-  require?: (id: string) => any;
+	Module: Record<string, any>;
+	PGLITE_DATA_METADATA: { files: Array<Record<string, any>>; remote_package_size: number };
+	require?: (id: string) => any;
 }) => {
+	const isPthread = Boolean((globalThis as any).ENVIRONMENT_IS_PTHREAD);
+	const isWasmWorker = Boolean((globalThis as any).ENVIRONMENT_IS_WASM_WORKER);
+	if (isPthread || isWasmWorker) return;
+	const processRef = (globalThis as any).process;
+	const isNode =
+		typeof processRef === "object" &&
+		typeof processRef?.versions === "object" &&
+		typeof processRef?.versions?.node === "string";
 
-    var isPthread = typeof ENVIRONMENT_IS_PTHREAD != "undefined" && ENVIRONMENT_IS_PTHREAD;
-    var isWasmWorker = typeof ENVIRONMENT_IS_WASM_WORKER != "undefined" && ENVIRONMENT_IS_WASM_WORKER;
-    if (isPthread || isWasmWorker) return;
-    var isNode = typeof process === "object" && typeof process.versions === "object" && typeof process.versions.node === "string";
-    function loadPackage(metadata) {
-      var PACKAGE_PATH = "";
-      if (typeof window === "object") {
-        PACKAGE_PATH = window["encodeURIComponent"](window.location.pathname.substring(0, window.location.pathname.lastIndexOf("/")) + "/")
-      } else if (typeof process === "undefined" && typeof location !== "undefined") {
-        PACKAGE_PATH = encodeURIComponent(location.pathname.substring(0, location.pathname.lastIndexOf("/")) + "/")
-      }
-      var PACKAGE_NAME = "pglite.data";
-      var REMOTE_PACKAGE_BASE = "pglite.data";
-      var REMOTE_PACKAGE_NAME = Module["locateFile"] ? Module["locateFile"](REMOTE_PACKAGE_BASE, "") : REMOTE_PACKAGE_BASE;
-      var REMOTE_PACKAGE_SIZE = metadata["remote_package_size"];
-      function fetchRemotePackage(packageName, packageSize, callback, errback) {
-        if (isNode) {
-          require("fs").readFile(packageName, (err, contents) => {
-            if (err) {
-              errback(err)
-            } else {
-              callback(contents.buffer)
-            }
+	type DownloadProgress = { loaded: number; total: number };
+	type MetadataFile = {
+		filename: string;
+		start: number;
+		end: number;
+		audio?: number;
+	};
+	type Metadata = {
+		files: MetadataFile[];
+		remote_package_size: number;
+	};
+	type FetchCallback = (data: ArrayBufferLike) => void;
+	type DataRequestRecord = {
+		start: number;
+		end: number;
+		audio: number;
+		name: string;
+		byteArray: Uint8Array;
+		finish: (byteArray: Uint8Array) => void;
+	};
 
-          });
-          return
-        }
-        Module["dataFileDownloads"] ??= {};
-        fetch(packageName).catch(cause => Promise.reject(new Error(`Network Error: ${packageName}`, { cause }))).then(response => {
-          if (!response.ok) {
-            return Promise.reject(new Error(`${response.status}: ${response.url}`))
-          }
-          if (!response.body && response.arrayBuffer) {
-            return response.arrayBuffer().then(callback)
-          }
-          const reader = response.body.getReader();
-          const iterate = () => reader.read().then(handleChunk).catch(cause => Promise.reject(new Error(`Unexpected error while handling : ${response.url}${cause}`, { cause })));
-          const chunks = [];
-          const headers = response.headers;
-          const total = Number(headers.get("Content-Length") ?? packageSize);
-          let loaded = 0;
-          const handleChunk = ({
-            done, value
-          }) => {
-            if (!done) {
-              chunks.push(value);
-              loaded += value.length;
-              Module["dataFileDownloads"][packageName] = {
-                loaded, total
-              };
-              let totalLoaded = 0;
-              let totalSize = 0;
-              for (const download of Object.values(Module["dataFileDownloads"])) {
-                totalLoaded += download.loaded;
-                totalSize += download.total
-              }
-              Module["setStatus"]?.(`Downloading data... (${totalLoaded}/${totalSize})`);
-              return iterate()
-            } else {
-              const packageData = new Uint8Array(chunks.map(c => c.length).reduce((a, b) => a + b, 0));
-              let offset = 0;
-              for (const chunk of chunks) {
-                packageData.set(chunk, offset);
-                offset += chunk.length
-              }
-              callback(packageData.buffer)
-            }
-          };
-          Module["setStatus"]?.("Downloading data...");
-          return iterate()
-        })
-      }
-      function handleError(error) {
-        console.error("package error:", error)
-      }
-      var fetchedCallback = null;
-      var fetched = Module["getPreloadedPackage"] ? Module["getPreloadedPackage"](REMOTE_PACKAGE_NAME, REMOTE_PACKAGE_SIZE) : null;
-      if (!fetched) fetchRemotePackage(REMOTE_PACKAGE_NAME, REMOTE_PACKAGE_SIZE, data => {
-        if (fetchedCallback) {
-          fetchedCallback(data);
-          fetchedCallback = null
-        } else {
-          fetched = data
-        }
-      }, handleError);
-      function runWithFS(Module) {
-        function assert(check, msg) {
-          if (!check) throw msg + (new Error).stack
-        }
-        Module["FS_createPath"]("/", "home", true, true);
-        Module["FS_createPath"]("/home", "web_user", true, true);
-        Module["FS_createPath"]("/", "tmp", true, true);
-        Module["FS_createPath"]("/tmp", "pglite", true, true);
-        Module["FS_createPath"]("/tmp/pglite", "bin", true, true);
-        Module["FS_createPath"]("/tmp/pglite", "lib", true, true);
-        Module["FS_createPath"]("/tmp/pglite/lib", "postgresql", true, true);
-        Module["FS_createPath"]("/tmp/pglite/lib/postgresql", "pgxs", true, true);
-        Module["FS_createPath"]("/tmp/pglite/lib/postgresql/pgxs", "config", true, true);
-        Module["FS_createPath"]("/tmp/pglite/lib/postgresql/pgxs", "src", true, true);
-        Module["FS_createPath"]("/tmp/pglite/lib/postgresql/pgxs/src", "makefiles", true, true);
-        Module["FS_createPath"]("/tmp/pglite", "share", true, true);
-        Module["FS_createPath"]("/tmp/pglite/share", "postgresql", true, true);
-        Module["FS_createPath"]("/tmp/pglite/share/postgresql", "extension", true, true);
-        Module["FS_createPath"]("/tmp/pglite/share/postgresql", "timezone", true, true);
-        Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Africa", true, true);
-        Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "America", true, true);
-        Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone/America", "Argentina", true, true);
-        Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone/America", "Indiana", true, true);
-        Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone/America", "Kentucky", true, true);
-        Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone/America", "North_Dakota", true, true);
-        Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Antarctica", true, true);
-        Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Arctic", true, true);
-        Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Asia", true, true);
-        Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Atlantic", true, true);
-        Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Australia", true, true);
-        Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Brazil", true, true);
-        Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Canada", true, true);
-        Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Chile", true, true);
-        Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Etc", true, true);
-        Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Europe", true, true);
-        Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Indian", true, true);
-        Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Mexico", true, true);
-        Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Pacific", true, true);
-        Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "US", true, true);
-        Module["FS_createPath"]("/tmp/pglite/share/postgresql", "timezonesets", true, true);
-        Module["FS_createPath"]("/tmp/pglite/share/postgresql", "tsearch_data", true, true);
-        function DataRequest(start, end, audio) {
-          this.start = start;
-          this.end = end;
-          this.audio = audio
-        }
-        DataRequest.prototype = {
-          requests: {
+	function loadPackage(metadata: Metadata) {
+		let PACKAGE_PATH = "";
+		if (typeof window === "object") {
+			PACKAGE_PATH = window["encodeURIComponent"](
+				window.location.pathname.substring(
+					0,
+					window.location.pathname.lastIndexOf("/"),
+				) + "/",
+			);
+		} else if (typeof processRef === "undefined" && typeof location !== "undefined") {
+			PACKAGE_PATH = encodeURIComponent(
+				location.pathname.substring(0, location.pathname.lastIndexOf("/")) + "/",
+			);
+		}
+		const PACKAGE_NAME = "pglite.data";
+		const REMOTE_PACKAGE_BASE = "pglite.data";
+		const REMOTE_PACKAGE_NAME = Module["locateFile"]
+			? Module["locateFile"](REMOTE_PACKAGE_BASE, "")
+			: REMOTE_PACKAGE_BASE;
+		const REMOTE_PACKAGE_SIZE = metadata["remote_package_size"];
+		void PACKAGE_PATH;
 
-          }, open: function (mode, name) {
-            this.name = name;
-            this.requests[name] = this;
-            Module["addRunDependency"](`fp ${this.name}`)
-          }, send: function () {
+		function fetchRemotePackage(
+			packageName: string,
+			packageSize: number,
+			callback: FetchCallback,
+			errback: (error: unknown) => void,
+		) {
+			if (isNode) {
+				if (!require) {
+					errback(new Error("require is unavailable in Node mode"));
+					return;
+				}
+				require("fs").readFile(
+					packageName,
+					(
+						err: unknown,
+						contents: ArrayBufferView & {
+							buffer: ArrayBufferLike;
+							byteOffset: number;
+							byteLength: number;
+						},
+					) => {
+						if (err) {
+							errback(err);
+						} else {
+							callback(
+								contents.buffer.slice(
+									contents.byteOffset,
+									contents.byteOffset + contents.byteLength,
+								),
+							);
+						}
+					},
+				);
+				return;
+			}
+			Module["dataFileDownloads"] ??= {};
+			fetch(packageName)
+				.catch((cause: unknown) =>
+					Promise.reject(new Error(`Network Error: ${packageName}`, { cause })),
+				)
+				.then((response: Response) => {
+					if (!response.ok) {
+						return Promise.reject(new Error(`${response.status}: ${response.url}`));
+					}
+					if (!response.body && response.arrayBuffer) {
+						return response.arrayBuffer().then(callback);
+					}
+					const reader = response.body!.getReader();
+					const chunks: Uint8Array[] = [];
+					const headers = response.headers;
+					const total = Number(headers.get("Content-Length") ?? packageSize);
+					let loaded = 0;
+					const iterate = () =>
+						reader.read().then(handleChunk).catch((cause: unknown) =>
+							Promise.reject(
+								new Error(
+									`Unexpected error while handling : ${response.url}${cause}`,
+									{ cause },
+								),
+							),
+						);
+					const handleChunk = ({
+						done,
+						value,
+					}: ReadableStreamReadResult<Uint8Array>) => {
+						if (!done && value) {
+							chunks.push(value);
+							loaded += value.length;
+							Module["dataFileDownloads"][packageName] = { loaded, total };
+							let totalLoaded = 0;
+							let totalSize = 0;
+							for (const download of Object.values(
+								Module["dataFileDownloads"],
+							) as DownloadProgress[]) {
+								totalLoaded += download.loaded;
+								totalSize += download.total;
+							}
+							Module["setStatus"]?.(
+								`Downloading data... (${totalLoaded}/${totalSize})`,
+							);
+							return iterate();
+						}
+						const packageData = new Uint8Array(
+							chunks.map((c) => c.length).reduce((a, b) => a + b, 0),
+						);
+						let offset = 0;
+						for (const chunk of chunks) {
+							packageData.set(chunk, offset);
+							offset += chunk.length;
+						}
+						callback(packageData.buffer);
+					};
+					Module["setStatus"]?.("Downloading data...");
+					return iterate();
+				});
+		}
 
-          }, onload: function () {
-            var byteArray = this.byteArray.subarray(this.start, this.end);
-            this.finish(byteArray)
-          }, finish: function (byteArray) {
-            var that = this;
-            Module["FS_createDataFile"](this.name, null, byteArray, true, true, true);
-            Module["removeRunDependency"](`fp ${that.name}`);
-            this.requests[this.name] = null
-          }
-        };
-        var files = metadata["files"];
-        for (var i = 0;
-          i < files.length;
-          ++i) {
-          new DataRequest(files[i]["start"], files[i]["end"], files[i]["audio"] || 0).open("GET", files[i]["filename"])
-        }
-        function processPackageData(arrayBuffer) {
-          assert(arrayBuffer, "Loading data file failed.");
-          assert(arrayBuffer.constructor.name === ArrayBuffer.name, "bad input to processPackageData");
-          var byteArray = new Uint8Array(arrayBuffer);
-          DataRequest.prototype.byteArray = byteArray;
-          var files = metadata["files"];
-          for (var i = 0;
-            i < files.length;
-            ++i) {
-            DataRequest.prototype.requests[files[i].filename].onload()
-          }
-          Module["removeRunDependency"]("datafile_pglite.data")
-        }
-        Module["addRunDependency"]("datafile_pglite.data");
-        Module["preloadResults"] ??= {
+		function handleError(error: unknown) {
+			console.error("package error:", error);
+		}
 
-        };
-        Module["preloadResults"][PACKAGE_NAME] = {
-          fromCache: false
-        };
-        if (fetched) {
-          processPackageData(fetched);
-          fetched = null
-        } else {
-          fetchedCallback = processPackageData
-        }
-      }
-      if (Module["calledRun"]) {
-        runWithFS(Module)
-      } else {
-        (Module["preRun"] ??= []).push(runWithFS)
-      }
-    }
-    loadPackage(PGLITE_DATA_METADATA);
-  
+		let fetchedCallback: FetchCallback | null = null;
+			let fetched = Module["getPreloadedPackage"]
+				? (Module["getPreloadedPackage"](
+						REMOTE_PACKAGE_NAME,
+						REMOTE_PACKAGE_SIZE,
+					) as ArrayBufferLike | null)
+			: null;
+		if (!fetched) {
+			fetchRemotePackage(
+				REMOTE_PACKAGE_NAME,
+				REMOTE_PACKAGE_SIZE,
+				(data: ArrayBufferLike) => {
+					if (fetchedCallback) {
+						fetchedCallback(data);
+						fetchedCallback = null;
+					} else {
+						fetched = data;
+					}
+				},
+				handleError,
+			);
+		}
+
+		function runWithFS(module: Record<string, any>) {
+			function assert(check: unknown, msg: string) {
+				if (!check) throw msg + new Error().stack;
+			}
+			module["FS_createPath"]("/", "home", true, true);
+			module["FS_createPath"]("/home", "web_user", true, true);
+			module["FS_createPath"]("/", "tmp", true, true);
+			module["FS_createPath"]("/tmp", "pglite", true, true);
+			module["FS_createPath"]("/tmp/pglite", "bin", true, true);
+			module["FS_createPath"]("/tmp/pglite", "lib", true, true);
+			module["FS_createPath"]("/tmp/pglite/lib", "postgresql", true, true);
+			module["FS_createPath"]("/tmp/pglite/lib/postgresql", "pgxs", true, true);
+			module["FS_createPath"]("/tmp/pglite/lib/postgresql/pgxs", "config", true, true);
+			module["FS_createPath"]("/tmp/pglite/lib/postgresql/pgxs", "src", true, true);
+			module["FS_createPath"](
+				"/tmp/pglite/lib/postgresql/pgxs/src",
+				"makefiles",
+				true,
+				true,
+			);
+			module["FS_createPath"]("/tmp/pglite", "share", true, true);
+			module["FS_createPath"]("/tmp/pglite/share", "postgresql", true, true);
+			module["FS_createPath"](
+				"/tmp/pglite/share/postgresql",
+				"extension",
+				true,
+				true,
+			);
+			module["FS_createPath"](
+				"/tmp/pglite/share/postgresql",
+				"timezone",
+				true,
+				true,
+			);
+			module["FS_createPath"](
+				"/tmp/pglite/share/postgresql/timezone",
+				"Africa",
+				true,
+				true,
+			);
+			module["FS_createPath"](
+				"/tmp/pglite/share/postgresql/timezone",
+				"America",
+				true,
+				true,
+			);
+			module["FS_createPath"](
+				"/tmp/pglite/share/postgresql/timezone/America",
+				"Argentina",
+				true,
+				true,
+			);
+			module["FS_createPath"](
+				"/tmp/pglite/share/postgresql/timezone/America",
+				"Indiana",
+				true,
+				true,
+			);
+			module["FS_createPath"](
+				"/tmp/pglite/share/postgresql/timezone/America",
+				"Kentucky",
+				true,
+				true,
+			);
+			module["FS_createPath"](
+				"/tmp/pglite/share/postgresql/timezone/America",
+				"North_Dakota",
+				true,
+				true,
+			);
+			module["FS_createPath"](
+				"/tmp/pglite/share/postgresql/timezone",
+				"Antarctica",
+				true,
+				true,
+			);
+			module["FS_createPath"](
+				"/tmp/pglite/share/postgresql/timezone",
+				"Arctic",
+				true,
+				true,
+			);
+			module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Asia", true, true);
+			module["FS_createPath"](
+				"/tmp/pglite/share/postgresql/timezone",
+				"Atlantic",
+				true,
+				true,
+			);
+			module["FS_createPath"](
+				"/tmp/pglite/share/postgresql/timezone",
+				"Australia",
+				true,
+				true,
+			);
+			module["FS_createPath"](
+				"/tmp/pglite/share/postgresql/timezone",
+				"Brazil",
+				true,
+				true,
+			);
+			module["FS_createPath"](
+				"/tmp/pglite/share/postgresql/timezone",
+				"Canada",
+				true,
+				true,
+			);
+			module["FS_createPath"](
+				"/tmp/pglite/share/postgresql/timezone",
+				"Chile",
+				true,
+				true,
+			);
+			module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Etc", true, true);
+			module["FS_createPath"](
+				"/tmp/pglite/share/postgresql/timezone",
+				"Europe",
+				true,
+				true,
+			);
+			module["FS_createPath"](
+				"/tmp/pglite/share/postgresql/timezone",
+				"Indian",
+				true,
+				true,
+			);
+			module["FS_createPath"](
+				"/tmp/pglite/share/postgresql/timezone",
+				"Mexico",
+				true,
+				true,
+			);
+			module["FS_createPath"](
+				"/tmp/pglite/share/postgresql/timezone",
+				"Pacific",
+				true,
+				true,
+			);
+			module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "US", true, true);
+			module["FS_createPath"](
+				"/tmp/pglite/share/postgresql",
+				"timezonesets",
+				true,
+				true,
+			);
+			module["FS_createPath"](
+				"/tmp/pglite/share/postgresql",
+				"tsearch_data",
+				true,
+				true,
+			);
+
+			function DataRequest(this: DataRequestRecord, start: number, end: number, audio: number) {
+				this.start = start;
+				this.end = end;
+				this.audio = audio;
+			}
+			(DataRequest as any).prototype = {
+				requests: {} as Record<string, DataRequestRecord | null>,
+				open: function (this: DataRequestRecord, _mode: string, name: string) {
+					this.name = name;
+					((DataRequest as any).prototype.requests as Record<string, DataRequestRecord | null>)[name] =
+						this;
+					module["addRunDependency"](`fp ${this.name}`);
+				},
+				send: function (this: DataRequestRecord) {
+					void this;
+				},
+				onload: function (this: DataRequestRecord) {
+					const byteArray = this.byteArray.subarray(this.start, this.end);
+					this.finish(byteArray);
+				},
+				finish: function (this: DataRequestRecord, byteArray: Uint8Array) {
+					const that = this;
+					module["FS_createDataFile"](this.name, null, byteArray, true, true, true);
+					module["removeRunDependency"](`fp ${that.name}`);
+					((DataRequest as any).prototype.requests as Record<string, DataRequestRecord | null>)[
+						this.name
+					] = null;
+				},
+			};
+
+			const files = metadata["files"];
+			for (let i = 0; i < files.length; ++i) {
+				new (DataRequest as any)(
+					files[i]["start"],
+					files[i]["end"],
+					files[i]["audio"] || 0,
+				).open("GET", files[i]["filename"]);
+			}
+
+			function processPackageData(arrayBuffer: ArrayBufferLike) {
+				assert(arrayBuffer, "Loading data file failed.");
+				assert(
+					arrayBuffer.constructor.name === ArrayBuffer.name,
+					"bad input to processPackageData",
+				);
+				const byteArray = new Uint8Array(arrayBuffer);
+				(DataRequest as any).prototype.byteArray = byteArray;
+				const dataFiles = metadata["files"];
+				for (let i = 0; i < dataFiles.length; ++i) {
+					((DataRequest as any).prototype.requests as Record<
+						string,
+						{ onload: () => void } | null
+					>)[dataFiles[i].filename]?.onload();
+				}
+				module["removeRunDependency"]("datafile_pglite.data");
+			}
+			module["addRunDependency"]("datafile_pglite.data");
+			module["preloadResults"] ??= {};
+			module["preloadResults"][PACKAGE_NAME] = { fromCache: false };
+			if (fetched) {
+				processPackageData(fetched);
+				fetched = null;
+			} else {
+				fetchedCallback = processPackageData;
+			}
+		}
+		if (Module["calledRun"]) {
+			runWithFS(Module);
+		} else {
+			(Module["preRun"] ??= []).push(runWithFS);
+		}
+	}
+	loadPackage(PGLITE_DATA_METADATA as Metadata);
 };

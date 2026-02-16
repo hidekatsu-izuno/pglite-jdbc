@@ -42,20 +42,24 @@ export const createFS = ({
   fflush: (...args: any[]) => any;
   ENVIRONMENT_IS_WORKER: boolean;
 }) => {
-  var FS = {
+  var err: any = console.error;
+  var FS: any = {
     root: null, mounts: [], devices: {}, streams: [], nextInode: 1, nameTable: null, currentPath: "/", initialized: false, ignorePermissions: true, ErrnoError: class {
+      [key: string]: any;
       name = "ErrnoError";
-      constructor(errno) { this.errno = errno }
+      constructor(errno: any) { this.errno = errno }
     }, filesystems: null, syncFSRequests: 0, readFiles: {}, FSStream: class {
-      shared = {};
+      [key: string]: any;
+      shared: any = {};
       get object() { return this.node } set object(val) { this.node = val } get isRead() { return (this.flags & 2097155) !== 1 } get isWrite() { return (this.flags & 2097155) !== 0 } get isAppend() { return this.flags & 1024 } get flags() { return this.shared.flags } set flags(val) { this.shared.flags = val } get position() { return this.shared.position } set position(val) { this.shared.position = val }
     }, FSNode: class {
+      [key: string]: any;
       node_ops = {};
       stream_ops = {};
       readMode = 292 | 73;
       writeMode = 146;
       mounted = null;
-      constructor(parent, name, mode, rdev) {
+      constructor(parent: any, name: any, mode: any, rdev: any) {
         if (!parent) { parent = this } this.parent = parent;
         this.mount = parent.mount;
         this.id = FS.nextInode++;
@@ -65,13 +69,13 @@ export const createFS = ({
         this.atime = this.mtime = this.ctime = Date.now()
       } get read() { return (this.mode & this.readMode) === this.readMode } set read(val) { val ? this.mode |= this.readMode : this.mode &= ~this.readMode } get write() { return (this.mode & this.writeMode) === this.writeMode } set write(val) { val ? this.mode |= this.writeMode : this.mode &= ~this.writeMode } get isFolder() { return FS.isDir(this.mode) } get isDevice() { return FS.isChrdev(this.mode) }
     },
-    lookupPath(path, opts = {}) {
+    lookupPath(path: any, opts: any = {}) {
       if (!path) return { path: "", node: null };
       opts.follow_mount ??= true;
       if (!PATH.isAbs(path)) { path = FS.cwd() + "/" + path } linkloop: for (var nlinks = 0;
         nlinks < 40;
         nlinks++) {
-        var parts = path.split("/").filter(p => !!p && p !== ".");
+        var parts = path.split("/").filter((p: any) => !!p && p !== ".");
         var current = FS.root;
         var current_path = "/";
         for (var i = 0;
@@ -171,7 +175,7 @@ export const createFS = ({
     }, getStreamChecked(fd) {
       var stream = FS.getStream(fd);
       if (!stream) { throw new FS.ErrnoError(8) } return stream
-    }, getStream: fd => FS.streams[fd], createStream(stream, fd = -1) {
+    }, getStream: (fd: any) => FS.streams[fd], createStream(stream, fd = -1) {
       stream = Object.assign(new FS.FSStream, stream);
       if (fd == -1) { fd = FS.nextfd() } stream.fd = fd;
       FS.streams[fd] = stream;
@@ -186,7 +190,7 @@ export const createFS = ({
         stream.stream_ops = device.stream_ops;
         stream.stream_ops.open?.(stream)
       }, llseek() { throw new FS.ErrnoError(70) }
-    }, major: dev => dev >> 8, minor: dev => dev & 255, makedev: (ma, mi) => ma << 8 | mi, registerDevice(dev, ops) { FS.devices[dev] = { stream_ops: ops } }, getDevice: dev => FS.devices[dev], getMounts(mount) {
+    }, major: (dev: any) => dev >> 8, minor: (dev: any) => dev & 255, makedev: (ma: any, mi: any) => ma << 8 | mi, registerDevice(dev, ops) { FS.devices[dev] = { stream_ops: ops } }, getDevice: (dev: any) => FS.devices[dev], getMounts(mount) {
       var mounts = [];
       var check = [mount];
       while (check.length) {
@@ -201,19 +205,19 @@ export const createFS = ({
       } FS.syncFSRequests++;
       if (FS.syncFSRequests > 1) { err(`warning: ${FS.syncFSRequests} FS.syncfs operations in flight at once, probably just doing extra work`) } var mounts = FS.getMounts(FS.root.mount);
       var completed = 0;
-      function doCallback(errCode) {
+      function doCallback(errCode: any) {
         FS.syncFSRequests--;
         return callback(errCode)
       }
-      function done(errCode) {
+      function done(errCode: any) {
         if (errCode) {
-          if (!done.errored) {
-            done.errored = true;
+          if (!(done as any).errored) {
+            (done as any).errored = true;
             return doCallback(errCode)
           } return
         }
         if (++completed >= mounts.length) { doCallback(null) }
-      } mounts.forEach(mount => { if (!mount.type.syncfs) { return done(null) } mount.type.syncfs(mount, populate, done) })
+      } mounts.forEach((mount: any) => { if (!mount.type.syncfs) { return done(null) } mount.type.syncfs(mount, populate, done) })
     }, mount(type, opts, mountpoint) {
       var root = mountpoint === "/";
       var pseudo = !mountpoint;
@@ -224,7 +228,7 @@ export const createFS = ({
         node = lookup.node;
         if (FS.isMountpoint(node)) { throw new FS.ErrnoError(10) }
         if (!FS.isDir(node.mode)) { throw new FS.ErrnoError(54) }
-      } var mount = { type, opts, mountpoint, mounts: [] };
+      } var mount: any = { type, opts, mountpoint, mounts: [] };
       var mountRoot = type.mount(mount);
       mountRoot.mount = mount;
       mount.root = mountRoot;
@@ -237,7 +241,7 @@ export const createFS = ({
       if (!FS.isMountpoint(lookup.node)) { throw new FS.ErrnoError(28) } var node = lookup.node;
       var mount = node.mounted;
       var mounts = FS.getMounts(mount);
-      Object.keys(FS.nameTable).forEach(hash => {
+      Object.keys(FS.nameTable).forEach((hash: any) => {
         var current = FS.nameTable[hash];
         while (current) {
           var next = current.name_next;
@@ -455,7 +459,7 @@ export const createFS = ({
       if ((stream.flags & 2097155) === 1) { throw new FS.ErrnoError(2) }
       if (!stream.stream_ops.mmap) { throw new FS.ErrnoError(43) }
       if (!length) { throw new FS.ErrnoError(28) } return stream.stream_ops.mmap(stream, length, position, prot, flags)
-    }, msync(stream, buffer, offset, length, mmapFlags) { if (!stream.stream_ops.msync) { return 0 } return stream.stream_ops.msync(stream, buffer, offset, length, mmapFlags) }, ioctl(stream, cmd, arg) { if (!stream.stream_ops.ioctl) { throw new FS.ErrnoError(59) } return stream.stream_ops.ioctl(stream, cmd, arg) }, readFile(path, opts = {}) {
+    }, msync(stream, buffer, offset, length, mmapFlags) { if (!stream.stream_ops.msync) { return 0 } return stream.stream_ops.msync(stream, buffer, offset, length, mmapFlags) }, ioctl(stream, cmd, arg) { if (!stream.stream_ops.ioctl) { throw new FS.ErrnoError(59) } return stream.stream_ops.ioctl(stream, cmd, arg) }, readFile(path, opts: any = {}) {
       opts.flags = opts.flags || 0;
       opts.encoding = opts.encoding || "binary";
       if (opts.encoding !== "utf8" && opts.encoding !== "binary") { throw new Error(`Invalid encoding type "${opts.encoding}"`) } var ret;
@@ -466,7 +470,7 @@ export const createFS = ({
       FS.read(stream, buf, 0, length, 0);
       if (opts.encoding === "utf8") { ret = UTF8ArrayToString(buf) } else if (opts.encoding === "binary") { ret = buf } FS.close(stream);
       return ret
-    }, writeFile(path, data, opts = {}) {
+    }, writeFile(path, data, opts: any = {}) {
       opts.flags = opts.flags || 577;
       var stream = FS.open(path, opts.flags, opts.mode);
       if (typeof data == "string") {
@@ -485,7 +489,7 @@ export const createFS = ({
       FS.mkdir("/home/web_user")
     }, createDefaultDevices() {
       FS.mkdir("/dev");
-      FS.registerDevice(FS.makedev(1, 3), { read: () => 0, write: (stream, buffer, offset, length, pos) => length, llseek: () => 0 });
+      FS.registerDevice(FS.makedev(1, 3), { read: () => 0, write: (stream: any, buffer: any, offset: any, length: any, pos: any) => length, llseek: () => 0 });
       FS.mkdev("/dev/null", FS.makedev(1, 3));
       TTY.register(FS.makedev(5, 0), TTY.default_tty_ops);
       TTY.register(FS.makedev(6, 0), TTY.default_tty1_ops);
@@ -634,10 +638,11 @@ export const createFS = ({
           obj.usedBytes = obj.contents.length
         } catch (e) { throw new FS.ErrnoError(29) }
       }
-    }, createLazyFile(parent, name, url, canRead, canWrite) {
-      class LazyUint8Array {
-        lengthKnown = false;
-        chunks = [];
+	    }, createLazyFile(parent, name, url, canRead, canWrite) {
+	      class LazyUint8Array {
+	        [key: string]: any;
+	        lengthKnown = false;
+	        chunks = [];
         get(idx) {
           if (idx > this.length - 1 || idx < 0) { return undefined } var chunkOffset = idx % this.chunkSize;
           var chunkNum = idx / this.chunkSize | 0;
@@ -653,7 +658,7 @@ export const createFS = ({
           var usesGzip = (header = xhr.getResponseHeader("Content-Encoding")) && header === "gzip";
           var chunkSize = 1024 * 1024;
           if (!hasByteServing) chunkSize = datalength;
-          var doXHR = (from, to) => {
+          var doXHR = (from: any, to: any) => {
             if (from > to) throw new Error("invalid range (" + from + ", " + to + ") or no bytes requested!");
             if (to > datalength - 1) throw new Error("only " + datalength + " bytes available! programmer error!");
             var xhr = new XMLHttpRequest;
@@ -665,7 +670,7 @@ export const createFS = ({
             if (xhr.response !== undefined) { return new Uint8Array(xhr.response || []) } return intArrayFromString(xhr.responseText || "", true)
           };
           var lazyArray = this;
-          lazyArray.setDataGetter(chunkNum => {
+          lazyArray.setDataGetter((chunkNum: any) => {
             var start = chunkNum * chunkSize;
             var end = (chunkNum + 1) * chunkSize - 1;
             end = Math.min(end, datalength - 1);
@@ -683,25 +688,26 @@ export const createFS = ({
           this.lengthKnown = true
         } get length() { if (!this.lengthKnown) { this.cacheLength() } return this._length } get chunkSize() { if (!this.lengthKnown) { this.cacheLength() } return this._chunkSize }
       }
-      if (typeof XMLHttpRequest != "undefined") {
-        if (!ENVIRONMENT_IS_WORKER) throw "Cannot do synchronous binary XHRs outside webworkers in modern browsers. Use --embed-file or --preload-file in emcc";
-        var lazyArray = new LazyUint8Array;
-        var properties = { isDevice: false, contents: lazyArray }
-      } else { var properties = { isDevice: false, url } } var node = FS.createFile(parent, name, properties, canRead, canWrite);
+	      var properties: any;
+	      if (typeof XMLHttpRequest != "undefined") {
+	        if (!ENVIRONMENT_IS_WORKER) throw "Cannot do synchronous binary XHRs outside webworkers in modern browsers. Use --embed-file or --preload-file in emcc";
+	        var lazyArray = new LazyUint8Array;
+	        properties = { isDevice: false, contents: lazyArray }
+	      } else { properties = { isDevice: false, url } } var node = FS.createFile(parent, name, properties, canRead, canWrite);
       if (properties.contents) { node.contents = properties.contents } else if (properties.url) {
         node.contents = null;
         node.url = properties.url
       } Object.defineProperties(node, { usedBytes: { get: function () { return this.contents.length } } });
-      var stream_ops = {};
+	      var stream_ops: any = {};
       var keys = Object.keys(node.stream_ops);
-      keys.forEach(key => {
+      keys.forEach((key: any) => {
         var fn = node.stream_ops[key];
         stream_ops[key] = (...args) => {
           FS.forceLoadFile(node);
           return fn(...args)
         }
       });
-      function writeChunks(stream, buffer, offset, length, position) {
+      function writeChunks(stream: any, buffer: any, offset: any, length: any, position: any) {
         var contents = stream.node.contents;
         if (position >= contents.length) return 0;
         var size = Math.min(contents.length - position, length);
@@ -714,11 +720,11 @@ export const createFS = ({
             i < size;
             i++) { buffer[offset + i] = contents.get(position + i) }
         } return size
-      } stream_ops.read = (stream, buffer, offset, length, position) => {
+      } stream_ops.read = (stream: any, buffer: any, offset: any, length: any, position: any) => {
         FS.forceLoadFile(node);
         return writeChunks(stream, buffer, offset, length, position)
       };
-      stream_ops.mmap = (stream, length, position, prot, flags) => {
+      stream_ops.mmap = (stream: any, length: any, position: any, prot: any, flags: any) => {
         FS.forceLoadFile(node);
         var ptr = mmapAlloc(length);
         if (!ptr) { throw new FS.ErrnoError(48) } writeChunks(stream, HEAP8, ptr, length, position);
@@ -732,9 +738,9 @@ export const createFS = ({
 };
 
 
-const createMEMFSInternal = ({ HEAP8, mmapAlloc }) => {
-  var FS;
-  var MEMFS = {
+const createMEMFSInternal = ({ HEAP8, mmapAlloc }: any) => {
+  var FS: any;
+  var MEMFS: any = {
     ops_table: null, mount(mount) { return MEMFS.createNode(null, "/", 16895, 0) }, createNode(parent, name, mode, dev) {
       if (FS.isBlkdev(mode) || FS.isFIFO(mode)) { throw new FS.ErrnoError(63) } MEMFS.ops_table ||= { dir: { node: { getattr: MEMFS.node_ops.getattr, setattr: MEMFS.node_ops.setattr, lookup: MEMFS.node_ops.lookup, mknod: MEMFS.node_ops.mknod, rename: MEMFS.node_ops.rename, unlink: MEMFS.node_ops.unlink, rmdir: MEMFS.node_ops.rmdir, readdir: MEMFS.node_ops.readdir, symlink: MEMFS.node_ops.symlink }, stream: { llseek: MEMFS.stream_ops.llseek } }, file: { node: { getattr: MEMFS.node_ops.getattr, setattr: MEMFS.node_ops.setattr }, stream: { llseek: MEMFS.stream_ops.llseek, read: MEMFS.stream_ops.read, write: MEMFS.stream_ops.write, allocate: MEMFS.stream_ops.allocate, mmap: MEMFS.stream_ops.mmap, msync: MEMFS.stream_ops.msync } }, link: { node: { getattr: MEMFS.node_ops.getattr, setattr: MEMFS.node_ops.setattr, readlink: MEMFS.node_ops.readlink }, stream: {} }, chrdev: { node: { getattr: MEMFS.node_ops.getattr, setattr: MEMFS.node_ops.setattr }, stream: FS.chrdev_stream_ops } };
       var node = FS.createNode(parent, name, mode, dev);
@@ -783,7 +789,7 @@ const createMEMFSInternal = ({ HEAP8, mmapAlloc }) => {
       }
     }, node_ops: {
       getattr(node) {
-        var attr = {};
+        var attr: any = {};
         attr.dev = FS.isChrdev(node.mode) ? node.id : 1;
         attr.ino = node.id;
         attr.mode = node.mode;
@@ -880,20 +886,20 @@ const createMEMFSInternal = ({ HEAP8, mmapAlloc }) => {
       }
     }
   };
-  var bindMEMFSFS = value => { FS = value; };
+  var bindMEMFSFS = (value: any) => { FS = value; };
   return { MEMFS, bindMEMFSFS };
 };
 
 
-const createIDBFSInternal = ({ MEMFS }) => {
-  var FS;
-  var IDBFS = {
+const createIDBFSInternal = ({ MEMFS }: any) => {
+  var FS: any;
+  var IDBFS: any = {
     dbs: {}, indexedDB: () => {
       if (typeof indexedDB != "undefined") return indexedDB;
       var ret = null;
       if (typeof window == "object") ret = window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB || window.msIndexedDB;
       return ret
-    }, DB_VERSION: 21, DB_STORE_NAME: "FILE_DATA", queuePersist: mount => {
+    }, DB_VERSION: 21, DB_STORE_NAME: "FILE_DATA", queuePersist: (mount: any) => {
       function onPersistComplete() {
         if (mount.idbPersistState === "again") startPersist();
         else mount.idbPersistState = 0
@@ -903,23 +909,23 @@ const createIDBFSInternal = ({ MEMFS }) => {
         IDBFS.syncfs(mount, false, onPersistComplete)
       }
       if (!mount.idbPersistState) { mount.idbPersistState = setTimeout(startPersist, 0) } else if (mount.idbPersistState === "idb") { mount.idbPersistState = "again" }
-    }, mount: mount => {
+    }, mount: (mount: any) => {
       var mnt = MEMFS.mount(mount);
       if (mount?.opts?.autoPersist) {
         mnt.idbPersistState = 0;
         var memfs_node_ops = mnt.node_ops;
         mnt.node_ops = Object.assign({}, mnt.node_ops);
-        mnt.node_ops.mknod = (parent, name, mode, dev) => {
+        mnt.node_ops.mknod = (parent: any, name: any, mode: any, dev: any) => {
           var node = memfs_node_ops.mknod(parent, name, mode, dev);
           node.node_ops = mnt.node_ops;
           node.idbfs_mount = mnt.mount;
           node.memfs_stream_ops = node.stream_ops;
           node.stream_ops = Object.assign({}, node.stream_ops);
-          node.stream_ops.write = (stream, buffer, offset, length, position, canOwn) => {
+          node.stream_ops.write = (stream: any, buffer: any, offset: any, length: any, position: any, canOwn: any) => {
             stream.node.isModified = true;
             return node.memfs_stream_ops.write(stream, buffer, offset, length, position, canOwn)
           };
-          node.stream_ops.close = stream => {
+          node.stream_ops.close = (stream: any) => {
             var n = stream.node;
             if (n.isModified) {
               IDBFS.queuePersist(n.idbfs_mount);
@@ -935,10 +941,10 @@ const createIDBFSInternal = ({ MEMFS }) => {
         mnt.node_ops.unlink = (...args) => (IDBFS.queuePersist(mnt.mount), memfs_node_ops.unlink(...args));
         mnt.node_ops.rename = (...args) => (IDBFS.queuePersist(mnt.mount), memfs_node_ops.rename(...args))
       } return mnt
-    }, syncfs: (mount, populate, callback) => {
-      IDBFS.getLocalSet(mount, (err, local) => {
+    }, syncfs: (mount: any, populate: any, callback: any) => {
+      IDBFS.getLocalSet(mount, (err: any, local: any) => {
         if (err) return callback(err);
-        IDBFS.getRemoteSet(mount, (err, remote) => {
+        IDBFS.getRemoteSet(mount, (err: any, remote: any) => {
           if (err) return callback(err);
           var src = populate ? remote : local;
           var dst = populate ? local : remote;
@@ -946,13 +952,13 @@ const createIDBFSInternal = ({ MEMFS }) => {
         })
       })
     }, quit: () => {
-      Object.values(IDBFS.dbs).forEach(value => value.close());
+      Object.values(IDBFS.dbs).forEach((value: any) => value.close());
       IDBFS.dbs = {}
-    }, getDB: (name, callback) => {
+    }, getDB: (name: any, callback: any) => {
       var db = IDBFS.dbs[name];
       if (db) { return callback(null, db) } var req;
       try { req = IDBFS.indexedDB().open(name, IDBFS.DB_VERSION) } catch (e) { return callback(e) }
-      if (!req) { return callback("Unable to connect to IndexedDB") } req.onupgradeneeded = e => {
+      if (!req) { return callback("Unable to connect to IndexedDB") } req.onupgradeneeded = (e: any) => {
         var db = e.target.result;
         var transaction = e.target.transaction;
         var fileStore;
@@ -964,40 +970,40 @@ const createIDBFSInternal = ({ MEMFS }) => {
         IDBFS.dbs[name] = db;
         callback(null, db)
       };
-      req.onerror = e => {
+      req.onerror = (e: any) => {
         callback(e.target.error);
         e.preventDefault()
       }
-    }, getLocalSet: (mount, callback) => {
+    }, getLocalSet: (mount: any, callback: any) => {
       var entries = {};
-      function isRealDir(p) { return p !== "." && p !== ".." }
-      function toAbsolute(root) { return p => PATH.join2(root, p) } var check = FS.readdir(mount.mountpoint).filter(isRealDir).map(toAbsolute(mount.mountpoint));
+      function isRealDir(p: any) { return p !== "." && p !== ".." }
+      function toAbsolute(root: any) { return (p: any) => PATH.join2(root, p) } var check = FS.readdir(mount.mountpoint).filter(isRealDir).map(toAbsolute(mount.mountpoint));
       while (check.length) {
         var path = check.pop();
         var stat;
         try { stat = FS.stat(path) } catch (e) { return callback(e) }
         if (FS.isDir(stat.mode)) { check.push(...FS.readdir(path).filter(isRealDir).map(toAbsolute(path))) } entries[path] = { timestamp: stat.mtime }
       } return callback(null, { type: "local", entries })
-    }, getRemoteSet: (mount, callback) => {
+    }, getRemoteSet: (mount: any, callback: any) => {
       var entries = {};
-      IDBFS.getDB(mount.mountpoint, (err, db) => {
+      IDBFS.getDB(mount.mountpoint, (err: any, db: any) => {
         if (err) return callback(err);
         try {
           var transaction = db.transaction([IDBFS.DB_STORE_NAME], "readonly");
-          transaction.onerror = e => {
+          transaction.onerror = (e: any) => {
             callback(e.target.error);
             e.preventDefault()
           };
           var store = transaction.objectStore(IDBFS.DB_STORE_NAME);
           var index = store.index("timestamp");
-          index.openKeyCursor().onsuccess = event => {
+          index.openKeyCursor().onsuccess = (event: any) => {
             var cursor = event.target.result;
             if (!cursor) { return callback(null, { type: "remote", db, entries }) } entries[cursor.primaryKey] = { timestamp: cursor.key };
             cursor.continue()
           }
         } catch (e) { return callback(e) }
       })
-    }, loadLocalEntry: (path, callback) => {
+    }, loadLocalEntry: (path: any, callback: any) => {
       var stat, node;
       try {
         var lookup = FS.lookupPath(path);
@@ -1008,43 +1014,43 @@ const createIDBFSInternal = ({ MEMFS }) => {
         node.contents = MEMFS.getFileDataAsTypedArray(node);
         return callback(null, { timestamp: stat.mtime, mode: stat.mode, contents: node.contents })
       } else { return callback(new Error("node type not supported")) }
-    }, storeLocalEntry: (path, entry, callback) => {
+    }, storeLocalEntry: (path: any, entry: any, callback: any) => {
       try {
         if (FS.isDir(entry["mode"])) { FS.mkdirTree(path, entry["mode"]) } else if (FS.isFile(entry["mode"])) { FS.writeFile(path, entry["contents"], { canOwn: true }) } else { return callback(new Error("node type not supported")) } FS.chmod(path, entry["mode"]);
         FS.utime(path, entry["timestamp"], entry["timestamp"])
       } catch (e) { return callback(e) } callback(null)
-    }, removeLocalEntry: (path, callback) => {
+    }, removeLocalEntry: (path: any, callback: any) => {
       try {
         var stat = FS.stat(path);
         if (FS.isDir(stat.mode)) { FS.rmdir(path) } else if (FS.isFile(stat.mode)) { FS.unlink(path) }
       } catch (e) { return callback(e) } callback(null)
-    }, loadRemoteEntry: (store, path, callback) => {
+    }, loadRemoteEntry: (store: any, path: any, callback: any) => {
       var req = store.get(path);
-      req.onsuccess = event => callback(null, event.target.result);
-      req.onerror = e => {
+      req.onsuccess = (event: any) => callback(null, event.target.result);
+      req.onerror = (e: any) => {
         callback(e.target.error);
         e.preventDefault()
       }
-    }, storeRemoteEntry: (store, path, entry, callback) => {
+    }, storeRemoteEntry: (store: any, path: any, entry: any, callback: any) => {
       try { var req = store.put(entry, path) } catch (e) {
         callback(e);
         return
-      } req.onsuccess = event => callback();
-      req.onerror = e => {
+      } req.onsuccess = (event: any) => callback();
+      req.onerror = (e: any) => {
         callback(e.target.error);
         e.preventDefault()
       }
-    }, removeRemoteEntry: (store, path, callback) => {
+    }, removeRemoteEntry: (store: any, path: any, callback: any) => {
       var req = store.delete(path);
-      req.onsuccess = event => callback();
-      req.onerror = e => {
+      req.onsuccess = (event: any) => callback();
+      req.onerror = (e: any) => {
         callback(e.target.error);
         e.preventDefault()
       }
-    }, reconcile: (src, dst, callback) => {
+    }, reconcile: (src: any, dst: any, callback: any) => {
       var total = 0;
       var create = [];
-      Object.keys(src.entries).forEach(key => {
+      Object.keys(src.entries).forEach((key: any) => {
         var e = src.entries[key];
         var e2 = dst.entries[key];
         if (!e2 || e["timestamp"].getTime() != e2["timestamp"].getTime()) {
@@ -1053,7 +1059,7 @@ const createIDBFSInternal = ({ MEMFS }) => {
         }
       });
       var remove = [];
-      Object.keys(dst.entries).forEach(key => {
+      Object.keys(dst.entries).forEach((key: any) => {
         if (!src.entries[key]) {
           remove.push(key);
           total++
@@ -1063,40 +1069,40 @@ const createIDBFSInternal = ({ MEMFS }) => {
       var db = src.type === "remote" ? src.db : dst.db;
       var transaction = db.transaction([IDBFS.DB_STORE_NAME], "readwrite");
       var store = transaction.objectStore(IDBFS.DB_STORE_NAME);
-      function done(err) {
+      function done(err: any) {
         if (err && !errored) {
           errored = true;
           return callback(err)
         }
-      } transaction.onerror = transaction.onabort = e => {
+      } transaction.onerror = transaction.onabort = (e: any) => {
         done(e.target.error);
         e.preventDefault()
       };
-      transaction.oncomplete = e => { if (!errored) { callback(null) } };
-      create.sort().forEach(path => {
+      transaction.oncomplete = (e: any) => { if (!errored) { callback(null) } };
+      create.sort().forEach((path: any) => {
         if (dst.type === "local") {
-          IDBFS.loadRemoteEntry(store, path, (err, entry) => {
+          IDBFS.loadRemoteEntry(store, path, (err: any, entry: any) => {
             if (err) return done(err);
             IDBFS.storeLocalEntry(path, entry, done)
           })
         } else {
-          IDBFS.loadLocalEntry(path, (err, entry) => {
+          IDBFS.loadLocalEntry(path, (err: any, entry: any) => {
             if (err) return done(err);
             IDBFS.storeRemoteEntry(store, path, entry, done)
           })
         }
       });
-      remove.sort().reverse().forEach(path => { if (dst.type === "local") { IDBFS.removeLocalEntry(path, done) } else { IDBFS.removeRemoteEntry(store, path, done) } })
+      remove.sort().reverse().forEach((path: any) => { if (dst.type === "local") { IDBFS.removeLocalEntry(path, done) } else { IDBFS.removeRemoteEntry(store, path, done) } })
     }
   };
-  var bindIDBFSFS = value => { FS = value; };
+  var bindIDBFSFS = (value: any) => { FS = value; };
   return { IDBFS, bindIDBFSFS };
 };
 
 
-const createNODEFSInternal = ({ fs, mmapAlloc, HEAP8, ERRNO_CODES }) => {
-  var FS;
-  var NODEFS = {
+const createNODEFSInternal = ({ fs, mmapAlloc, HEAP8, ERRNO_CODES }: any) => {
+  var FS: any;
+  var NODEFS: any = {
     isWindows: false, staticInit() {
       NODEFS.isWindows = !!process.platform.match(/^win/);
       var flags = process.binding("constants");
@@ -1136,9 +1142,10 @@ const createNODEFSInternal = ({ fs, mmapAlloc, HEAP8, ERRNO_CODES }) => {
       flags &= ~65536;
       var newFlags = 0;
       for (var k in NODEFS.flagsForNodeMap) {
-        if (flags & k) {
+        var key = Number(k);
+        if (flags & key) {
           newFlags |= NODEFS.flagsForNodeMap[k];
-          flags ^= k
+          flags ^= key
         }
       }
       if (flags) { throw new FS.ErrnoError(28) } return newFlags
@@ -1233,7 +1240,7 @@ const createNODEFSInternal = ({ fs, mmapAlloc, HEAP8, ERRNO_CODES }) => {
       }
     }
   };
-  var bindNODEFSFS = value => { FS = value; };
+  var bindNODEFSFS = (value: any) => { FS = value; };
   return { NODEFS, bindNODEFSFS };
 };
 
@@ -1278,7 +1285,7 @@ export const createFSRuntime = ({
   var { MEMFS, bindMEMFSFS } = createMEMFSInternal({ HEAP8, mmapAlloc });
   var { IDBFS, bindIDBFSFS } = createIDBFSInternal({ MEMFS });
   var { NODEFS, bindNODEFSFS } = createNODEFSInternal({ fs, mmapAlloc, HEAP8, ERRNO_CODES: ERRNO_CODES_MAP });
-  var FS = createFS({ PATH_FS, MEMFS, IDBFS, NODEFS, TTY, randomFill, FS_modeStringToFlags, FS_getMode, UTF8ArrayToString, lengthBytesUTF8, stringToUTF8Array, readBinary, intArrayFromString, mmapAlloc, HEAP8, Module, out, fflush, ENVIRONMENT_IS_WORKER });
+  var FS: any = createFS({ PATH_FS, MEMFS, IDBFS, NODEFS, TTY, randomFill, FS_modeStringToFlags, FS_getMode, UTF8ArrayToString, lengthBytesUTF8, stringToUTF8Array, readBinary, intArrayFromString, mmapAlloc, HEAP8, Module, out, fflush, ENVIRONMENT_IS_WORKER });
   bindMEMFSFS(FS);
   bindIDBFSFS(FS);
   bindNODEFSFS(FS);

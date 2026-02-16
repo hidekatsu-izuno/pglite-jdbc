@@ -47,16 +47,16 @@ export const createRuntimeUtils = ({
     runtimeKeepaliveCounter = 0;
   };
   __emscripten_runtime_keepalive_clear.sig = "v";
-  var __emscripten_system = (command) => {
+  var __emscripten_system = (command: any) => {
     if (ENVIRONMENT_IS_NODE) {
       if (!command) return 1;
       var cmdstr = UTF8ToString(command);
       if (!cmdstr.length) return 0;
       var cp = require("child_process");
       var ret = cp.spawnSync(cmdstr, [], { shell: true, stdio: "inherit" });
-      var _W_EXITCODE = (ret, sig) => ret << 8 | sig;
+      var _W_EXITCODE = (ret: any, sig: any) => ret << 8 | sig;
       if (ret.status === null) {
-        var signalToNumber = (sig) => {
+        var signalToNumber = (sig: any) => {
           switch (sig) {
             case "SIGHUP": return 1;
             case "SIGQUIT": return 3;
@@ -79,7 +79,7 @@ export const createRuntimeUtils = ({
     throw Infinity;
   };
   __emscripten_throw_longjmp.sig = "v";
-  function __gmtime_js(time, tmPtr) {
+  function __gmtime_js(time: any, tmPtr: any) {
     time = bigintToI53Checked(time);
     var date = new Date(time * 1e3);
     HEAP32[tmPtr >> 2] = date.getUTCSeconds();
@@ -94,16 +94,16 @@ export const createRuntimeUtils = ({
     HEAP32[tmPtr + 28 >> 2] = yday;
   }
   __gmtime_js.sig = "vjp";
-  var isLeapYear = (year) => year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  var isLeapYear = (year: any) => year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
   var MONTH_DAYS_LEAP_CUMULATIVE = [0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335];
   var MONTH_DAYS_REGULAR_CUMULATIVE = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
-  var ydayFromDate = (date) => {
+  var ydayFromDate = (date: any) => {
     var leap = isLeapYear(date.getFullYear());
     var monthDaysCumulative = leap ? MONTH_DAYS_LEAP_CUMULATIVE : MONTH_DAYS_REGULAR_CUMULATIVE;
     var yday = monthDaysCumulative[date.getMonth()] + date.getDate() - 1;
     return yday;
   };
-  function __localtime_js(time, tmPtr) {
+  function __localtime_js(time: any, tmPtr: any) {
     time = bigintToI53Checked(time);
     var date = new Date(time * 1e3);
     HEAP32[tmPtr >> 2] = date.getSeconds();
@@ -119,11 +119,14 @@ export const createRuntimeUtils = ({
     var start = new Date(date.getFullYear(), 0, 1);
     var summerOffset = new Date(date.getFullYear(), 6, 1).getTimezoneOffset();
     var winterOffset = start.getTimezoneOffset();
-    var dst = (summerOffset != winterOffset && date.getTimezoneOffset() == Math.min(winterOffset, summerOffset)) | 0;
+    var dst = Number(
+      summerOffset != winterOffset &&
+        date.getTimezoneOffset() == Math.min(winterOffset, summerOffset),
+    );
     HEAP32[tmPtr + 32 >> 2] = dst;
   }
   __localtime_js.sig = "vjp";
-  function __mmap_js(len, prot, flags, fd, offset, allocated, addr) {
+  function __mmap_js(len: any, prot: any, flags: any, fd: any, offset: any, allocated: any, addr: any) {
     offset = bigintToI53Checked(offset);
     try {
       if (isNaN(offset)) return 61;
@@ -139,7 +142,7 @@ export const createRuntimeUtils = ({
     }
   }
   __mmap_js.sig = "ipiiijpp";
-  function __munmap_js(addr, len, prot, flags, fd, offset) {
+  function __munmap_js(addr: any, len: any, prot: any, flags: any, fd: any, offset: any) {
     offset = bigintToI53Checked(offset);
     try {
       var stream = SYSCALLS.getStreamFromFD(fd);
@@ -152,14 +155,14 @@ export const createRuntimeUtils = ({
     }
   }
   __munmap_js.sig = "ippiiij";
-  var handleException = (e) => {
+  var handleException = (e: any) => {
     if (e instanceof ExitStatus || e == "unwind") {
       return getEXITSTATUS();
     }
     quit_(1, e);
   };
   var keepRuntimeAlive = () => getNoExitRuntime() || runtimeKeepaliveCounter > 0;
-  var _proc_exit = (code) => {
+  var _proc_exit = (code: any) => {
     setEXITSTATUS(code);
     if (!keepRuntimeAlive()) {
       Module["onExit"]?.(code);
@@ -168,7 +171,7 @@ export const createRuntimeUtils = ({
     quit_(code, new ExitStatus(code));
   };
   _proc_exit.sig = "vi";
-  var exitJS = (status, implicit) => {
+  var exitJS = (status: any, implicit?: any) => {
     setEXITSTATUS(status);
     _proc_exit(status);
   };
@@ -183,7 +186,7 @@ export const createRuntimeUtils = ({
       }
     }
   };
-  var callUserCallback = (func) => {
+  var callUserCallback = (func: any) => {
     if (getABORT()) {
       return;
     }
@@ -197,7 +200,7 @@ export const createRuntimeUtils = ({
   var _emscripten_get_now = () => performance.now();
   _emscripten_get_now.sig = "d";
   var timers = {};
-  var __setitimer_js = (which, timeout_ms) => {
+  var __setitimer_js = (which: any, timeout_ms: any) => {
     if (timers[which]) {
       clearTimeout(timers[which].id);
       delete timers[which];
@@ -211,7 +214,7 @@ export const createRuntimeUtils = ({
     return 0;
   };
   __setitimer_js.sig = "iid";
-  var __tzset_js = (timezone, daylight, std_name, dst_name) => {
+  var __tzset_js = (timezone: any, daylight: any, std_name: any, dst_name: any) => {
     var currentYear = (new Date).getFullYear();
     var winter = new Date(currentYear, 0, 1);
     var summer = new Date(currentYear, 6, 1);
@@ -220,7 +223,7 @@ export const createRuntimeUtils = ({
     var stdTimezoneOffset = Math.max(winterOffset, summerOffset);
     HEAPU32[timezone >> 2] = stdTimezoneOffset * 60;
     HEAP32[daylight >> 2] = Number(winterOffset != summerOffset);
-    var extractZone = (timezoneOffset) => {
+    var extractZone = (timezoneOffset: any) => {
       var sign = timezoneOffset >= 0 ? "-" : "+";
       var absOffset = Math.abs(timezoneOffset);
       var hours = String(Math.floor(absOffset / 60)).padStart(2, "0");
@@ -241,8 +244,8 @@ export const createRuntimeUtils = ({
   var _emscripten_date_now = () => Date.now();
   _emscripten_date_now.sig = "d";
   var nowIsMonotonic = 1;
-  var checkWasiClock = (clock_id) => clock_id >= 0 && clock_id <= 3;
-  function _clock_time_get(clk_id, ignored_precision, ptime) {
+  var checkWasiClock = (clock_id: any) => clock_id >= 0 && clock_id <= 3;
+  function _clock_time_get(clk_id: any, ignored_precision: any, ptime: any) {
     ignored_precision = bigintToI53Checked(ignored_precision);
     if (!checkWasiClock(clk_id)) {
       return 28;
@@ -260,7 +263,7 @@ export const createRuntimeUtils = ({
     return 0;
   }
   _clock_time_get.sig = "iijp";
-  var _emscripten_force_exit = (status) => {
+  var _emscripten_force_exit = (status: any) => {
     __emscripten_runtime_keepalive_clear();
     _exit(status);
   };

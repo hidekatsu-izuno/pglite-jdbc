@@ -49,19 +49,19 @@ export const initializeRuntimeHost = async ({
   var { ENVIRONMENT_IS_WEB, ENVIRONMENT_IS_WORKER, ENVIRONMENT_IS_NODE, require } = environment;
   var arguments_ = [];
   var thisProgram = "./this.program";
-  var quit_ = (status, toThrow) => {
+  var quit_ = (status: any, toThrow: any) => {
     throw toThrow;
   };
   var scriptDirectory = "";
-  var locateFile = (path) => {
+  var locateFile = (path: any) => {
     if (Module["locateFile"]) {
       return Module["locateFile"](path, scriptDirectory);
     }
     return scriptDirectory + path;
   };
   var dataURIPrefix = "data:application/octet-stream;base64,";
-  var isDataURI = (filename) => filename.startsWith(dataURIPrefix);
-  var isFileURI = (filename) => filename.startsWith("file://");
+  var isDataURI = (filename: any) => filename.startsWith(dataURIPrefix);
+  var isFileURI = (filename: any) => filename.startsWith("file://");
   var readAsync;
   var readBinary;
   var fs;
@@ -71,7 +71,7 @@ export const initializeRuntimeHost = async ({
     if (!importMetaUrl.startsWith("data:")) {
       scriptDirectory = nodePath.dirname(require("url").fileURLToPath(importMetaUrl)) + "/";
     }
-    readBinary = (filename) => {
+    readBinary = (filename: any) => {
       filename = isFileURI(filename) ? new URL(filename) : filename;
       var ret = fs.readFileSync(filename);
       return ret;
@@ -85,7 +85,7 @@ export const initializeRuntimeHost = async ({
       thisProgram = process.argv[1].replace(/\\/g, "/");
     }
     arguments_ = process.argv.slice(2);
-    quit_ = (status, toThrow) => {
+    quit_ = (status: any, toThrow: any) => {
       process.exitCode = status;
       throw toThrow;
     };
@@ -93,7 +93,7 @@ export const initializeRuntimeHost = async ({
     if (ENVIRONMENT_IS_WORKER) {
       scriptDirectory = self.location.href;
     } else if (typeof document != "undefined" && document.currentScript) {
-      scriptDirectory = document.currentScript.src;
+      scriptDirectory = (document.currentScript as any).src;
     }
     if (scriptName) {
       scriptDirectory = scriptName;
@@ -104,7 +104,7 @@ export const initializeRuntimeHost = async ({
       scriptDirectory = scriptDirectory.substr(0, scriptDirectory.replace(/[?#].*/, "").lastIndexOf("/") + 1);
     }
     if (ENVIRONMENT_IS_WORKER) {
-      readBinary = (url) => {
+      readBinary = (url: any) => {
         var xhr = new XMLHttpRequest;
         xhr.open("GET", url, false);
         xhr.responseType = "arraybuffer";
@@ -112,7 +112,7 @@ export const initializeRuntimeHost = async ({
         return new Uint8Array(xhr.response);
       };
     }
-    readAsync = async (url) => {
+    readAsync = async (url: any) => {
       var response = await fetch(url, { credentials: "same-origin" });
       if (response.ok) {
         return response.arrayBuffer();
@@ -205,13 +205,13 @@ export const createRuntimeHostFsSupport = ({
         resolvedPath = path + "/" + resolvedPath;
         resolvedAbsolute = PATH.isAbs(path);
       }
-      resolvedPath = PATH.normalizeArray(resolvedPath.split("/").filter(p => !!p), !resolvedAbsolute).join("/");
+      resolvedPath = PATH.normalizeArray(resolvedPath.split("/").filter((p: any) => !!p), !resolvedAbsolute).join("/");
       return (resolvedAbsolute ? "/" : "") + resolvedPath || ".";
     },
-    relative: (from, to) => {
+    relative: (from: any, to: any) => {
       from = PATH_FS.resolve(from).substr(1);
       to = PATH_FS.resolve(to).substr(1);
-      function trim(arr) {
+      function trim(arr: any) {
         var start = 0;
         for (; start < arr.length; start++) {
           if (arr[start] !== "") break;
@@ -273,22 +273,22 @@ export const createRuntimeHostFsSupport = ({
     return FS_stdin_getChar_buffer.shift();
   };
   var TTY = createTTY({ getFS, FS_stdin_getChar, UTF8ArrayToString, out, err });
-  var zeroMemory = (address, size) => {
+  var zeroMemory = (address: any, size: any) => {
     HEAPU8.fill(0, address, address + size);
   };
-  var mmapAlloc = (size) => {
+  var mmapAlloc = (size: any) => {
     size = alignMemory(size, 65536);
     var ptr = emscriptenBuiltinMemalign(65536, size);
     if (ptr) zeroMemory(ptr, size);
     return ptr;
   };
-  var FS_createDataFile = (parent, name, fileData, canRead, canWrite, canOwn) => {
+  var FS_createDataFile = (parent: any, name: any, fileData: any, canRead: any, canWrite: any, canOwn: any) => {
     getFS().createDataFile(parent, name, fileData, canRead, canWrite, canOwn);
   };
-  var FS_handledByPreloadPlugin = (byteArray, fullname, finish, onerror) => {
+  var FS_handledByPreloadPlugin = (byteArray: any, fullname: any, finish: any, onerror: any) => {
     if (typeof Browser != "undefined") Browser.init();
     var handled = false;
-    preloadPlugins.forEach(plugin => {
+    preloadPlugins.forEach((plugin: any) => {
       if (handled) return;
       if (plugin["canHandle"](fullname)) {
         plugin["handle"](byteArray, fullname, finish, onerror);
@@ -297,11 +297,11 @@ export const createRuntimeHostFsSupport = ({
     });
     return handled;
   };
-  var FS_createPreloadedFile = (parent, name, url, canRead, canWrite, onload, onerror, dontCreateFile, canOwn, preFinish) => {
+  var FS_createPreloadedFile = (parent: any, name: any, url: any, canRead: any, canWrite: any, onload: any, onerror: any, dontCreateFile: any, canOwn: any, preFinish: any) => {
     var fullname = name ? PATH_FS.resolve(PATH.join2(parent, name)) : parent;
     var dep = getUniqueRunDependency(`cp ${fullname}`);
-    function processData(byteArray) {
-      function finish(byteArray) {
+    function processData(byteArray: any) {
+      function finish(byteArray: any) {
         preFinish?.();
         if (!dontCreateFile) {
           FS_createDataFile(parent, name, byteArray, canRead, canWrite, canOwn);
@@ -324,7 +324,7 @@ export const createRuntimeHostFsSupport = ({
       processData(url);
     }
   };
-  var FS_modeStringToFlags = (str) => {
+  var FS_modeStringToFlags = (str: any) => {
     var flagModes = { r: 0, "r+": 2, w: 512 | 64 | 1, "w+": 512 | 64 | 2, a: 1024 | 64 | 1, "a+": 1024 | 64 | 2 };
     var flags = flagModes[str];
     if (typeof flags == "undefined") {
@@ -332,7 +332,7 @@ export const createRuntimeHostFsSupport = ({
     }
     return flags;
   };
-  var FS_getMode = (canRead, canWrite) => {
+  var FS_getMode = (canRead: any, canWrite: any) => {
     var mode = 0;
     if (canRead) mode |= 292 | 73;
     if (canWrite) mode |= 146;

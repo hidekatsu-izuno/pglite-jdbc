@@ -10,12 +10,12 @@ type PathApi = {
 };
 
 export const PATH: PathApi = {
-  isAbs: (path) => path.charAt(0) === "/",
-  splitPath: (filename) => {
+  isAbs: (path: any) => path.charAt(0) === "/",
+  splitPath: (filename: any) => {
     var splitPathRe = /^(\/?|)([\s\S]*?)((?:\.{1,2}|[^\/]+?|)(\.[^.\/]*|))(?:[\/]*)$/;
     return splitPathRe.exec(filename)!.slice(1) as string[];
   },
-  normalizeArray: (parts, allowAboveRoot) => {
+  normalizeArray: (parts: any, allowAboveRoot: any) => {
     var up = 0;
     for (var i = parts.length - 1; i >= 0; i--) {
       var last = parts[i];
@@ -36,10 +36,10 @@ export const PATH: PathApi = {
     }
     return parts;
   },
-  normalize: (path) => {
+  normalize: (path: any) => {
     var isAbsolute = PATH.isAbs(path);
     var trailingSlash = path.substr(-1) === "/";
-    path = PATH.normalizeArray(path.split("/").filter((p) => !!p), !isAbsolute).join("/");
+    path = PATH.normalizeArray(path.split("/").filter((p: any) => !!p), !isAbsolute).join("/");
     if (!path && !isAbsolute) {
       path = ".";
     }
@@ -48,7 +48,7 @@ export const PATH: PathApi = {
     }
     return (isAbsolute ? "/" : "") + path;
   },
-  dirname: (path) => {
+  dirname: (path: any) => {
     var result = PATH.splitPath(path);
     var root = result[0];
     var dir = result[1];
@@ -60,7 +60,7 @@ export const PATH: PathApi = {
     }
     return root + dir;
   },
-  basename: (path) => {
+  basename: (path: any) => {
     if (path === "/") return "/";
     path = PATH.normalize(path);
     path = path.replace(/\/$/, "");
@@ -69,5 +69,5 @@ export const PATH: PathApi = {
     return path.substr(lastSlash + 1);
   },
   join: (...paths) => PATH.normalize(paths.join("/")),
-  join2: (l, r) => PATH.normalize(l + "/" + r),
+  join2: (l: any, r: any) => PATH.normalize(l + "/" + r),
 };

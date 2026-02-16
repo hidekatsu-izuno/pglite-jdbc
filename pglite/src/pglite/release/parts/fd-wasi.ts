@@ -15,7 +15,7 @@ export const createFdWasiFunctions = ({
   HEAP8: Int8Array;
   bigintToI53Checked: (num: number | bigint) => number;
 }) => {
-function _fd_close(fd) {
+function _fd_close(fd: any) {
         try {
           var stream = SYSCALLS.getStreamFromFD(fd);
           FS.close(stream);
@@ -25,7 +25,7 @@ function _fd_close(fd) {
           return e.errno
         }
       } _fd_close.sig = "ii";
-      function _fd_fdstat_get(fd, pbuf) {
+      function _fd_fdstat_get(fd: any, pbuf: any) {
         try {
           var rightsBase = 0;
           var rightsInheriting = 0;
@@ -43,7 +43,7 @@ function _fd_close(fd) {
           return e.errno
         }
       } _fd_fdstat_get.sig = "iip";
-      var doReadv = (stream, iov, iovcnt, offset) => {
+      var doReadv = (stream: any, iov: any, iovcnt: any, offset?: any) => {
         var ret = 0;
         for (var i = 0;
           i < iovcnt;
@@ -58,7 +58,7 @@ function _fd_close(fd) {
           if (typeof offset != "undefined") { offset += curr }
         } return ret
       };
-      function _fd_pread(fd, iov, iovcnt, offset, pnum) {
+      function _fd_pread(fd: any, iov: any, iovcnt: any, offset: any, pnum: any) {
         offset = bigintToI53Checked(offset);
         try {
           if (isNaN(offset)) return 61;
@@ -71,7 +71,7 @@ function _fd_close(fd) {
           return e.errno
         }
       } _fd_pread.sig = "iippjp";
-      var doWritev = (stream, iov, iovcnt, offset) => {
+      var doWritev = (stream: any, iov: any, iovcnt: any, offset?: any) => {
         var ret = 0;
         for (var i = 0;
           i < iovcnt;
@@ -86,7 +86,7 @@ function _fd_close(fd) {
           if (typeof offset != "undefined") { offset += curr }
         } return ret
       };
-      function _fd_pwrite(fd, iov, iovcnt, offset, pnum) {
+      function _fd_pwrite(fd: any, iov: any, iovcnt: any, offset: any, pnum: any) {
         offset = bigintToI53Checked(offset);
         try {
           if (isNaN(offset)) return 61;
@@ -100,7 +100,7 @@ function _fd_close(fd) {
         }
       }
       _fd_pwrite.sig = "iippjp";
-      function _fd_read(fd, iov, iovcnt, pnum) {
+      function _fd_read(fd: any, iov: any, iovcnt: any, pnum: any) {
         try {
           var stream = SYSCALLS.getStreamFromFD(fd);
           var num = doReadv(stream, iov, iovcnt);
@@ -112,7 +112,7 @@ function _fd_close(fd) {
         }
       }
       _fd_read.sig = "iippp";
-      function _fd_seek(fd, offset, whence, newOffset) {
+      function _fd_seek(fd: any, offset: any, whence: any, newOffset: any) {
         offset = bigintToI53Checked(offset);
         try {
           if (isNaN(offset)) return 61;
@@ -126,7 +126,7 @@ function _fd_close(fd) {
           return e.errno
         }
       } _fd_seek.sig = "iijip";
-      function _fd_sync(fd) {
+      function _fd_sync(fd: any) {
         try {
           var stream = SYSCALLS.getStreamFromFD(fd);
           if (stream.stream_ops?.fsync) { return stream.stream_ops.fsync(stream) } return 0
@@ -135,7 +135,7 @@ function _fd_close(fd) {
           return e.errno
         }
       } _fd_sync.sig = "ii";
-      function _fd_write(fd, iov, iovcnt, pnum) {
+      function _fd_write(fd: any, iov: any, iovcnt: any, pnum: any) {
         try {
           var stream = SYSCALLS.getStreamFromFD(fd);
           var num = doWritev(stream, iov, iovcnt);

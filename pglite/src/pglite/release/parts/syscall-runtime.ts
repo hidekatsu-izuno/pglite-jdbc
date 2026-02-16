@@ -54,7 +54,7 @@ export const createSyscallImplementations = ({
       var dstExceptLow = 0, dstExceptHigh = 0;
       var allLow = (readfds ? HEAP32[readfds >> 2] : 0) | (writefds ? HEAP32[writefds >> 2] : 0) | (exceptfds ? HEAP32[exceptfds >> 2] : 0);
       var allHigh = (readfds ? HEAP32[readfds + 4 >> 2] : 0) | (writefds ? HEAP32[writefds + 4 >> 2] : 0) | (exceptfds ? HEAP32[exceptfds + 4 >> 2] : 0);
-      var check = (fd, low, high, val) => fd < 32 ? low & val : high & val;
+      var check = (fd: any, low: any, high: any, val: any) => fd < 32 ? low & val : high & val;
       for (var fd = 0;
         fd < nfds;
         fd++) {
@@ -100,13 +100,13 @@ export const createSyscallImplementations = ({
   };
   ___syscall__newselect.sig = "iipppp";
   var SOCKFS = createSOCKFS({ FS, Module, ENVIRONMENT_IS_NODE, require, assert, HEAP32, TextEncoder });
-  var getSocketFromFD = fd => {
+  var getSocketFromFD = (fd: any) => {
     var socket = SOCKFS.getSocket(fd);
     if (!socket) throw new FS.ErrnoError(8);
     return socket
   };
   var { inetNtop4, inetNtop6, readSockaddr, inetPton4, inetPton6, DNS, getSocketAddress, writeSockaddr } = createSocketAddressUtils({ HEAP16, HEAPU16, HEAP32, _ntohs, _htons, assert, FS, zeroMemory });
-  function ___syscall_bind(fd, addr, addrlen, d1, d2, d3) {
+  function ___syscall_bind(fd: any, addr: any, addrlen: any, d1: any, d2: any, d3: any) {
     try {
       var sock = getSocketFromFD(fd);
       var info = getSocketAddress(addr, addrlen);
@@ -117,7 +117,7 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_bind.sig = "iippiii";
-  function ___syscall_chdir(path) {
+  function ___syscall_chdir(path: any) {
     try {
       path = SYSCALLS.getStr(path);
       FS.chdir(path);
@@ -127,7 +127,7 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_chdir.sig = "ip";
-  function ___syscall_chmod(path, mode) {
+  function ___syscall_chmod(path: any, mode: any) {
     try {
       path = SYSCALLS.getStr(path);
       FS.chmod(path, mode);
@@ -137,7 +137,7 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_chmod.sig = "ipi";
-  function ___syscall_dup(fd) {
+  function ___syscall_dup(fd: any) {
     try {
       var old = SYSCALLS.getStreamFromFD(fd);
       return FS.dupStream(old).fd
@@ -146,7 +146,7 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_dup.sig = "ii";
-  function ___syscall_dup3(fd, newfd, flags) {
+  function ___syscall_dup3(fd: any, newfd: any, flags: any) {
     try {
       var old = SYSCALLS.getStreamFromFD(fd);
       if (old.fd === newfd) return -28;
@@ -159,7 +159,7 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_dup3.sig = "iiii";
-  function ___syscall_faccessat(dirfd, path, amode, flags) {
+  function ___syscall_faccessat(dirfd: any, path: any, amode: any, flags: any) {
     try {
       path = SYSCALLS.getStr(path);
       path = SYSCALLS.calculateAt(dirfd, path);
@@ -175,12 +175,12 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_faccessat.sig = "iipii";
-  var ___syscall_fadvise64 = (fd, offset, len, advice) => 0;
+  var ___syscall_fadvise64 = (fd: any, offset: any, len: any, advice: any) => 0;
   ___syscall_fadvise64.sig = "iijji";
   var INT53_MAX = 9007199254740992;
   var INT53_MIN = -9007199254740992;
-  var bigintToI53Checked = num => num < INT53_MIN || num > INT53_MAX ? NaN : Number(num);
-  function ___syscall_fallocate(fd, mode, offset, len) {
+  var bigintToI53Checked = (num: any) => num < INT53_MIN || num > INT53_MAX ? NaN : Number(num);
+  function ___syscall_fallocate(fd: any, mode: any, offset: any, len: any) {
     offset = bigintToI53Checked(offset);
     len = bigintToI53Checked(len);
     try {
@@ -199,7 +199,7 @@ export const createSyscallImplementations = ({
     return ret
   };
   var syscallGetVarargP = syscallGetVarargI;
-  function ___syscall_fcntl64(fd, cmd, varargs) {
+  function ___syscall_fcntl64(fd: any, cmd: any, varargs: any) {
     SYSCALLS.varargs = varargs;
     try {
       var stream = SYSCALLS.getStreamFromFD(fd);
@@ -227,7 +227,7 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_fcntl64.sig = "iiip";
-  function ___syscall_fdatasync(fd) {
+  function ___syscall_fdatasync(fd: any) {
     try {
       var stream = SYSCALLS.getStreamFromFD(fd);
       return 0
@@ -236,7 +236,7 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_fdatasync.sig = "ii";
-  function ___syscall_fstat64(fd, buf) {
+  function ___syscall_fstat64(fd: any, buf: any) {
     try {
       var stream = SYSCALLS.getStreamFromFD(fd);
       return SYSCALLS.doStat(FS.stat, stream.path, buf)
@@ -245,7 +245,7 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_fstat64.sig = "iip";
-  function ___syscall_ftruncate64(fd, length) {
+  function ___syscall_ftruncate64(fd: any, length: any) {
     length = bigintToI53Checked(length);
     try {
       if (isNaN(length)) return 61;
@@ -256,8 +256,8 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_ftruncate64.sig = "iij";
-  var stringToUTF8 = (str, outPtr, maxBytesToWrite) => stringToUTF8Array(str, HEAPU8, outPtr, maxBytesToWrite);
-  function ___syscall_getcwd(buf, size) {
+  var stringToUTF8 = (str: any, outPtr: any, maxBytesToWrite: any) => stringToUTF8Array(str, HEAPU8, outPtr, maxBytesToWrite);
+  function ___syscall_getcwd(buf: any, size: any) {
     try {
       if (size === 0) return -28;
       var cwd = FS.cwd();
@@ -270,7 +270,7 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_getcwd.sig = "ipp";
-  function ___syscall_getdents64(fd, dirp, count) {
+  function ___syscall_getdents64(fd: any, dirp: any, count: any) {
     try {
       var stream = SYSCALLS.getStreamFromFD(fd);
       stream.getdents ||= FS.readdir(stream.path);
@@ -309,7 +309,7 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_getdents64.sig = "iipp";
-  function ___syscall_ioctl(fd, op, varargs) {
+  function ___syscall_ioctl(fd: any, op: any, varargs: any) {
     SYSCALLS.varargs = varargs;
     try {
       var stream = SYSCALLS.getStreamFromFD(fd);
@@ -378,7 +378,7 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_ioctl.sig = "iiip";
-  function ___syscall_lstat64(path, buf) {
+  function ___syscall_lstat64(path: any, buf: any) {
     try {
       path = SYSCALLS.getStr(path);
       return SYSCALLS.doStat(FS.lstat, path, buf)
@@ -387,7 +387,7 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_lstat64.sig = "ipp";
-  function ___syscall_mkdirat(dirfd, path, mode) {
+  function ___syscall_mkdirat(dirfd: any, path: any, mode: any) {
     try {
       path = SYSCALLS.getStr(path);
       path = SYSCALLS.calculateAt(dirfd, path);
@@ -398,7 +398,7 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_mkdirat.sig = "iipi";
-  function ___syscall_newfstatat(dirfd, path, buf, flags) {
+  function ___syscall_newfstatat(dirfd: any, path: any, buf: any, flags: any) {
     try {
       path = SYSCALLS.getStr(path);
       var nofollow = flags & 256;
@@ -411,7 +411,7 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_newfstatat.sig = "iippi";
-  function ___syscall_openat(dirfd, path, flags, varargs) {
+  function ___syscall_openat(dirfd: any, path: any, flags: any, varargs: any) {
     SYSCALLS.varargs = varargs;
     try {
       path = SYSCALLS.getStr(path);
@@ -424,7 +424,7 @@ export const createSyscallImplementations = ({
     }
   } ___syscall_openat.sig = "iipip";
   var PIPEFS = createPIPEFS({ getFS: () => FS, assert, getHEAP32: () => HEAP32 });
-  function ___syscall_pipe(fdPtr) {
+  function ___syscall_pipe(fdPtr: any) {
     try {
       if (fdPtr == 0) { throw new FS.ErrnoError(21) } var res = PIPEFS.createPipe();
       HEAP32[fdPtr >> 2] = res.readable_fd;
@@ -435,7 +435,7 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_pipe.sig = "ip";
-  function ___syscall_readlinkat(dirfd, path, buf, bufsize) {
+  function ___syscall_readlinkat(dirfd: any, path: any, buf: any, bufsize: any) {
     try {
       path = SYSCALLS.getStr(path);
       path = SYSCALLS.calculateAt(dirfd, path);
@@ -451,7 +451,7 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_readlinkat.sig = "iippp";
-  function ___syscall_recvfrom(fd, buf, len, flags, addr, addrlen) {
+  function ___syscall_recvfrom(fd: any, buf: any, len: any, flags: any, addr: any, addrlen: any) {
     try {
       var sock = getSocketFromFD(fd);
       var msg = sock.sock_ops.recvmsg(sock, len);
@@ -463,7 +463,7 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_recvfrom.sig = "iippipp";
-  function ___syscall_renameat(olddirfd, oldpath, newdirfd, newpath) {
+  function ___syscall_renameat(olddirfd: any, oldpath: any, newdirfd: any, newpath: any) {
     try {
       oldpath = SYSCALLS.getStr(oldpath);
       newpath = SYSCALLS.getStr(newpath);
@@ -476,7 +476,7 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_renameat.sig = "iipip";
-  function ___syscall_rmdir(path) {
+  function ___syscall_rmdir(path: any) {
     try {
       path = SYSCALLS.getStr(path);
       FS.rmdir(path);
@@ -486,7 +486,7 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_rmdir.sig = "ip";
-  function ___syscall_sendto(fd, message, length, flags, addr, addr_len) {
+  function ___syscall_sendto(fd: any, message: any, length: any, flags: any, addr: any, addr_len: any) {
     try {
       var sock = getSocketFromFD(fd);
       if (!addr) { return FS.write(sock.stream, HEAP8, message, length) } var dest = getSocketAddress(addr, addr_len);
@@ -496,7 +496,7 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_sendto.sig = "iippipp";
-  function ___syscall_socket(domain, type, protocol) {
+  function ___syscall_socket(domain: any, type: any, protocol: any) {
     try {
       var sock = SOCKFS.createSocket(domain, type, protocol);
       return sock.stream.fd
@@ -505,7 +505,7 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_socket.sig = "iiiiiii";
-  function ___syscall_stat64(path, buf) {
+  function ___syscall_stat64(path: any, buf: any) {
     try {
       path = SYSCALLS.getStr(path);
       return SYSCALLS.doStat(FS.stat, path, buf)
@@ -514,7 +514,7 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_stat64.sig = "ipp";
-  function ___syscall_symlinkat(target, dirfd, linkpath) {
+  function ___syscall_symlinkat(target: any, dirfd: any, linkpath: any) {
     try {
       target = SYSCALLS.getStr(target);
       linkpath = SYSCALLS.getStr(linkpath);
@@ -526,7 +526,7 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_symlinkat.sig = "ipip";
-  function ___syscall_truncate64(path, length) {
+  function ___syscall_truncate64(path: any, length: any) {
     length = bigintToI53Checked(length);
     try {
       if (isNaN(length)) return 61;
@@ -538,7 +538,7 @@ export const createSyscallImplementations = ({
       return -e.errno
     }
   } ___syscall_truncate64.sig = "ipj";
-  function ___syscall_unlinkat(dirfd, path, flags) {
+  function ___syscall_unlinkat(dirfd: any, path: any, flags: any) {
     try {
       path = SYSCALLS.getStr(path);
       path = SYSCALLS.calculateAt(dirfd, path);
