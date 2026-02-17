@@ -3,12 +3,14 @@ import nodePath from "node:path";
 import crypto from "node:crypto";
 import nodeUrl from "node:url";
 import cp from "node:child_process";
-import { pglitePackages } from "./pglite_packages.ts";
+import { pglitePackages } from "./pglite_packages.js";
+import { loadPackage, isDataURI, readBinary, readAsync, ExitStatus } from "./pglite_utils.js"
 
 export default async function (moduleArg = {}) {
-    var Module = moduleArg;
-    var readyPromiseResolve, readyPromiseReject;
-    var readyPromise = new Promise((resolve, reject) => {
+    let Module = moduleArg;
+    let readyPromiseResolve;
+    let readyPromiseReject;
+    const readyPromise = new Promise((resolve, reject) => {
         readyPromiseResolve = resolve;
         readyPromiseReject = reject
     });
@@ -18,32 +20,22 @@ export default async function (moduleArg = {}) {
         files: pglitePackages,
         remote_package_size: 4939130
     });
-    var moduleOverrides = Object.assign({}, Module);
-    var arguments_ = [];
-    var thisProgram = "./this.program";
-    var quit_ = (status, toThrow) => {
+    let moduleOverrides = Object.assign({}, Module);
+    let arguments_ = [];
+    let thisProgram = "./this.program";
+    let quit_ = (status, toThrow) => {
         throw toThrow
     };
-    var scriptDirectory = "";
+    let scriptDirectory = "";
+    if (!import.meta.url.startsWith("data:")) {
+        scriptDirectory = nodePath.dirname(nodeUrl.fileURLToPath(import.meta.url)) + "/"
+    }
     function locateFile(path) {
         if (Module["locateFile"]) {
             return Module["locateFile"](path, scriptDirectory)
         }
         return scriptDirectory + path
     }
-    if (!import.meta.url.startsWith("data:")) {
-        scriptDirectory = nodePath.dirname(nodeUrl.fileURLToPath(import.meta.url)) + "/"
-    }
-    var readBinary = filename => {
-        filename = isFileURI(filename) ? new URL(filename) : filename;
-        var ret = fs.readFileSync(filename);
-        return ret
-    };
-    var readAsync = async (filename, binary = true) => {
-        filename = isFileURI(filename) ? new URL(filename) : filename;
-        var ret = fs.readFileSync(filename, binary ? undefined : "utf8");
-        return ret
-    };
     if (!Module["thisProgram"] && process.argv.length > 1) {
         thisProgram = process.argv[1].replace(/\\/g, "/")
     }
@@ -52,16 +44,16 @@ export default async function (moduleArg = {}) {
         process.exitCode = status;
         throw toThrow
     }
-    var out = Module["print"] || console.log.bind(console);
-    var err = Module["printErr"] || console.error.bind(console);
+    let out = Module["print"] || console.log.bind(console);
+    let err = Module["printErr"] || console.error.bind(console);
     Object.assign(Module, moduleOverrides);
     moduleOverrides = null;
     if (Module["arguments"]) arguments_ = Module["arguments"];
     if (Module["thisProgram"]) thisProgram = Module["thisProgram"];
-    var dynamicLibraries = Module["dynamicLibraries"] || [];
-    var wasmMemory;
-    var ABORT = false;
-    var EXITSTATUS;
+    let dynamicLibraries = Module["dynamicLibraries"] || [];
+    let wasmMemory;
+    let ABORT = false;
+    let EXITSTATUS;
 
     function assert(condition, text) {
         if (!condition) {
@@ -69,7 +61,16 @@ export default async function (moduleArg = {}) {
         }
     }
 
-    var HEAP8, HEAPU8, HEAP16, HEAPU16, HEAP32, HEAPU32, HEAPF32, HEAP64, HEAPU64, HEAPF64;
+    if (Module["wasmMemory"]) {
+        wasmMemory = Module["wasmMemory"]
+    } else {
+        var INITIAL_MEMORY = Module["INITIAL_MEMORY"] || 16777216;
+        wasmMemory = new WebAssembly.Memory({
+            initial: INITIAL_MEMORY / 65536,
+            maximum: 32768
+        })
+    }
+    let HEAP8, HEAPU8, HEAP16, HEAPU16, HEAP32, HEAPU32, HEAPF32, HEAP64, HEAPU64, HEAPF64;
     function updateMemoryViews() {
         var b = wasmMemory.buffer;
         Module["HEAP8"] = HEAP8 = new Int8Array(b);
@@ -83,26 +84,19 @@ export default async function (moduleArg = {}) {
         Module["HEAP64"] = HEAP64 = new BigInt64Array(b);
         Module["HEAPU64"] = HEAPU64 = new BigUint64Array(b)
     }
-    if (Module["wasmMemory"]) {
-        wasmMemory = Module["wasmMemory"]
-    } else {
-        var INITIAL_MEMORY = Module["INITIAL_MEMORY"] || 16777216;
-        wasmMemory = new WebAssembly.Memory({
-            initial: INITIAL_MEMORY / 65536,
-            maximum: 32768
-        })
-    }
     updateMemoryViews();
-    var __ATPRERUN__ = [];
-    var __ATINIT__ = [];
-    var __ATMAIN__ = [];
-    var __ATPOSTRUN__ = [];
-    var __RELOC_FUNCS__ = [];
-    var runtimeInitialized = false;
+    const __ATPRERUN__ = [];
+    const __ATINIT__ = [];
+    const __ATMAIN__ = [];
+    const __ATPOSTRUN__ = [];
+    const __RELOC_FUNCS__ = [];
+    let runtimeInitialized = false;
 
     function preRun() {
         if (Module["preRun"]) {
-            if (typeof Module["preRun"] == "function") Module["preRun"] = [Module["preRun"]];
+            if (typeof Module["preRun"] === "function") {
+                Module["preRun"] = [Module["preRun"]];
+            }
             while (Module["preRun"].length) {
                 addOnPreRun(Module["preRun"].shift())
             }
@@ -113,7 +107,9 @@ export default async function (moduleArg = {}) {
     function initRuntime() {
         runtimeInitialized = true;
         callRuntimeCallbacks(__RELOC_FUNCS__);
-        if (!Module["noFSInit"] && !FS.initialized) FS.init();
+        if (!Module["noFSInit"] && !FS.initialized) {
+            FS.init();
+        }
         FS.ignorePermissions = false;
         TTY.init();
         SOCKFS.root = FS.mount(SOCKFS, {}, null);
@@ -127,7 +123,9 @@ export default async function (moduleArg = {}) {
 
     function postRun() {
         if (Module["postRun"]) {
-            if (typeof Module["postRun"] == "function") Module["postRun"] = [Module["postRun"]];
+            if (typeof Module["postRun"] === "function") {
+                Module["postRun"] = [Module["postRun"]];
+            }
             while (Module["postRun"].length) {
                 addOnPostRun(Module["postRun"].shift())
             }
@@ -146,11 +144,12 @@ export default async function (moduleArg = {}) {
     function addOnPostRun(cb) {
         __ATPOSTRUN__.unshift(cb)
     }
+
     var runDependencies = 0;
     var dependenciesFulfilled = null;
 
     function getUniqueRunDependency(id) {
-        return id
+        return id;
     }
 
     function addRunDependency(id) {
@@ -180,9 +179,6 @@ export default async function (moduleArg = {}) {
         readyPromiseReject(e);
         throw e
     }
-    var dataURIPrefix = "data:application/octet-stream;base64,";
-    var isDataURI = filename => filename.startsWith(dataURIPrefix);
-    var isFileURI = filename => filename.startsWith("file://");
 
     function findWasmBinary() {
         if (Module["locateFile"]) {
@@ -195,16 +191,11 @@ export default async function (moduleArg = {}) {
         return new URL("pglite.wasm", import.meta.url).href
     }
 
-    async function getWasmBinary(binaryFile) {
-        try {
-            var response = await readAsync(binaryFile);
-            return new Uint8Array(response)
-        } catch {}
-    }
     async function instantiateArrayBuffer(binaryFile, imports) {
         try {
-            var binary = await getWasmBinary(binaryFile);
-            var instance = await WebAssembly.instantiate(binary, imports);
+            const response = await readAsync(binaryFile);
+            const binary = new Uint8Array(response);
+            const instance = await WebAssembly.instantiate(binary, imports);
             return instance
         } catch (reason) {
             err(`failed to asynchronously prepare wasm: ${reason}`);
@@ -224,7 +215,7 @@ export default async function (moduleArg = {}) {
         function receiveInstance(instance, module) {
             wasmExports = instance.exports;
             wasmExports = relocateExports(wasmExports, 1024);
-            var metadata = getDylinkMetadata(module);
+            const metadata = getDylinkMetadata(module);
             if (metadata.neededDynlibs) {
                 dynamicLibraries = metadata.neededDynlibs.concat(dynamicLibraries)
             }
@@ -238,10 +229,7 @@ export default async function (moduleArg = {}) {
         }
         addRunDependency("wasm-instantiate");
 
-        function receiveInstantiationResult(result) {
-            receiveInstance(result["instance"], result["module"])
-        }
-        var info = getWasmImports();
+        const info = getWasmImports();
         if (Module["instantiateWasm"]) {
             try {
                 return Module["instantiateWasm"](info, receiveInstance)
@@ -252,15 +240,15 @@ export default async function (moduleArg = {}) {
         }
         const wasmBinaryFile = findWasmBinary();
         try {
-            var result = await instantiateArrayBuffer(wasmBinaryFile, info);
-            receiveInstantiationResult(result);
+            const result = await instantiateArrayBuffer(wasmBinaryFile, info);
+            receiveInstance(result["instance"], result["module"]);
             return result
         } catch (e) {
             readyPromiseReject(e);
             return
         }
     }
-    var ASM_CONSTS = {
+    const ASM_CONSTS = {
         2539960: $0 => {
             Module.is_worker = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
             Module.FD_BUFFER_MAX = $0;
@@ -297,13 +285,6 @@ export default async function (moduleArg = {}) {
             }
         }
     };
-    class ExitStatus {
-        name = "ExitStatus";
-        constructor(status) {
-            this.message = `Program terminated with exit(${status})`;
-            this.status = status
-        }
-    }
     var GOT = {};
     var currentModuleWeakSymbols = new Set([]);
     var GOTHandler = {
@@ -1151,10 +1132,6 @@ export default async function (moduleArg = {}) {
         join: (...paths) => PATH.normalize(paths.join("/")),
         join2: (l, r) => PATH.normalize(l + "/" + r)
     };
-    var initRandomFill = () => {
-        return view => crypto.getRandomValues(view)
-    };
-    var randomFill = view => (randomFill = initRandomFill())(view);
     var PATH_FS = {
         resolve: (...args) => {
             var resolvedPath = "",
@@ -3226,7 +3203,7 @@ export default async function (moduleArg = {}) {
                 randomLeft = 0;
             var randomByte = () => {
                 if (randomLeft === 0) {
-                    randomLeft = randomFill(randomBuffer).byteLength
+                    randomLeft = crypto.getRandomValues(randomBuffer).byteLength
                 }
                 return randomBuffer[--randomLeft]
             };

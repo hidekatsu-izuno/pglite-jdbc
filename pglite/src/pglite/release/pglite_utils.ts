@@ -1,5 +1,37 @@
 import fs from "node:fs";
 
+const dataURIPrefix = "data:application/octet-stream;base64,";
+export function isDataURI(filename: string) {
+    return filename.startsWith(dataURIPrefix);
+}
+
+function isFileURI(filename: string) {
+    return filename.startsWith("file://");
+}
+
+export function readBinary(filename: string) {
+    let filename_ = isFileURI(filename) ? new URL(filename) : filename;
+    let ret = fs.readFileSync(filename_);
+    return ret
+}
+
+export async function readAsync(filename: string, binary = true) {
+    let filename_ = isFileURI(filename) ? new URL(filename) : filename;
+    let ret = fs.readFileSync(filename_, binary ? undefined : "utf8");
+    return ret
+};
+
+export class ExitStatus {
+    name = "ExitStatus";
+    message: string;
+    status: any;
+
+    constructor(status: any) {
+        this.message = `Program terminated with exit(${status})`;
+        this.status = status
+    }
+}
+
 export function loadPackage(Module: any, metadata: any) {
     var PACKAGE_NAME = "pglite.data";
     var REMOTE_PACKAGE_BASE = "pglite.data";
