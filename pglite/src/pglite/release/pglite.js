@@ -1,4 +1,9 @@
-const _scriptName = import.meta.url;
+import fs from "node:fs";
+import nodePath from "node:path";
+import crypto from "node:crypto";
+import nodeUrl from "node:url";
+import cp from "node:child_process";
+
 export default async function Module(moduleArg = {}) {
     var Module = moduleArg;
     var readyPromiseResolve, readyPromiseReject;
@@ -6,100 +11,23 @@ export default async function Module(moduleArg = {}) {
         readyPromiseResolve = resolve;
         readyPromiseReject = reject
     });
-    var ENVIRONMENT_IS_WEB = typeof window == "object";
-    var ENVIRONMENT_IS_WORKER = typeof WorkerGlobalScope != "undefined";
-    var ENVIRONMENT_IS_NODE = typeof process == "object" && typeof process.versions == "object" && typeof process.versions.node == "string" && process.type != "renderer";
-    if (ENVIRONMENT_IS_NODE) {
-        const {
-            createRequire
-        } = await import("module");
-        let dirname = import.meta.url;
-        if (dirname.startsWith("data:")) {
-            dirname = "/"
-        }
-        var require = createRequire(dirname)
-    }
     Module["expectedDataFileDownloads"] ??= 0;
     Module["expectedDataFileDownloads"]++;
     (() => {
-        var isPthread = typeof ENVIRONMENT_IS_PTHREAD != "undefined" && ENVIRONMENT_IS_PTHREAD;
-        var isWasmWorker = typeof ENVIRONMENT_IS_WASM_WORKER != "undefined" && ENVIRONMENT_IS_WASM_WORKER;
-        if (isPthread || isWasmWorker) return;
-        var isNode = typeof process === "object" && typeof process.versions === "object" && typeof process.versions.node === "string";
-
         function loadPackage(metadata) {
-            var PACKAGE_PATH = "";
-            if (typeof window === "object") {
-                PACKAGE_PATH = window["encodeURIComponent"](window.location.pathname.substring(0, window.location.pathname.lastIndexOf("/")) + "/")
-            } else if (typeof process === "undefined" && typeof location !== "undefined") {
-                PACKAGE_PATH = encodeURIComponent(location.pathname.substring(0, location.pathname.lastIndexOf("/")) + "/")
-            }
             var PACKAGE_NAME = "pglite.data";
             var REMOTE_PACKAGE_BASE = "pglite.data";
             var REMOTE_PACKAGE_NAME = Module["locateFile"] ? Module["locateFile"](REMOTE_PACKAGE_BASE, "") : REMOTE_PACKAGE_BASE;
             var REMOTE_PACKAGE_SIZE = metadata["remote_package_size"];
 
-            function fetchRemotePackage(packageName, packageSize, callback, errback) {
-                if (isNode) {
-                    require("fs").readFile(packageName, (err, contents) => {
-                        if (err) {
-                            errback(err)
-                        } else {
-                            callback(contents.buffer)
-                        }
-                    });
-                    return
-                }
-                Module["dataFileDownloads"] ??= {};
-                fetch(packageName).catch(cause => Promise.reject(new Error(`Network Error: ${packageName}`, {
-                    cause
-                }))).then(response => {
-                    if (!response.ok) {
-                        return Promise.reject(new Error(`${response.status}: ${response.url}`))
+            function fetchRemotePackage(packageName, callback, errback) {
+                fs.readFile(packageName, (err, contents) => {
+                    if (err) {
+                        errback(err)
+                    } else {
+                        callback(contents.buffer)
                     }
-                    if (!response.body && response.arrayBuffer) {
-                        return response.arrayBuffer().then(callback)
-                    }
-                    const reader = response.body.getReader();
-                    const iterate = () => reader.read().then(handleChunk).catch(cause => Promise.reject(new Error(`Unexpected error while handling : ${response.url} ${cause}`, {
-                        cause
-                    })));
-                    const chunks = [];
-                    const headers = response.headers;
-                    const total = Number(headers.get("Content-Length") ?? packageSize);
-                    let loaded = 0;
-                    const handleChunk = ({
-                        done,
-                        value
-                    }) => {
-                        if (!done) {
-                            chunks.push(value);
-                            loaded += value.length;
-                            Module["dataFileDownloads"][packageName] = {
-                                loaded,
-                                total
-                            };
-                            let totalLoaded = 0;
-                            let totalSize = 0;
-                            for (const download of Object.values(Module["dataFileDownloads"])) {
-                                totalLoaded += download.loaded;
-                                totalSize += download.total
-                            }
-                            Module["setStatus"]?.(`Downloading data... (${totalLoaded}/${totalSize})`);
-                            return iterate()
-                        } else {
-                            const packageData = new Uint8Array(chunks.map(c => c.length).reduce((a, b) => a + b, 0));
-                            let offset = 0;
-                            for (const chunk of chunks) {
-                                packageData.set(chunk, offset);
-                                offset += chunk.length
-                            }
-                            callback(packageData.buffer)
-                        }
-                    };
-                    Module["setStatus"]?.("Downloading data...");
-                    return iterate()
-                })
+                });
             }
 
             function handleError(error) {
@@ -107,7 +35,7 @@ export default async function Module(moduleArg = {}) {
             }
             var fetchedCallback = null;
             var fetched = Module["getPreloadedPackage"] ? Module["getPreloadedPackage"](REMOTE_PACKAGE_NAME, REMOTE_PACKAGE_SIZE) : null;
-            if (!fetched) fetchRemotePackage(REMOTE_PACKAGE_NAME, REMOTE_PACKAGE_SIZE, data => {
+            if (!fetched) fetchRemotePackage(REMOTE_PACKAGE_NAME, data => {
                 if (fetchedCallback) {
                     fetchedCallback(data);
                     fetchedCallback = null
@@ -2973,7 +2901,7 @@ export default async function Module(moduleArg = {}) {
                 start: 4938870,
                 end: 4939130
             }],
-            remote_package_size: 4939130
+            remote_package_size: 4939170
         })
     })();
     var moduleOverrides = Object.assign({}, Module);
@@ -2990,64 +2918,27 @@ export default async function Module(moduleArg = {}) {
         }
         return scriptDirectory + path
     }
-    var readAsync, readBinary;
-    if (ENVIRONMENT_IS_NODE) {
-        var fs = require("fs");
-        var nodePath = require("path");
-        if (!import.meta.url.startsWith("data:")) {
-            scriptDirectory = nodePath.dirname(require("url").fileURLToPath(import.meta.url)) + "/"
-        }
-        readBinary = filename => {
-            filename = isFileURI(filename) ? new URL(filename) : filename;
-            var ret = fs.readFileSync(filename);
-            return ret
-        };
-        readAsync = async (filename, binary = true) => {
-            filename = isFileURI(filename) ? new URL(filename) : filename;
-            var ret = fs.readFileSync(filename, binary ? undefined : "utf8");
-            return ret
-        };
-        if (!Module["thisProgram"] && process.argv.length > 1) {
-            thisProgram = process.argv[1].replace(/\\/g, "/")
-        }
-        arguments_ = process.argv.slice(2);
-        quit_ = (status, toThrow) => {
-            process.exitCode = status;
-            throw toThrow
-        }
-    } else if (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER) {
-        if (ENVIRONMENT_IS_WORKER) {
-            scriptDirectory = self.location.href
-        } else if (typeof document != "undefined" && document.currentScript) {
-            scriptDirectory = document.currentScript.src
-        }
-        if (_scriptName) {
-            scriptDirectory = _scriptName
-        }
-        if (scriptDirectory.startsWith("blob:")) {
-            scriptDirectory = ""
-        } else {
-            scriptDirectory = scriptDirectory.substr(0, scriptDirectory.replace(/[?#].*/, "").lastIndexOf("/") + 1)
-        }
-        if (ENVIRONMENT_IS_WORKER) {
-            readBinary = url => {
-                var xhr = new XMLHttpRequest;
-                xhr.open("GET", url, false);
-                xhr.responseType = "arraybuffer";
-                xhr.send(null);
-                return new Uint8Array(xhr.response)
-            }
-        }
-        readAsync = async url => {
-            var response = await fetch(url, {
-                credentials: "same-origin"
-            });
-            if (response.ok) {
-                return response.arrayBuffer()
-            }
-            throw new Error(response.status + " : " + response.url)
-        }
-    } else {}
+    if (!import.meta.url.startsWith("data:")) {
+        scriptDirectory = nodePath.dirname(nodeUrl.fileURLToPath(import.meta.url)) + "/"
+    }
+    var readBinary = filename => {
+        filename = isFileURI(filename) ? new URL(filename) : filename;
+        var ret = fs.readFileSync(filename);
+        return ret
+    };
+    var readAsync = async (filename, binary = true) => {
+        filename = isFileURI(filename) ? new URL(filename) : filename;
+        var ret = fs.readFileSync(filename, binary ? undefined : "utf8");
+        return ret
+    };
+    if (!Module["thisProgram"] && process.argv.length > 1) {
+        thisProgram = process.argv[1].replace(/\\/g, "/")
+    }
+    arguments_ = process.argv.slice(2);
+    quit_ = (status, toThrow) => {
+        process.exitCode = status;
+        throw toThrow
+    }
     var out = Module["print"] || console.log.bind(console);
     var err = Module["printErr"] || console.error.bind(console);
     Object.assign(Module, moduleOverrides);
@@ -3055,20 +2946,6 @@ export default async function Module(moduleArg = {}) {
     if (Module["arguments"]) arguments_ = Module["arguments"];
     if (Module["thisProgram"]) thisProgram = Module["thisProgram"];
     var dynamicLibraries = Module["dynamicLibraries"] || [];
-    var wasmBinary = Module["wasmBinary"];
-
-    function intArrayFromBase64(s) {
-        if (typeof ENVIRONMENT_IS_NODE != "undefined" && ENVIRONMENT_IS_NODE) {
-            var buf = Buffer.from(s, "base64");
-            return new Uint8Array(buf.buffer, buf.byteOffset, buf.length)
-        }
-        var decoded = atob(s);
-        var bytes = new Uint8Array(decoded.length);
-        for (var i = 0; i < decoded.length; ++i) {
-            bytes[i] = decoded.charCodeAt(i)
-        }
-        return bytes
-    }
     var wasmMemory;
     var ABORT = false;
     var EXITSTATUS;
@@ -3204,25 +3081,12 @@ export default async function Module(moduleArg = {}) {
         }
         return new URL("pglite.wasm", import.meta.url).href
     }
-    var wasmBinaryFile;
 
-    function getBinarySync(file) {
-        if (file == wasmBinaryFile && wasmBinary) {
-            return new Uint8Array(wasmBinary)
-        }
-        if (readBinary) {
-            return readBinary(file)
-        }
-        throw "both async and sync fetching of the wasm failed"
-    }
     async function getWasmBinary(binaryFile) {
-        if (!wasmBinary) {
-            try {
-                var response = await readAsync(binaryFile);
-                return new Uint8Array(response)
-            } catch {}
-        }
-        return getBinarySync(binaryFile)
+        try {
+            var response = await readAsync(binaryFile);
+            return new Uint8Array(response)
+        } catch {}
     }
     async function instantiateArrayBuffer(binaryFile, imports) {
         try {
@@ -3233,21 +3097,6 @@ export default async function Module(moduleArg = {}) {
             err(`failed to asynchronously prepare wasm: ${reason}`);
             abort(reason)
         }
-    }
-    async function instantiateAsync(binary, binaryFile, imports) {
-        if (!binary && typeof WebAssembly.instantiateStreaming == "function" && !isDataURI(binaryFile) && !ENVIRONMENT_IS_NODE && typeof fetch == "function") {
-            try {
-                var response = fetch(binaryFile, {
-                    credentials: "same-origin"
-                });
-                var instantiationResult = await WebAssembly.instantiateStreaming(response, imports);
-                return instantiationResult
-            } catch (reason) {
-                err(`wasm streaming compile failed: ${reason}`);
-                err("falling back to ArrayBuffer instantiation")
-            }
-        }
-        return instantiateArrayBuffer(binaryFile, imports)
     }
 
     function getWasmImports() {
@@ -3288,9 +3137,9 @@ export default async function Module(moduleArg = {}) {
                 readyPromiseReject(e)
             }
         }
-        wasmBinaryFile ??= findWasmBinary();
+        const wasmBinaryFile = findWasmBinary();
         try {
-            var result = await instantiateAsync(wasmBinary, wasmBinaryFile, info);
+            var result = await instantiateArrayBuffer(wasmBinaryFile, info);
             receiveInstantiationResult(result);
             return result
         } catch (e) {
@@ -4190,20 +4039,7 @@ export default async function Module(moduleArg = {}) {
         join2: (l, r) => PATH.normalize(l + "/" + r)
     };
     var initRandomFill = () => {
-        if (typeof crypto == "object" && typeof crypto["getRandomValues"] == "function") {
-            return view => crypto.getRandomValues(view)
-        } else if (ENVIRONMENT_IS_NODE) {
-            try {
-                var crypto_module = require("crypto");
-                var randomFillSync = crypto_module["randomFillSync"];
-                if (randomFillSync) {
-                    return view => crypto_module["randomFillSync"](view)
-                }
-                var randomBytes = crypto_module["randomBytes"];
-                return view => (view.set(randomBytes(view.byteLength)), view)
-            } catch (e) {}
-        }
-        abort("initRandomDevice")
+        return view => crypto.getRandomValues(view)
     };
     var randomFill = view => (randomFill = initRandomFill())(view);
     var PATH_FS = {
@@ -6928,18 +6764,9 @@ export default async function Module(moduleArg = {}) {
                     return this._chunkSize
                 }
             }
-            if (typeof XMLHttpRequest != "undefined") {
-                if (!ENVIRONMENT_IS_WORKER) throw "Cannot do synchronous binary XHRs outside webworkers in modern browsers. Use --embed-file or --preload-file in emcc";
-                var lazyArray = new LazyUint8Array;
-                var properties = {
-                    isDevice: false,
-                    contents: lazyArray
-                }
-            } else {
-                var properties = {
-                    isDevice: false,
-                    url
-                }
+            var properties = {
+                isDevice: false,
+                url
             }
             var node = FS.createFile(parent, name, properties, canRead, canWrite);
             if (properties.contents) {
@@ -7255,13 +7082,7 @@ export default async function Module(moduleArg = {}) {
                             subProtocols = subProtocols.replace(/^ +| +$/g, "").split(/ *, */);
                             opts = subProtocols
                         }
-                        var WebSocketConstructor;
-                        if (ENVIRONMENT_IS_NODE) {
-                            WebSocketConstructor = require("ws")
-                        } else {
-                            WebSocketConstructor = WebSocket
-                        }
-                        ws = new WebSocketConstructor(url, opts);
+                        ws = new WebSocket(url, opts);
                         ws.binaryType = "arraybuffer"
                     } catch (e) {
                         throw new FS.ErrnoError(23)
@@ -7332,34 +7153,20 @@ export default async function Module(moduleArg = {}) {
                     });
                     SOCKFS.emit("message", sock.stream.fd)
                 }
-                if (ENVIRONMENT_IS_NODE) {
-                    peer.socket.on("open", handleOpen);
-                    peer.socket.on("message", (data, isBinary) => {
-                        if (!isBinary) {
-                            return
-                        }
-                        handleMessage(new Uint8Array(data).buffer)
-                    });
-                    peer.socket.on("close", () => {
-                        SOCKFS.emit("close", sock.stream.fd)
-                    });
-                    peer.socket.on("error", (error) => {
-                        sock.error = 14;
-                        SOCKFS.emit("error", [sock.stream.fd, sock.error, "ECONNREFUSED: Connection refused"])
-                    })
-                } else {
-                    peer.socket.onopen = handleOpen;
-                    peer.socket.onclose = () => {
-                        SOCKFS.emit("close", sock.stream.fd)
-                    };
-                    peer.socket.onmessage = function peer_socket_onmessage(event) {
-                        handleMessage(event.data)
-                    };
-                    peer.socket.onerror = (error) => {
-                        sock.error = 14;
-                        SOCKFS.emit("error", [sock.stream.fd, sock.error, "ECONNREFUSED: Connection refused"])
+                peer.socket.on("open", handleOpen);
+                peer.socket.on("message", (data, isBinary) => {
+                    if (!isBinary) {
+                        return
                     }
-                }
+                    handleMessage(new Uint8Array(data).buffer)
+                });
+                peer.socket.on("close", () => {
+                    SOCKFS.emit("close", sock.stream.fd)
+                });
+                peer.socket.on("error", (error) => {
+                    sock.error = 14;
+                    SOCKFS.emit("error", [sock.stream.fd, sock.error, "ECONNREFUSED: Connection refused"])
+                })
             },
             poll(sock) {
                 if (sock.type === 1 && sock.server) {
@@ -7452,40 +7259,7 @@ export default async function Module(moduleArg = {}) {
                 sock.connecting = true
             },
             listen(sock, backlog) {
-                if (!ENVIRONMENT_IS_NODE) {
-                    throw new FS.ErrnoError(138)
-                }
-                if (sock.server) {
-                    throw new FS.ErrnoError(28)
-                }
-                var WebSocketServer = require("ws").Server;
-                var host = sock.saddr;
-                sock.server = new WebSocketServer({
-                    host,
-                    port: sock.sport
-                });
-                SOCKFS.emit("listen", sock.stream.fd);
-                sock.server.on("connection", (ws) => {
-                    if (sock.type === 1) {
-                        var newsock = SOCKFS.createSocket(sock.family, sock.type, sock.protocol);
-                        var peer = SOCKFS.websocket_sock_ops.createPeer(newsock, ws);
-                        newsock.daddr = peer.addr;
-                        newsock.dport = peer.port;
-                        sock.pending.push(newsock);
-                        SOCKFS.emit("connection", newsock.stream.fd)
-                    } else {
-                        SOCKFS.websocket_sock_ops.createPeer(sock, ws);
-                        SOCKFS.emit("connection", sock.stream.fd)
-                    }
-                });
-                sock.server.on("close", () => {
-                    SOCKFS.emit("close", sock.stream.fd);
-                    sock.server = null
-                });
-                sock.server.on("error", (error) => {
-                    sock.error = 23;
-                    SOCKFS.emit("error", [sock.stream.fd, sock.error, "EHOSTUNREACH: Host is unreachable"])
-                })
+                throw new FS.ErrnoError(138)
             },
             accept(listensock) {
                 if (!listensock.server || !listensock.pending.length) {
@@ -8647,7 +8421,6 @@ export default async function Module(moduleArg = {}) {
             if (!command) return 1;
             var cmdstr = UTF8ToString(command);
             if (!cmdstr.length) return 0;
-            var cp = require("child_process");
             var ret = cp.spawnSync(cmdstr, [], {
                 shell: true,
                 stdio: "inherit"
