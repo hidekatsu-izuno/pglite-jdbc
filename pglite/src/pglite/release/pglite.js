@@ -5,7 +5,7 @@ import nodeUrl from "node:url";
 import cp from "node:child_process";
 import { pglitePackages } from "./pglite_packages.ts";
 
-export default async function Module(moduleArg = {}) {
+export default async function (moduleArg = {}) {
     var Module = moduleArg;
     var readyPromiseResolve, readyPromiseReject;
     var readyPromise = new Promise((resolve, reject) => {
@@ -14,141 +14,10 @@ export default async function Module(moduleArg = {}) {
     });
     Module["expectedDataFileDownloads"] ??= 0;
     Module["expectedDataFileDownloads"]++;
-    (() => {
-        function loadPackage(metadata) {
-            var PACKAGE_NAME = "pglite.data";
-            var REMOTE_PACKAGE_BASE = "pglite.data";
-            var REMOTE_PACKAGE_NAME = Module["locateFile"] ? Module["locateFile"](REMOTE_PACKAGE_BASE, "") : REMOTE_PACKAGE_BASE;
-            var REMOTE_PACKAGE_SIZE = metadata["remote_package_size"];
-
-            function fetchRemotePackage(packageName, callback, errback) {
-                fs.readFile(packageName, (err, contents) => {
-                    if (err) {
-                        errback(err)
-                    } else {
-                        callback(contents.buffer)
-                    }
-                });
-            }
-
-            function handleError(error) {
-                console.error("package error:", error)
-            }
-            var fetchedCallback = null;
-            var fetched = Module["getPreloadedPackage"] ? Module["getPreloadedPackage"](REMOTE_PACKAGE_NAME, REMOTE_PACKAGE_SIZE) : null;
-            if (!fetched) fetchRemotePackage(REMOTE_PACKAGE_NAME, data => {
-                if (fetchedCallback) {
-                    fetchedCallback(data);
-                    fetchedCallback = null
-                } else {
-                    fetched = data
-                }
-            }, handleError);
-
-            function runWithFS(Module) {
-                function assert(check, msg) {
-                    if (!check) throw msg + (new Error).stack
-                }
-                Module["FS_createPath"]("/", "home", true, true);
-                Module["FS_createPath"]("/home", "web_user", true, true);
-                Module["FS_createPath"]("/", "tmp", true, true);
-                Module["FS_createPath"]("/tmp", "pglite", true, true);
-                Module["FS_createPath"]("/tmp/pglite", "bin", true, true);
-                Module["FS_createPath"]("/tmp/pglite", "lib", true, true);
-                Module["FS_createPath"]("/tmp/pglite/lib", "postgresql", true, true);
-                Module["FS_createPath"]("/tmp/pglite/lib/postgresql", "pgxs", true, true);
-                Module["FS_createPath"]("/tmp/pglite/lib/postgresql/pgxs", "config", true, true);
-                Module["FS_createPath"]("/tmp/pglite/lib/postgresql/pgxs", "src", true, true);
-                Module["FS_createPath"]("/tmp/pglite/lib/postgresql/pgxs/src", "makefiles", true, true);
-                Module["FS_createPath"]("/tmp/pglite", "share", true, true);
-                Module["FS_createPath"]("/tmp/pglite/share", "postgresql", true, true);
-                Module["FS_createPath"]("/tmp/pglite/share/postgresql", "extension", true, true);
-                Module["FS_createPath"]("/tmp/pglite/share/postgresql", "timezone", true, true);
-                Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Africa", true, true);
-                Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "America", true, true);
-                Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone/America", "Argentina", true, true);
-                Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone/America", "Indiana", true, true);
-                Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone/America", "Kentucky", true, true);
-                Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone/America", "North_Dakota", true, true);
-                Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Antarctica", true, true);
-                Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Arctic", true, true);
-                Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Asia", true, true);
-                Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Atlantic", true, true);
-                Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Australia", true, true);
-                Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Brazil", true, true);
-                Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Canada", true, true);
-                Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Chile", true, true);
-                Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Etc", true, true);
-                Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Europe", true, true);
-                Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Indian", true, true);
-                Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Mexico", true, true);
-                Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "Pacific", true, true);
-                Module["FS_createPath"]("/tmp/pglite/share/postgresql/timezone", "US", true, true);
-                Module["FS_createPath"]("/tmp/pglite/share/postgresql", "timezonesets", true, true);
-                Module["FS_createPath"]("/tmp/pglite/share/postgresql", "tsearch_data", true, true);
-
-                function DataRequest(start, end, audio) {
-                    this.start = start;
-                    this.end = end;
-                    this.audio = audio
-                }
-                DataRequest.prototype = {
-                    requests: {},
-                    open: function(mode, name) {
-                        this.name = name;
-                        this.requests[name] = this;
-                        Module["addRunDependency"](`fp ${this.name}`)
-                    },
-                    send: () => {},
-                    onload: function() {
-                        var byteArray = this.byteArray.subarray(this.start, this.end);
-                        this.finish(byteArray)
-                    },
-                    finish: function(byteArray) {
-                        Module["FS_createDataFile"](this.name, null, byteArray, true, true, true);
-                        Module["removeRunDependency"](`fp ${this.name}`);
-                        this.requests[this.name] = null
-                    }
-                };
-                var files = metadata["files"];
-                for (var i = 0; i < files.length; ++i) {
-                    new DataRequest(files[i]["start"], files[i]["end"], files[i]["audio"] || 0).open("GET", files[i]["filename"])
-                }
-
-                function processPackageData(arrayBuffer) {
-                    assert(arrayBuffer, "Loading data file failed.");
-                    assert(arrayBuffer.constructor.name === ArrayBuffer.name, "bad input to processPackageData");
-                    var byteArray = new Uint8Array(arrayBuffer);
-                    DataRequest.prototype.byteArray = byteArray;
-                    var files = metadata["files"];
-                    for (var i = 0; i < files.length; ++i) {
-                        DataRequest.prototype.requests[files[i].filename].onload()
-                    }
-                    Module["removeRunDependency"]("datafile_pglite.data")
-                }
-                Module["addRunDependency"]("datafile_pglite.data");
-                Module["preloadResults"] ??= {};
-                Module["preloadResults"][PACKAGE_NAME] = {
-                    fromCache: false
-                };
-                if (fetched) {
-                    processPackageData(fetched);
-                    fetched = null
-                } else {
-                    fetchedCallback = processPackageData
-                }
-            }
-            if (Module["calledRun"]) {
-                runWithFS(Module)
-            } else {
-                (Module["preRun"] ??= []).push(runWithFS)
-            }
-        }
-        loadPackage({
-            files: pglitePackages,
-            remote_package_size: 4939130
-        })
-    })();
+    loadPackage(Module, {
+        files: pglitePackages,
+        remote_package_size: 4939130
+    });
     var moduleOverrides = Object.assign({}, Module);
     var arguments_ = [];
     var thisProgram = "./this.program";
@@ -156,7 +25,6 @@ export default async function Module(moduleArg = {}) {
         throw toThrow
     };
     var scriptDirectory = "";
-
     function locateFile(path) {
         if (Module["locateFile"]) {
             return Module["locateFile"](path, scriptDirectory)
@@ -200,8 +68,8 @@ export default async function Module(moduleArg = {}) {
             abort(text)
         }
     }
-    var HEAP8, HEAPU8, HEAP16, HEAPU16, HEAP32, HEAPU32, HEAPF32, HEAP64, HEAPU64, HEAPF64;
 
+    var HEAP8, HEAPU8, HEAP16, HEAPU16, HEAP32, HEAPU32, HEAPF32, HEAP64, HEAPU64, HEAPF64;
     function updateMemoryViews() {
         var b = wasmMemory.buffer;
         Module["HEAP8"] = HEAP8 = new Int8Array(b);
@@ -1400,20 +1268,18 @@ export default async function Module(moduleArg = {}) {
     var FS_stdin_getChar = () => {
         if (!FS_stdin_getChar_buffer.length) {
             var result = null;
-            if (ENVIRONMENT_IS_NODE) {
-                var BUFSIZE = 256;
-                var buf = Buffer.alloc(BUFSIZE);
-                var bytesRead = 0;
-                var fd = process.stdin.fd;
-                try {
-                    bytesRead = fs.readSync(fd, buf, 0, BUFSIZE)
-                } catch (e) {
-                    if (e.toString().includes("EOF")) bytesRead = 0;
-                    else throw e
-                }
-                if (bytesRead > 0) {
-                    result = buf.slice(0, bytesRead).toString("utf-8")
-                }
+            var BUFSIZE = 256;
+            var buf = Buffer.alloc(BUFSIZE);
+            var bytesRead = 0;
+            var fd = process.stdin.fd;
+            try {
+                bytesRead = fs.readSync(fd, buf, 0, BUFSIZE)
+            } catch (e) {
+                if (e.toString().includes("EOF")) bytesRead = 0;
+                else throw e
+            }
+            if (bytesRead > 0) {
+                result = buf.slice(0, bytesRead).toString("utf-8")
             }
             if (!result) {
                 return null
@@ -5332,40 +5198,36 @@ export default async function Module(moduleArg = {}) {
     };
     __emscripten_runtime_keepalive_clear.sig = "v";
     var __emscripten_system = command => {
-        if (ENVIRONMENT_IS_NODE) {
-            if (!command) return 1;
-            var cmdstr = UTF8ToString(command);
-            if (!cmdstr.length) return 0;
-            var ret = cp.spawnSync(cmdstr, [], {
-                shell: true,
-                stdio: "inherit"
-            });
-            var _W_EXITCODE = (ret, sig) => ret << 8 | sig;
-            if (ret.status === null) {
-                var signalToNumber = sig => {
-                    switch (sig) {
-                        case "SIGHUP":
-                            return 1;
-                        case "SIGQUIT":
-                            return 3;
-                        case "SIGFPE":
-                            return 8;
-                        case "SIGKILL":
-                            return 9;
-                        case "SIGALRM":
-                            return 14;
-                        case "SIGTERM":
-                            return 15;
-                        default:
-                            return 2
-                    }
-                };
-                return _W_EXITCODE(0, signalToNumber(ret.signal))
-            }
-            return _W_EXITCODE(ret.status, 0)
+        if (!command) return 1;
+        var cmdstr = UTF8ToString(command);
+        if (!cmdstr.length) return 0;
+        var ret = cp.spawnSync(cmdstr, [], {
+            shell: true,
+            stdio: "inherit"
+        });
+        var _W_EXITCODE = (ret, sig) => ret << 8 | sig;
+        if (ret.status === null) {
+            var signalToNumber = sig => {
+                switch (sig) {
+                    case "SIGHUP":
+                        return 1;
+                    case "SIGQUIT":
+                        return 3;
+                    case "SIGFPE":
+                        return 8;
+                    case "SIGKILL":
+                        return 9;
+                    case "SIGALRM":
+                        return 14;
+                    case "SIGTERM":
+                        return 15;
+                    default:
+                        return 2
+                }
+            };
+            return _W_EXITCODE(0, signalToNumber(ret.signal))
         }
-        if (!command) return 0;
-        return -52
+        return _W_EXITCODE(ret.status, 0)
     };
     __emscripten_system.sig = "ip";
     var __emscripten_throw_longjmp = () => {
@@ -6016,9 +5878,7 @@ export default async function Module(moduleArg = {}) {
     Module["FS_createDevice"] = FS.createDevice;
     MEMFS.doesNotExistError = new FS.ErrnoError(44);
     MEMFS.doesNotExistError.stack = "<generic error, no stack>";
-    if (ENVIRONMENT_IS_NODE) {
-        NODEFS.staticInit()
-    }
+    NODEFS.staticInit()
     var wasmImports = {
         __assert_fail: ___assert_fail,
         __call_sighandler: ___call_sighandler,
@@ -8081,37 +7941,45 @@ export default async function Module(moduleArg = {}) {
 
     function run(args = arguments_) {
         if (runDependencies > 0) {
-            return
+            return;
         }
         preRun();
         if (runDependencies > 0) {
-            return
+            return;
         }
 
         function doRun() {
-            if (calledRun) return;
+            if (calledRun) {
+                return;
+            }
             calledRun = true;
             Module["calledRun"] = true;
-            if (ABORT) return;
+            if (ABORT) {
+                return;
+            }
             initRuntime();
             preMain();
             readyPromiseResolve(Module);
             Module["onRuntimeInitialized"]?.();
-            if (shouldRunNow) callMain(args);
+            if (shouldRunNow) {
+                callMain(args);
+            }
             postRun()
         }
         if (Module["setStatus"]) {
             Module["setStatus"]("Running...");
             setTimeout(() => {
                 setTimeout(() => Module["setStatus"](""), 1);
-                doRun()
-            }, 1)
+                doRun();
+            }, 1);
         } else {
-            doRun()
+            doRun();
         }
     }
     if (Module["preInit"]) {
-        if (typeof Module["preInit"] == "function") Module["preInit"] = [Module["preInit"]];
+        if (typeof Module["preInit"] === "function") {
+            Module["preInit"] = [Module["preInit"]];
+        }
         while (Module["preInit"].length > 0) {
             Module["preInit"].pop()()
         }
