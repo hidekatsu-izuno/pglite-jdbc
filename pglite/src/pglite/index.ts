@@ -1,7 +1,6 @@
 export { Mutex } from "async-mutex";
 export * as protocol from "../pg-protocol";
 export * as messages from "../pg-protocol/messages";
-export { IdbFs } from "./fs/idbfs.js";
 export { MemoryFS } from "./fs/memoryfs.js";
 export * from "./interface.js";
 export * as parse from "./parse.js";
