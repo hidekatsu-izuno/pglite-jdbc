@@ -2901,7 +2901,7 @@ export default async function Module(moduleArg = {}) {
                 start: 4938870,
                 end: 4939130
             }],
-            remote_package_size: 4939170
+            remote_package_size: 4939130
         })
     })();
     var moduleOverrides = Object.assign({}, Module);
