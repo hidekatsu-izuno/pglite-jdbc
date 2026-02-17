@@ -857,7 +857,7 @@ export default async function Module(moduleArg = {}) {
             if (sig[0] == "j") return 0n
         }
     };
-    var resolveGlobalSymbol = (symName, direct = false) => {
+    var resolveGlobalSymbol = (symName) => {
         var sym;
         if (isSymbolDefined(symName)) {
             sym = wasmImports[symName]
@@ -8116,7 +8116,7 @@ export default async function Module(moduleArg = {}) {
             Module["preInit"].pop()()
         }
     }
-    var shouldRunNow = true;
+    let shouldRunNow = true;
     if (Module["noInitialRun"]) shouldRunNow = false;
     run();
     return readyPromise;
