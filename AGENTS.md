@@ -1,6 +1,6 @@
 <tech_stack>
 - Java 21
-- wasmer: WASM engine
+- Chricory: WASM engine
 - commons-compress: alternative for tinytar
 </tech_stack>
 
