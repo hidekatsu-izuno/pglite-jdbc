@@ -10,7 +10,7 @@
 </project_layout>
 
 <commands>
-- mise x -- gradle build: Build and run tests
+- mise x -- mvn compile: Build
 </commands>
 
 <conversion_hints>
@@ -20,6 +20,7 @@
 - Use java.util.concurrent.Semaphore instead of 'async-mutex'.
 - Preserve TypeScript control flow and expressions as closely as possible in Java; avoid rewrites unless required by language constraints.
 - Resources such as pglite.wasm and amcheck.tar.gz are placed in src/main/resources, so please retrieve them via the classpath.
+- Do not use asynchronous execution for code implemented with Promises if the logic can be implemented synchronously in Java.
 </conversion_hints>
 
 <workflow>

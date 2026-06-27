@@ -1,144 +1,104 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs;
 
-import io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.tarUtils.DumpTarCompressionOptions;
-import io.github.hidekatsu_izuno.pglite_jdbc.pglite.pglite;
-import java.nio.file.Path;
-import java.util.Map;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
+import java.util.Map;
 
 public class base {
-    public static final String WASM_PREFIX = "/tmp/pglite";
-    public static final String PGDATA = WASM_PREFIX + "/base";
+    public static final String PGLITE_DATA_DIR = "/pglite/data";
 
     public enum FsType {
         nodefs,
-        idbfs,
         memoryfs,
-        opfs_ahp,
     }
 
-    public record InitResult(Map<String, Object> emscriptenOpts) {}
+    public sealed interface WasiFilesystemDescriptor permits HostDescriptor, MemoryDescriptor, RuntimeDescriptor {
+        String kind();
+    }
+
+    public record HostDescriptor(String path) implements WasiFilesystemDescriptor {
+        @Override
+        public String kind() {
+            return "host";
+        }
+    }
+
+    public record MemoryDescriptor(String name) implements WasiFilesystemDescriptor {
+        @Override
+        public String kind() {
+            return "memory";
+        }
+    }
+
+    public record RuntimeDescriptor(String name, Map<String, Object> options) implements WasiFilesystemDescriptor {
+        @Override
+        public String kind() {
+            return "runtime";
+        }
+    }
+
+    public record WasiFilesystemMount(
+        String dataDir,
+        Map<String, WasiFilesystemDescriptor> mounts,
+        Map<String, String> preopens
+    ) {}
+
+    public record FsStats(
+        long dev,
+        long ino,
+        int mode,
+        long nlink,
+        long uid,
+        long gid,
+        long rdev,
+        long size,
+        long blksize,
+        long blocks,
+        long atime,
+        long mtime,
+        long ctime
+    ) {}
 
     public interface Filesystem {
-        Promise<InitResult> init(
-            pglite pg,
-            Map<String, Object> emscriptenOptions
-        );
+        Promise<WasiFilesystemMount> initWasi();
+
+        default Promise<Boolean> exists(String path) {
+            return Promise.resolve(false);
+        }
 
         Promise<Void> syncToFs(Boolean relaxedDurability);
 
         Promise<Void> initialSyncFs();
 
-        Promise<byte[]> dumpTar(String dbname, DumpTarCompressionOptions compression);
-
         Promise<Void> closeFs();
-    }
 
-    public static class EmscriptenBuiltinFilesystem implements Filesystem {
-        protected String dataDir;
-        protected pglite pg;
+        void chmod(String path, int mode);
 
-        public EmscriptenBuiltinFilesystem(String dataDir) {
-            this.dataDir = dataDir;
-        }
+        void close(int fd);
 
-        @Override
-        public Promise<InitResult> init(
-            pglite pg,
-            Map<String, Object> emscriptenOptions
-        ) {
-            this.pg = pg;
-            return Promise.resolve(new InitResult(emscriptenOptions));
-        }
+        FsStats fstat(int fd);
 
-        @Override
-        public Promise<Void> syncToFs(Boolean relaxedDurability) {
-            return Promise.resolve(null);
-        }
+        FsStats lstat(String path);
 
-        @Override
-        public Promise<Void> initialSyncFs() {
-            return Promise.resolve(null);
-        }
+        void mkdir(String path, boolean recursive, Integer mode);
 
-        @Override
-        public Promise<byte[]> dumpTar(
-            String dbname,
-            DumpTarCompressionOptions compression
-        ) {
-            Path path;
-            if (dataDir != null && !dataDir.isBlank()) {
-                path = Path.of(dataDir).toAbsolutePath().normalize();
-            } else {
-                path = Path.of(PGDATA);
-            }
-            return Promise.resolve(tarUtils.createTarball(path, compression));
-        }
+        int open(String path, String flags, Integer mode);
 
-        @Override
-        public Promise<Void> closeFs() {
-            return Promise.resolve(null);
-        }
-    }
+        String[] readdir(String path);
 
-    public static abstract class BaseFilesystem extends EmscriptenBuiltinFilesystem {
-        protected final boolean debug;
+        int read(int fd, byte[] buffer, int offset, int length, int position);
 
-        protected BaseFilesystem(String dataDir, boolean debug) {
-            super(dataDir);
-            this.debug = debug;
-        }
+        void rename(String oldPath, String newPath);
 
-        public record FsStats(
-            long dev,
-            long ino,
-            int mode,
-            long nlink,
-            long uid,
-            long gid,
-            long rdev,
-            long size,
-            long blksize,
-            long blocks,
-            long atime,
-            long mtime,
-            long ctime
-        ) {}
+        void rmdir(String path);
 
-        public abstract void chmod(String path, int mode);
+        void truncate(String path, int len);
 
-        public abstract void close(int fd);
+        void unlink(String path);
 
-        public abstract FsStats fstat(int fd);
+        void utimes(String path, long atime, long mtime);
 
-        public abstract FsStats lstat(String path);
+        void writeFile(String path, byte[] data, String encoding, Integer mode, String flag);
 
-        public abstract void mkdir(String path, boolean recursive, Integer mode);
-
-        public abstract int open(String path, String flags, Integer mode);
-
-        public abstract String[] readdir(String path);
-
-        public abstract int read(int fd, byte[] buffer, int offset, int length, int position);
-
-        public abstract void rename(String oldPath, String newPath);
-
-        public abstract void rmdir(String path);
-
-        public abstract void truncate(String path, int len);
-
-        public abstract void unlink(String path);
-
-        public abstract void utimes(String path, long atime, long mtime);
-
-        public abstract void writeFile(
-            String path,
-            byte[] data,
-            String encoding,
-            Integer mode,
-            String flag
-        );
-
-        public abstract int write(int fd, byte[] buffer, int offset, int length, int position);
+        int write(int fd, byte[] buffer, int offset, int length, int position);
     }
 }
