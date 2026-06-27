@@ -1,0 +1,14 @@
+diff --git a/src/include/utils/relmapper.h b/src/include/utils/relmapper.h
+index ae1a7567d9..1ef81f85a6 100644
+--- a/src/include/utils/relmapper.h
++++ b/src/include/utils/relmapper.h
+@@ -61,6 +61,9 @@ extern void RelationMapFinishBootstrap(void);
+ extern void RelationMapInitialize(void);
+ extern void RelationMapInitializePhase2(void);
+ extern void RelationMapInitializePhase3(void);
++#ifdef __wasi__
++extern void pglite_reset_relation_maps(void);
++#endif
+ 
+ extern Size EstimateRelationMapSpace(void);
+ extern void SerializeRelationMap(Size maxSize, char *startAddress);

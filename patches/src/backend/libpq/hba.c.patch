@@ -1,0 +1,14 @@
+diff --git a/src/backend/libpq/hba.c b/src/backend/libpq/hba.c
+index 332fad2783..b0c2ee2ddf 100644
+--- a/src/backend/libpq/hba.c
++++ b/src/backend/libpq/hba.c
+@@ -21,7 +21,9 @@
+ #include <fcntl.h>
+ #include <sys/param.h>
+ #include <sys/socket.h>
++#ifndef __wasi__
+ #include <netdb.h>
++#endif
+ #include <netinet/in.h>
+ #include <arpa/inet.h>
+ #include <unistd.h>

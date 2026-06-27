@@ -1,0 +1,14 @@
+diff --git a/src/backend/access/transam/xlogarchive.c b/src/backend/access/transam/xlogarchive.c
+index 1ef1713c91..1b10951e5e 100644
+--- a/src/backend/access/transam/xlogarchive.c
++++ b/src/backend/access/transam/xlogarchive.c
+@@ -15,7 +15,9 @@
+ #include "postgres.h"
+ 
+ #include <sys/stat.h>
++#ifndef __wasi__
+ #include <sys/wait.h>
++#endif
+ #include <signal.h>
+ #include <unistd.h>
+ 

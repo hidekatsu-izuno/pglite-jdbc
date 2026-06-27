@@ -1,0 +1,194 @@
+diff --git a/src/backend/storage/file/fd.c b/src/backend/storage/file/fd.c
+index b2d45cf76c..194a558a81 100644
+--- a/src/backend/storage/file/fd.c
++++ b/src/backend/storage/file/fd.c
+@@ -102,6 +102,11 @@
+ #include "utils/resowner.h"
+ #include "utils/varlena.h"
+ 
++#ifdef __wasi__
++extern FILE *pgl_popen(const char *command, const char *mode);
++extern int	pgl_pclose(FILE *stream);
++#endif
++
+ /* Define PG_FLUSH_DATA_WORKS if we have an implementation for pg_flush_data */
+ #if defined(HAVE_SYNC_FILE_RANGE)
+ #define PG_FLUSH_DATA_WORKS 1
+@@ -974,7 +979,7 @@ count_usable_fds(int max_to_probe, int *usable_fds, int *already_open)
+ 	int			highestfd = 0;
+ 	int			j;
+ 
+-#ifdef HAVE_GETRLIMIT
++#if defined(HAVE_GETRLIMIT) && !defined(__wasi__)
+ 	struct rlimit rlim;
+ 	int			getrlimit_status;
+ #endif
+@@ -982,7 +987,7 @@ count_usable_fds(int max_to_probe, int *usable_fds, int *already_open)
+ 	size = 1024;
+ 	fd = (int *) palloc(size * sizeof(int));
+ 
+-#ifdef HAVE_GETRLIMIT
++#if defined(HAVE_GETRLIMIT) && !defined(__wasi__)
+ 	getrlimit_status = getrlimit(RLIMIT_NOFILE, &rlim);
+ 	if (getrlimit_status != 0)
+ 		ereport(WARNING, (errmsg("getrlimit failed: %m")));
+@@ -993,7 +998,7 @@ count_usable_fds(int max_to_probe, int *usable_fds, int *already_open)
+ 	{
+ 		int			thisfd;
+ 
+-#ifdef HAVE_GETRLIMIT
++#if defined(HAVE_GETRLIMIT) && !defined(__wasi__)
+ 
+ 		/*
+ 		 * don't go beyond RLIMIT_NOFILE; causes irritating kernel logs on
+@@ -1051,6 +1056,12 @@ set_max_safe_fds(void)
+ 	int			usable_fds;
+ 	int			already_open;
+ 
++#ifdef __wasi__
++	max_safe_fds = max_files_per_process - NUM_RESERVED_FDS;
++	elog(DEBUG2, "max_safe_fds = %d for WASI", max_safe_fds);
++	return;
++#endif
++
+ 	/*----------
+ 	 * We want to set max_safe_fds to
+ 	 *			MIN(usable_fds, max_files_per_process)
+@@ -1597,16 +1608,33 @@ File
+ PathNameOpenFilePerm(const char *fileName, int fileFlags, mode_t fileMode)
+ {
+ 	char	   *fnamecopy;
++#ifdef __wasi__
++	char		wasm_path[MAXPGPATH];
++	const char *openName = fileName;
++#endif
+ 	File		file;
+ 	Vfd		   *vfdP;
+ 
+ 	DO_DB(elog(LOG, "PathNameOpenFilePerm: %s %x %o",
+ 			   fileName, fileFlags, fileMode));
+ 
++#ifdef __wasi__
++	/*
++	 * WASI libc has to resolve paths through preopens, and relative-path
++	 * resolution can become fragile across the in-process initdb subprocess
++	 * transitions.  Keep VFD reopen paths anchored to DataDir.
++	 */
++	if (!is_absolute_path(fileName) && DataDir != NULL)
++	{
++		snprintf(wasm_path, sizeof(wasm_path), "%s/%s", DataDir, fileName);
++		openName = wasm_path;
++	}
++#endif
++
+ 	/*
+ 	 * We need a malloc'd copy of the file name; fail cleanly if no room.
+ 	 */
+-	fnamecopy = strdup(fileName);
++	fnamecopy = strdup(openName);
+ 	if (fnamecopy == NULL)
+ 		ereport(ERROR,
+ 				(errcode(ERRCODE_OUT_OF_MEMORY),
+@@ -1626,7 +1654,7 @@ PathNameOpenFilePerm(const char *fileName, int fileFlags, mode_t fileMode)
+ 	 */
+ 	fileFlags |= O_CLOEXEC;
+ 
+-	vfdP->fd = BasicOpenFilePerm(fileName, fileFlags, fileMode);
++	vfdP->fd = BasicOpenFilePerm(openName, fileFlags, fileMode);
+ 
+ 	if (vfdP->fd < 0)
+ 	{
+@@ -2479,9 +2507,57 @@ FileSize(File file)
+ 			return (off_t) -1;
+ 	}
+ 
++#ifdef __wasi__
++	{
++		struct stat	statbuf;
++
++		if (fstat(VfdCache[file].fd, &statbuf) != 0)
++		{
++			if (errno == EBADF)
++			{
++				if (stat(VfdCache[file].fileName, &statbuf) == 0)
++					return statbuf.st_size;
++			}
++			return (off_t) -1;
++		}
++		return statbuf.st_size;
++	}
++#else
+ 	return lseek(VfdCache[file].fd, 0, SEEK_END);
++#endif
+ }
+ 
++#ifdef __wasi__
++void
++pglite_reset_file_access(void)
++{
++	int			i;
++
++	if (SizeVfdCache > 0)
++	{
++		for (i = 1; i < SizeVfdCache; i++)
++		{
++			if (VfdCache[i].fileName != NULL)
++			{
++				if (VfdCache[i].fd != VFD_CLOSED)
++					close(VfdCache[i].fd);
++				free(VfdCache[i].fileName);
++			}
++		}
++
++		free(VfdCache);
++		VfdCache = NULL;
++		SizeVfdCache = 0;
++	}
++
++	nfile = 0;
++#ifdef USE_ASSERT_CHECKING
++	temporary_files_allowed = false;
++#endif
++	numAllocatedDescs = 0;
++}
++#endif
++
+ int
+ FileTruncate(File file, off_t offset, uint32 wait_event_info)
+ {
+@@ -2771,7 +2847,11 @@ TryAgain:
+ 	fflush(NULL);
+ 	pqsignal(SIGPIPE, SIG_DFL);
+ 	errno = 0;
++#ifdef __wasi__
++	file = pgl_popen(command, mode);
++#else
+ 	file = popen(command, mode);
++#endif
+ 	save_errno = errno;
+ 	pqsignal(SIGPIPE, SIG_IGN);
+ 	errno = save_errno;
+@@ -2816,7 +2896,11 @@ FreeDesc(AllocateDesc *desc)
+ 			result = fclose(desc->desc.file);
+ 			break;
+ 		case AllocateDescPipe:
++#ifdef __wasi__
++			result = pgl_pclose(desc->desc.file);
++#else
+ 			result = pclose(desc->desc.file);
++#endif
+ 			break;
+ 		case AllocateDescDir:
+ 			result = closedir(desc->desc.dir);
+@@ -3075,7 +3159,11 @@ ClosePipeStream(FILE *file)
+ 	/* Only get here if someone passes us a file not in allocatedDescs */
+ 	elog(WARNING, "file passed to ClosePipeStream was not obtained from OpenPipeStream");
+ 
++#ifdef __wasi__
++	return pgl_pclose(file);
++#else
+ 	return pclose(file);
++#endif
+ }
+ 
+ /*

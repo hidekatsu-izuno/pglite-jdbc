@@ -1,0 +1,23 @@
+diff --git a/src/backend/postmaster/fork_process.c b/src/backend/postmaster/fork_process.c
+index a64eeb71b8..14fa2a6080 100644
+--- a/src/backend/postmaster/fork_process.c
++++ b/src/backend/postmaster/fork_process.c
+@@ -32,6 +32,10 @@
+ pid_t
+ fork_process(void)
+ {
++#ifdef __wasi__
++	errno = ENOSYS;
++	return -1;
++#else
+ 	pid_t		result;
+ 	const char *oomfilename;
+ 	sigset_t	save_mask;
+@@ -123,6 +127,7 @@ fork_process(void)
+ 	}
+ 
+ 	return result;
++#endif
+ }
+ 
+ #endif							/* ! WIN32 */

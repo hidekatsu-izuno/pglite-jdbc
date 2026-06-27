@@ -1,0 +1,27 @@
+diff --git a/src/backend/utils/mmgr/mcxt.c b/src/backend/utils/mmgr/mcxt.c
+index f7689ea6de..6c04c006b6 100644
+--- a/src/backend/utils/mmgr/mcxt.c
++++ b/src/backend/utils/mmgr/mcxt.c
+@@ -377,6 +377,22 @@ MemoryContextInit(void)
+ 	MemoryContextAllowInCriticalSection(ErrorContext, true);
+ }
+ 
++#ifdef __wasi__
++void
++pglite_reset_memory_contexts(void)
++{
++	TopMemoryContext = NULL;
++	ErrorContext = NULL;
++	PostmasterContext = NULL;
++	CacheMemoryContext = NULL;
++	MessageContext = NULL;
++	TopTransactionContext = NULL;
++	CurTransactionContext = NULL;
++	PortalContext = NULL;
++	CurrentMemoryContext = NULL;
++}
++#endif
++
+ /*
+  * MemoryContextReset
+  *		Release all space allocated within a context and delete all its

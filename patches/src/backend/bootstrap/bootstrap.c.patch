@@ -1,0 +1,51 @@
+diff --git a/src/backend/bootstrap/bootstrap.c b/src/backend/bootstrap/bootstrap.c
+index 6db864892d..9d4d35049e 100644
+--- a/src/backend/bootstrap/bootstrap.c
++++ b/src/backend/bootstrap/bootstrap.c
+@@ -50,6 +50,23 @@ static void populate_typ_list(void);
+ static Oid	gettype(char *type);
+ static void cleanup(void);
+ 
++#if defined(__wasi__)
++typedef struct yy_buffer_state *YY_BUFFER_STATE;
++extern YY_BUFFER_STATE boot_yy_scan_bytes(const char *bytes, int len,
++										  yyscan_t yyscanner);
++extern void boot_yy_delete_buffer(YY_BUFFER_STATE b, yyscan_t yyscanner);
++
++static const char *pglite_bootstrap_input = NULL;
++static int	pglite_bootstrap_input_len = 0;
++
++void
++pglite_set_bootstrap_input(const char *input, int len)
++{
++	pglite_bootstrap_input = input;
++	pglite_bootstrap_input_len = len;
++}
++#endif
++
+ /* ----------------
+  *		global variables
+  * ----------------
+@@ -385,9 +402,22 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
+ 	/*
+ 	 * Process bootstrap input.
+ 	 */
++#if defined(__wasi__)
++	YY_BUFFER_STATE pglite_bootstrap_buffer = NULL;
++
++	if (pglite_bootstrap_input != NULL)
++		pglite_bootstrap_buffer =
++			boot_yy_scan_bytes(pglite_bootstrap_input,
++							   pglite_bootstrap_input_len,
++							   scanner);
++#endif
+ 	StartTransactionCommand();
+ 	boot_yyparse(scanner);
+ 	CommitTransactionCommand();
++#if defined(__wasi__)
++	if (pglite_bootstrap_buffer != NULL)
++		boot_yy_delete_buffer(pglite_bootstrap_buffer, scanner);
++#endif
+ 
+ 	/*
+ 	 * We should now know about all mapped relations, so it's okay to write

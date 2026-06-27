@@ -1,0 +1,14 @@
+diff --git a/src/backend/libpq/be-secure.c b/src/backend/libpq/be-secure.c
+index d723e74e81..5fef1c80bc 100644
+--- a/src/backend/libpq/be-secure.c
++++ b/src/backend/libpq/be-secure.c
+@@ -22,7 +22,9 @@
+ #include <fcntl.h>
+ #include <ctype.h>
+ #include <sys/socket.h>
++#ifndef __wasi__
+ #include <netdb.h>
++#endif
+ #include <netinet/in.h>
+ #include <netinet/tcp.h>
+ #include <arpa/inet.h>

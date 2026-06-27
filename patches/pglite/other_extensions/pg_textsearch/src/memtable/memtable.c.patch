@@ -1,0 +1,17 @@
+diff --git a/src/memtable/memtable.c b/src/memtable/memtable.c
+new file mode 100644
+index 00000000..b4d9ec10
+--- /dev/null
++++ b/src/memtable/memtable.c
+@@ -0,0 +1,11 @@
++/*
++ * Copyright (c) 2025-2026 Tiger Data, Inc.
++ * Licensed under the PostgreSQL License. See LICENSE for details.
++ *
++ * memtable.c - In-memory inverted index implementation
++ */
++#include <postgres.h>
++
++#include <utils/memutils.h>
++
++#include "memtable/memtable.h"

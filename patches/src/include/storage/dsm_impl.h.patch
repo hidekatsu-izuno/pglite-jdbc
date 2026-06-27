@@ -1,0 +1,22 @@
+diff --git a/src/include/storage/dsm_impl.h b/src/include/storage/dsm_impl.h
+index 7248cb1f9a..cd471258ce 100644
+--- a/src/include/storage/dsm_impl.h
++++ b/src/include/storage/dsm_impl.h
+@@ -18,12 +18,16 @@
+ #define DSM_IMPL_SYSV			2
+ #define DSM_IMPL_WINDOWS		3
+ #define DSM_IMPL_MMAP			4
++#define DSM_IMPL_WASI			5
+ 
+ /*
+  * Determine which dynamic shared memory implementations will be supported
+  * on this platform, and which one will be the default.
+  */
+-#ifdef WIN32
++#ifdef __wasi__
++#define USE_DSM_WASI
++#define DEFAULT_DYNAMIC_SHARED_MEMORY_TYPE		DSM_IMPL_WASI
++#elif defined(WIN32)
+ #define USE_DSM_WINDOWS
+ #define DEFAULT_DYNAMIC_SHARED_MEMORY_TYPE		DSM_IMPL_WINDOWS
+ #else

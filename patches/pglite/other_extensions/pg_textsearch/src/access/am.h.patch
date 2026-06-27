@@ -1,0 +1,75 @@
+diff --git a/src/access/am.h b/src/access/am.h
+index f3ae93d4..c95e8578 100644
+--- a/src/access/am.h
++++ b/src/access/am.h
+@@ -10,7 +10,6 @@
+ 
+ #include <access/amapi.h>
+ #include <access/reloptions.h>
+-#include <access/transam.h>
+ #include <storage/block.h>
+ #include <storage/bufpage.h>
+ #include <tsearch/ts_type.h>
+@@ -40,9 +39,6 @@ typedef struct TpScanOpaqueData
+ 	/* LIMIT optimization */
+ 	int limit;			  /* Query LIMIT value, -1 if none */
+ 	int max_results_used; /* Internal limit used for current batch */
+-
+-	/* CTIDs already emitted; used across limit-doubling re-execs. */
+-	struct HTAB *returned_ctids;
+ } TpScanOpaqueData;
+ 
+ typedef TpScanOpaqueData *TpScanOpaque;
+@@ -172,43 +168,10 @@ char *tp_buildphasename(int64 phase);
+ 
+ /*
+  * Spill a memtable to an L0 segment.  Skips when
+- * chain_page_count < min_pages.  Acquires LW_EXCLUSIVE internally.
++ * total_postings < min_postings.  Acquires LW_EXCLUSIVE internally.
+  */
+ void tp_spill_memtable_if_needed(
+-		Relation index, TpLocalIndexState *index_state, uint32 min_pages);
+-
+-/*
+- * Recycle memtable pages stamped DEAD during spill: scan the index
+- * main fork, RecordFreeIndexPage when dead_fxid is older than the
+- * global visibility horizon for heaprel.  Returns the number of
+- * blocks freed.  Caller must hold per-index LW_SHARED or stronger
+- * (tp_vacuumcleanup).  FSM updates are not WAL-logged (same as
+- * segment page free).
+- */
+-int tp_reclaim_dead_memtable_pages(Relation indexrel, Relation heaprel);
+-
+-/*
+- * Compute the deferred-reclaim horizon as a FullTransactionId.
+- * Pass the heap relation when available (vacuum) for a precise
+- * horizon, or NULL (merge) for the most-conservative shared
+- * horizon — NULL can only over-retain, never free too early.
+- */
+-extern FullTransactionId tp_reclaim_horizon(Relation heaprel);
+-
+-/*
+- * Spill the current index's memtable to a disk segment.
+- * Returns true if a segment was written or chain stats were applied.
+- * If `out_segment_root` is non-NULL and a segment was emitted (not
+- * solely a doc-length update), it receives the BlockNumber of the
+- * new L0 segment header *before* any subsequent L0->L1 compaction;
+- * otherwise it is set to InvalidBlockNumber.
+- *
+- * Caller must already hold LW_EXCLUSIVE on the per-index lock.
+- */
+-bool tp_do_spill(
+-		TpLocalIndexState *index_state,
+-		Relation		   index_rel,
+-		BlockNumber		  *out_segment_root);
++		Relation index, TpLocalIndexState *index_state, uint64 min_postings);
+ 
+ /*
+  * Handler functions (am/handler.c)
+@@ -218,6 +181,3 @@ bool   tp_validate(Oid opclassoid);
+ 
+ /* Relation options kind - initialized in mod.c */
+ extern relopt_kind tp_relopt_kind;
+-
+-/* Debug GUC: trigger PANIC after spill finalize for crash-safety testing */
+-extern bool tp_debug_panic_after_spill_finalize;

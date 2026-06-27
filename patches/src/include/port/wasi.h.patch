@@ -1,0 +1,300 @@
+diff --git a/src/include/port/wasi.h b/src/include/port/wasi.h
+new file mode 100644
+index 0000000000..3e3e9bfb45
+--- /dev/null
++++ b/src/include/port/wasi.h
+@@ -0,0 +1,294 @@
++/* src/include/port/wasi.h */
++
++#ifndef PG_PORT_WASI_H
++#define PG_PORT_WASI_H
++
++#define WAIT_USE_POLL 1
++#define HAVE_LINUX_EIDRM_BUG
++#define PLATFORM_DEFAULT_WAL_SYNC_METHOD WAL_SYNC_METHOD_FDATASYNC
++#define COPY_OFF
++#define PGDLLIMPORT
++#define PG_FORCE_DISABLE_INLINE
++
++#include <sys/types.h>
++#include <sys/socket.h>
++#include <signal.h>
++#include <errno.h>
++#include <stdio.h>
++#include <string.h>
++
++#undef HAVE_GETRLIMIT
++#undef HAVE_SHM_OPEN
++
++#ifndef SIG_SETMASK
++#define SIG_SETMASK 0
++#endif
++
++static inline mode_t
++umask(mode_t mask)
++{
++	(void) mask;
++	return 0;
++}
++
++static inline gid_t
++getegid(void)
++{
++	return 0;
++}
++
++static inline gid_t
++getgid(void)
++{
++	return 0;
++}
++
++static inline uid_t
++geteuid(void)
++{
++	return 0;
++}
++
++static inline uid_t
++getuid(void)
++{
++	return 0;
++}
++
++static inline int
++sigprocmask(int how, const sigset_t *set, sigset_t *oldset)
++{
++	(void) how;
++	(void) set;
++	(void) oldset;
++	return 0;
++}
++
++static inline int
++sigemptyset(sigset_t *set)
++{
++	(void) set;
++	return 0;
++}
++
++static inline int
++sigfillset(sigset_t *set)
++{
++	(void) set;
++	return 0;
++}
++
++static inline int
++sigaddset(sigset_t *set, int signo)
++{
++	(void) set;
++	(void) signo;
++	return 0;
++}
++
++static inline int
++sigdelset(sigset_t *set, int signo)
++{
++	(void) set;
++	(void) signo;
++	return 0;
++}
++
++static inline int
++kill(pid_t pid, int sig)
++{
++	(void) pid;
++	(void) sig;
++	errno = ENOSYS;
++	return -1;
++}
++
++static inline pid_t
++getppid(void)
++{
++	return 1;
++}
++
++static inline pid_t
++setsid(void)
++{
++	return 1;
++}
++
++static inline int
++dup(int oldfd)
++{
++	(void) oldfd;
++	errno = ENOSYS;
++	return -1;
++}
++
++static inline FILE *
++popen(const char *command, const char *mode)
++{
++	(void) command;
++	(void) mode;
++	errno = ENOSYS;
++	return NULL;
++}
++
++static inline int
++pclose(FILE *stream)
++{
++	(void) stream;
++	errno = ENOSYS;
++	return -1;
++}
++
++extern int pgl_system(const char *command);
++extern ssize_t pgl_recv(int fd, void *buf, size_t len, int flags);
++extern ssize_t pgl_send(int fd, const void *buf, size_t len, int flags);
++extern int pgl_rename(const char *from, const char *to);
++
++#define system(command) pgl_system(command)
++#define recv(fd, buf, len, flags) pgl_recv(fd, buf, len, flags)
++#define send(fd, buf, len, flags) pgl_send(fd, buf, len, flags)
++#define rename(from, to) pgl_rename(from, to)
++
++#ifndef SO_KEEPALIVE
++#define SO_KEEPALIVE 9
++#endif
++
++#ifndef SO_ERROR
++#define SO_ERROR 4
++#endif
++
++#ifndef SOL_SOCKET
++#define SOL_SOCKET 1
++#endif
++
++static inline int
++socket(int domain, int type, int protocol)
++{
++	(void) domain;
++	(void) type;
++	(void) protocol;
++	errno = ENOSYS;
++	return -1;
++}
++
++static inline int
++connect(int fd, const struct sockaddr *addr, socklen_t len)
++{
++	(void) fd;
++	(void) addr;
++	(void) len;
++	errno = ENOSYS;
++	return -1;
++}
++
++static inline int
++setsockopt(int fd, int level, int optname, const void *optval, socklen_t optlen)
++{
++	(void) fd;
++	(void) level;
++	(void) optname;
++	(void) optval;
++	(void) optlen;
++	errno = ENOSYS;
++	return -1;
++}
++
++static inline int
++getsockname(int fd, struct sockaddr *addr, socklen_t *len)
++{
++	(void) fd;
++	(void) addr;
++	(void) len;
++	errno = ENOSYS;
++	return -1;
++}
++
++#ifndef SIG_BLOCK
++#define SIG_BLOCK 0
++#endif
++
++#ifndef SIG_SETMASK
++#define SIG_SETMASK 2
++#endif
++
++#ifndef SA_RESTART
++#define SA_RESTART 0x10000000
++#endif
++
++struct sigaction
++{
++	void (*sa_handler)(int);
++	sigset_t sa_mask;
++	int sa_flags;
++};
++
++static inline int
++sigaction(int signum, const struct sigaction *act, struct sigaction *oldact)
++{
++	(void) signum;
++	if (oldact)
++		memset(oldact, 0, sizeof(*oldact));
++	(void) act;
++	return 0;
++}
++
++static inline int
++pthread_sigmask(int how, const sigset_t *set, sigset_t *oldset)
++{
++	(void) how;
++	(void) set;
++	if (oldset)
++		memset(oldset, 0, sizeof(*oldset));
++	return 0;
++}
++
++static inline int
++sigpending(sigset_t *set)
++{
++	if (set)
++		memset(set, 0, sizeof(*set));
++	return 0;
++}
++
++static inline int
++sigismember(const sigset_t *set, int signum)
++{
++	(void) set;
++	(void) signum;
++	return 0;
++}
++
++static inline int
++sigwait(const sigset_t *set, int *sig)
++{
++	(void) set;
++	if (sig)
++		*sig = 0;
++	return 0;
++}
++
++static inline void
++tzset(void)
++{
++}
++
++static inline int
++shm_open(const char *name, int oflag, mode_t mode)
++{
++	(void) name;
++	(void) oflag;
++	(void) mode;
++	errno = ENOSYS;
++	return -1;
++}
++
++static inline int
++shm_unlink(const char *name)
++{
++	(void) name;
++	errno = ENOSYS;
++	return -1;
++}
++
++#endif

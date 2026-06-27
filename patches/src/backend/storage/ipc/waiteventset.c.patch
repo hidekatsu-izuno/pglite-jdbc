@@ -1,0 +1,23 @@
+diff --git a/src/backend/storage/ipc/waiteventset.c b/src/backend/storage/ipc/waiteventset.c
+index b0746521ae..85e794d80a 100644
+--- a/src/backend/storage/ipc/waiteventset.c
++++ b/src/backend/storage/ipc/waiteventset.c
+@@ -243,6 +243,10 @@ InitializeWaitEventSupport(void)
+ #if defined(WAIT_USE_SELF_PIPE)
+ 	int			pipefd[2];
+ 
++#ifdef __wasi__
++	selfpipe_readfd = selfpipe_writefd = -1;
++	selfpipe_owner_pid = MyProcPid;
++#else
+ 	if (IsUnderPostmaster)
+ 	{
+ 		/*
+@@ -312,6 +316,7 @@ InitializeWaitEventSupport(void)
+ 	ReserveExternalFD();
+ 
+ 	pqsignal(SIGURG, latch_sigurg_handler);
++#endif							/* __wasi__ */
+ #endif
+ 
+ #ifdef WAIT_USE_SIGNALFD

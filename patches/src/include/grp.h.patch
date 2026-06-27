@@ -1,0 +1,32 @@
+diff --git a/src/include/grp.h b/src/include/grp.h
+new file mode 100644
+index 0000000000..7454e836e8
+--- /dev/null
++++ b/src/include/grp.h
+@@ -0,0 +1,26 @@
++#ifndef PG_COMPAT_GRP_H
++#define PG_COMPAT_GRP_H
++
++#if defined(__wasi__)
++
++#include <sys/types.h>
++
++struct group {
++	char *gr_name;
++	char *gr_passwd;
++	gid_t gr_gid;
++	char **gr_mem;
++};
++
++static inline struct group *
++getgrnam(const char *name)
++{
++	(void) name;
++	return NULL;
++}
++
++#else
++#include_next <grp.h>
++#endif
++
++#endif

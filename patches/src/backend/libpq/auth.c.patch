@@ -1,0 +1,48 @@
+diff --git a/src/backend/libpq/auth.c b/src/backend/libpq/auth.c
+index 4da4666643..aede92590a 100644
+--- a/src/backend/libpq/auth.c
++++ b/src/backend/libpq/auth.c
+@@ -19,7 +19,9 @@
+ #include <sys/select.h>
+ #include <sys/socket.h>
+ #include <netinet/in.h>
++#ifndef __wasi__
+ #include <netdb.h>
++#endif
+ #include <pwd.h>
+ #include <unistd.h>
+ 
+@@ -1670,6 +1672,9 @@ interpret_ident_response(const char *ident_response,
+ static int
+ ident_inet(hbaPort *port)
+ {
++#ifdef __wasi__
++	return STATUS_ERROR;
++#else
+ 	const SockAddr remote_addr = port->raddr;
+ 	const SockAddr local_addr = port->laddr;
+ 	char		ident_user[IDENT_USERNAME_MAX + 1];
+@@ -1837,6 +1842,7 @@ ident_inet_done:
+ 		return check_usermap(port->hba->usermap, port->user_name, ident_user, false);
+ 	}
+ 	return STATUS_ERROR;
++#endif
+ }
+ 
+ 
+@@ -2939,6 +2945,9 @@ CheckRADIUSAuth(Port *port)
+ static int
+ PerformRadiusTransaction(const char *server, const char *secret, const char *portstr, const char *identifier, const char *user_name, const char *passwd)
+ {
++#ifdef __wasi__
++	return STATUS_ERROR;
++#else
+ 	radius_packet radius_send_pack;
+ 	radius_packet radius_recv_pack;
+ 	radius_packet *packet = &radius_send_pack;
+@@ -3258,4 +3267,5 @@ PerformRadiusTransaction(const char *server, const char *secret, const char *por
+ 			continue;
+ 		}
+ 	}							/* while (true) */
++#endif
+ }

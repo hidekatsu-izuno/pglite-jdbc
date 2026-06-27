@@ -1,0 +1,23 @@
+diff --git a/src/backend/storage/ipc/procsignal.c b/src/backend/storage/ipc/procsignal.c
+index 087821311c..e7be9d3e78 100644
+--- a/src/backend/storage/ipc/procsignal.c
++++ b/src/backend/storage/ipc/procsignal.c
+@@ -423,6 +423,10 @@ EmitProcSignalBarrier(ProcSignalBarrierType type)
+ void
+ WaitForProcSignalBarrier(uint64 generation)
+ {
++#ifdef __wasi__
++	(void) generation;
++	return;
++#else
+ 	Assert(generation <= pg_atomic_read_u64(&ProcSignal->psh_barrierGeneration));
+ 
+ 	elog(DEBUG1,
+@@ -468,6 +472,7 @@ WaitForProcSignalBarrier(uint64 generation)
+ 	 * to separate it from whatever follows.
+ 	 */
+ 	pg_memory_barrier();
++#endif
+ }
+ 
+ /*

@@ -1,0 +1,24 @@
+diff --git a/src/backend/utils/cache/relmapper.c b/src/backend/utils/cache/relmapper.c
+index abf89f0776..a7a2bd99d7 100644
+--- a/src/backend/utils/cache/relmapper.c
++++ b/src/backend/utils/cache/relmapper.c
+@@ -133,6 +133,19 @@ static RelMapFile active_local_updates;
+ static RelMapFile pending_shared_updates;
+ static RelMapFile pending_local_updates;
+ 
++#ifdef __wasi__
++void
++pglite_reset_relation_maps(void)
++{
++	memset(&shared_map, 0, sizeof(shared_map));
++	memset(&local_map, 0, sizeof(local_map));
++	memset(&active_shared_updates, 0, sizeof(active_shared_updates));
++	memset(&active_local_updates, 0, sizeof(active_local_updates));
++	memset(&pending_shared_updates, 0, sizeof(pending_shared_updates));
++	memset(&pending_local_updates, 0, sizeof(pending_local_updates));
++}
++#endif
++
+ 
+ /* non-export function prototypes */
+ static void apply_map_update(RelMapFile *map, Oid relationId,

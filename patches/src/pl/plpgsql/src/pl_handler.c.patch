@@ -1,0 +1,54 @@
+diff --git a/src/pl/plpgsql/src/pl_handler.c b/src/pl/plpgsql/src/pl_handler.c
+index e9a7292994..0323a62086 100644
+--- a/src/pl/plpgsql/src/pl_handler.c
++++ b/src/pl/plpgsql/src/pl_handler.c
+@@ -227,6 +227,10 @@ plpgsql_call_handler(PG_FUNCTION_ARGS)
+ 	PLpgSQL_function *func;
+ 	PLpgSQL_execstate *save_cur_estate;
+ 	ResourceOwner procedure_resowner;
++#ifdef __wasi__
++	EState	   *event_simple_eval_estate = NULL;
++	ResourceOwner event_simple_eval_resowner = NULL;
++#endif
+ 	volatile Datum retval = (Datum) 0;
+ 	int			rc;
+ 
+@@ -270,8 +274,21 @@ plpgsql_call_handler(PG_FUNCTION_ARGS)
+ 														  (TriggerData *) fcinfo->context));
+ 		else if (CALLED_AS_EVENT_TRIGGER(fcinfo))
+ 		{
++#ifdef __wasi__
++			event_simple_eval_estate = CreateExecutorState();
++			event_simple_eval_resowner =
++				ResourceOwnerCreate(NULL, "PL/pgSQL event trigger simple expressions");
++#endif
+ 			plpgsql_exec_event_trigger(func,
+-									   (EventTriggerData *) fcinfo->context);
++									   (EventTriggerData *) fcinfo->context,
++#ifdef __wasi__
++									   event_simple_eval_estate,
++									   event_simple_eval_resowner
++#else
++									   NULL,
++									   NULL
++#endif
++									   );
+ 			/* there's no return value in this case */
+ 		}
+ 		else
+@@ -292,6 +309,15 @@ plpgsql_call_handler(PG_FUNCTION_ARGS)
+ 			ReleaseAllPlanCacheRefsInOwner(procedure_resowner);
+ 			ResourceOwnerDelete(procedure_resowner);
+ 		}
++#ifdef __wasi__
++		if (event_simple_eval_resowner)
++		{
++			ReleaseAllPlanCacheRefsInOwner(event_simple_eval_resowner);
++			ResourceOwnerDelete(event_simple_eval_resowner);
++		}
++		if (event_simple_eval_estate)
++			FreeExecutorState(event_simple_eval_estate);
++#endif
+ 	}
+ 	PG_END_TRY();
+ 

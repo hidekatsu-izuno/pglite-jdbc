@@ -1,0 +1,42 @@
+diff --git a/src/include/sys/termios.h b/src/include/sys/termios.h
+new file mode 100644
+index 0000000000..3d70a2517d
+--- /dev/null
++++ b/src/include/sys/termios.h
+@@ -0,0 +1,36 @@
++#ifndef PGLITE_WASI_SYS_TERMIOS_H
++#define PGLITE_WASI_SYS_TERMIOS_H
++
++typedef unsigned int tcflag_t;
++typedef unsigned char cc_t;
++typedef unsigned int speed_t;
++
++#define NCCS 32
++
++struct termios
++{
++	tcflag_t c_iflag;
++	tcflag_t c_oflag;
++	tcflag_t c_cflag;
++	tcflag_t c_lflag;
++	cc_t c_cc[NCCS];
++};
++
++static inline int
++tcgetattr(int fd, struct termios *termios_p)
++{
++	(void) fd;
++	(void) termios_p;
++	return -1;
++}
++
++static inline int
++tcsetattr(int fd, int optional_actions, const struct termios *termios_p)
++{
++	(void) fd;
++	(void) optional_actions;
++	(void) termios_p;
++	return -1;
++}
++
++#endif

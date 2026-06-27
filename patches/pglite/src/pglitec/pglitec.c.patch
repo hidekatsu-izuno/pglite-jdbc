@@ -1,0 +1,1618 @@
+diff --git a/pglite/src/pglitec/pglitec.c b/pglite/src/pglitec/pglitec.c
+index 1614ac9164..c4c5b0da72 100644
+--- a/pglite/src/pglitec/pglitec.c
++++ b/pglite/src/pglitec/pglitec.c
+@@ -16,15 +16,52 @@
+ 
+ #include <unistd.h>
+ #include <stdio.h>
++#if !defined(__wasi__)
+ #include <sys/shm.h>
++#endif
+ #include <errno.h>
+ #include <time.h>
++#if !defined(__wasi__)
+ #include <pwd.h>
++#endif
+ #include <sys/types.h>
+ #include <sys/socket.h>
+ #include <sys/time.h>
+ #include <setjmp.h>
+ #include <string.h>
++#include <stdarg.h>
++#include <stdbool.h>
++#include <stdint.h>
++#include <stdlib.h>
++#include <signal.h>
++
++#if defined(__wasi__)
++typedef int key_t;
++#define IPC_CREAT 01000
++#define IPC_RMID 0
++#define IPC_STAT 2
++#define IPC_SET 1
++struct ipc_perm {
++    key_t __key;
++};
++struct shmid_ds {
++    struct ipc_perm shm_perm;
++    size_t shm_segsz;
++    time_t shm_atime;
++    time_t shm_dtime;
++    time_t shm_ctime;
++    unsigned long shm_nattch;
++};
++struct passwd {
++    char *pw_name;
++    char *pw_passwd;
++    uid_t pw_uid;
++    uid_t pw_gid;
++    char *pw_gecos;
++    char *pw_dir;
++    char *pw_shell;
++};
++#endif
+ 
+ #if defined(__EMSCRIPTEN__)
+ #include <emscripten/emscripten.h>
+@@ -35,9 +72,1198 @@
+ 
+ volatile int is_pglite_active = 0;
+ 
++/*
++ * Stable host-facing API for non-JS WASM engines.
++ *
++ * The API intentionally moves data across the host boundary as owned,
++ * NUL-terminated UTF-8 strings. Hosts must not keep PostgreSQL internal
++ * pointers or rewrite pointed-to storage. Result strings returned by
++ * pgwasm_exec_json must be released with pgwasm_free.
++ */
++typedef char *(*pgwasm_exec_json_cb_t)(const char *sql);
++typedef ssize_t (*pgl_read_t)(void *buffer, size_t max_length);
++typedef ssize_t (*pgl_write_t)(const void *buffer, size_t length);
++
++static pgwasm_exec_json_cb_t pgwasm_exec_json_cb = NULL;
++static char pgwasm_last_error_buffer[1024] = "";
++static bool pgwasm_initialized = false;
++
++static void pgwasm_set_error(const char *fmt, ...);
++int pgwasm_init_with_datadir(const char *pgdata, const char *database, const char *username);
++
++#if defined(__wasi__)
++extern void pgl_startPGlite(void);
++extern int pglite_initdb_main(int argc, char *argv[]);
++extern void BootstrapModeMain(int argc, char *argv[], bool check_only);
++extern void pglite_set_bootstrap_input(const char *input, int len);
++extern void PostgresSingleUserMain(int argc, char *argv[], const char *username);
++extern void proc_exit(int code);
++extern void smgrdestroyall(void);
++extern void smgrreleaseall(void);
++extern void pglite_reset_file_access(void);
++extern void pglite_reset_memory_contexts(void);
++extern void pglite_reset_relation_maps(void);
++extern void pglite_reset_relation_cache(void);
++extern void PostgresMainLoopOnce(void);
++extern void PostgresMainLongJmp(void);
++extern void PostgresSendReadyForQueryIfNecessary(void);
++extern void pgl_pq_flush(void);
++extern ssize_t pq_buffer_remaining_data(void);
++extern void MemoryContextInit(void);
++extern int MyProcPid;
++void pgl_set_rw_cbs(pgl_read_t read_cb, pgl_write_t write_cb);
++int pgl_setPGliteActive(int newValue);
++void pgwasm_exit_alive(void);
++
++static unsigned char *pgwasm_input_buffer = NULL;
++static size_t pgwasm_input_length = 0;
++static size_t pgwasm_input_offset = 0;
++static unsigned char *pgwasm_output_buffer = NULL;
++static size_t pgwasm_output_length = 0;
++static size_t pgwasm_output_capacity = 0;
++static bool pgwasm_postgres_started = false;
++static bool pgwasm_memory_context_initialized = false;
++static jmp_buf pgwasm_startup_jmp;
++static bool pgwasm_startup_active = false;
++static jmp_buf pgwasm_query_jmp;
++static bool pgwasm_query_active = false;
++static jmp_buf pgwasm_initdb_jmp;
++static bool pgwasm_initdb_active = false;
++static int pgwasm_initdb_exit_status = 0;
++static const char *pgwasm_initdb_pgdata = NULL;
++static jmp_buf pgwasm_subprocess_jmp;
++static bool pgwasm_subprocess_active = false;
++static int pgwasm_subprocess_exit_status = 0;
++
++typedef enum PGliteWasiSubprocessKind
++{
++    PGLITE_WASI_SUBPROCESS_NONE = 0,
++    PGLITE_WASI_SUBPROCESS_BOOTSTRAP,
++    PGLITE_WASI_SUBPROCESS_SINGLE_USER,
++} PGliteWasiSubprocessKind;
++
++static FILE *pgwasm_subprocess_stream = NULL;
++static FILE *pgwasm_command_stream = NULL;
++FILE* pgl_stdin = NULL;
++FILE* pgl_stdout = NULL;
++static char *pgwasm_subprocess_input = NULL;
++static size_t pgwasm_subprocess_input_length = 0;
++static char pgwasm_subprocess_input_path[256] = "";
++static char pgwasm_command_output_path[256] = "";
++static PGliteWasiSubprocessKind pgwasm_subprocess_kind = PGLITE_WASI_SUBPROCESS_NONE;
++extern int Mode;
++#define PGLITE_INIT_PROCESSING 1
++
++static uint16_t
++pgwasm_read_u16(const unsigned char *ptr)
++{
++    return ((uint16_t)ptr[0] << 8) | ptr[1];
++}
++
++static uint32_t
++pgwasm_read_u32(const unsigned char *ptr)
++{
++    return ((uint32_t)ptr[0] << 24) | ((uint32_t)ptr[1] << 16) |
++           ((uint32_t)ptr[2] << 8) | ptr[3];
++}
++
++static ssize_t
++pgwasm_socket_read(void *buffer, size_t max_length)
++{
++    size_t remaining = pgwasm_input_length - pgwasm_input_offset;
++    size_t n = remaining < max_length ? remaining : max_length;
++
++    if (n > 0)
++    {
++        memcpy(buffer, pgwasm_input_buffer + pgwasm_input_offset, n);
++        pgwasm_input_offset += n;
++    }
++
++    return (ssize_t)n;
++}
++
++static ssize_t
++pgwasm_socket_write(const void *buffer, size_t length)
++{
++    if (pgwasm_output_length + length > pgwasm_output_capacity)
++    {
++        size_t new_capacity = pgwasm_output_capacity == 0 ? 4096 : pgwasm_output_capacity;
++        while (new_capacity < pgwasm_output_length + length)
++            new_capacity *= 2;
++
++        unsigned char *new_buffer = realloc(pgwasm_output_buffer, new_capacity);
++        if (new_buffer == NULL)
++            return -1;
++
++        pgwasm_output_buffer = new_buffer;
++        pgwasm_output_capacity = new_capacity;
++    }
++
++    memcpy(pgwasm_output_buffer + pgwasm_output_length, buffer, length);
++    pgwasm_output_length += length;
++    return (ssize_t)length;
++}
++
++static bool
++pgwasm_append(char **buffer, size_t *length, size_t *capacity, const char *text)
++{
++    size_t text_length = strlen(text);
++    if (*length + text_length + 1 > *capacity)
++    {
++        size_t new_capacity = *capacity == 0 ? 1024 : *capacity;
++        while (new_capacity < *length + text_length + 1)
++            new_capacity *= 2;
++
++        char *new_buffer = realloc(*buffer, new_capacity);
++        if (new_buffer == NULL)
++            return false;
++
++        *buffer = new_buffer;
++        *capacity = new_capacity;
++    }
++
++    memcpy(*buffer + *length, text, text_length);
++    *length += text_length;
++    (*buffer)[*length] = '\0';
++    return true;
++}
++
++static bool
++pgwasm_append_json_string(char **buffer, size_t *length, size_t *capacity,
++                          const char *text, size_t text_length)
++{
++    if (!pgwasm_append(buffer, length, capacity, "\""))
++        return false;
++
++    for (size_t i = 0; i < text_length; i++)
++    {
++        unsigned char c = (unsigned char)text[i];
++        char escaped[8];
++
++        if (c == '"' || c == '\\')
++        {
++            escaped[0] = '\\';
++            escaped[1] = (char)c;
++            escaped[2] = '\0';
++            if (!pgwasm_append(buffer, length, capacity, escaped))
++                return false;
++        }
++        else if (c == '\n')
++        {
++            if (!pgwasm_append(buffer, length, capacity, "\\n"))
++                return false;
++        }
++        else if (c == '\r')
++        {
++            if (!pgwasm_append(buffer, length, capacity, "\\r"))
++                return false;
++        }
++        else if (c == '\t')
++        {
++            if (!pgwasm_append(buffer, length, capacity, "\\t"))
++                return false;
++        }
++        else if (c < 0x20)
++        {
++            snprintf(escaped, sizeof(escaped), "\\u%04x", c);
++            if (!pgwasm_append(buffer, length, capacity, escaped))
++                return false;
++        }
++        else
++        {
++            escaped[0] = (char)c;
++            escaped[1] = '\0';
++            if (!pgwasm_append(buffer, length, capacity, escaped))
++                return false;
++        }
++    }
++
++    return pgwasm_append(buffer, length, capacity, "\"");
++}
++
++static void
++pgwasm_free_fields(char **field_names, uint32_t *field_types, uint16_t field_count)
++{
++    if (field_names != NULL)
++    {
++        for (uint16_t i = 0; i < field_count; i++)
++            free(field_names[i]);
++    }
++    free(field_names);
++    free(field_types);
++}
++
++static bool
++pgwasm_command_counts_affected_rows(const char *completion_tag)
++{
++    return strncmp(completion_tag, "INSERT ", 7) == 0 ||
++           strncmp(completion_tag, "UPDATE ", 7) == 0 ||
++           strncmp(completion_tag, "DELETE ", 7) == 0 ||
++           strncmp(completion_tag, "MERGE ", 6) == 0 ||
++           strncmp(completion_tag, "COPY ", 5) == 0 ||
++           strncmp(completion_tag, "MOVE ", 5) == 0 ||
++           strncmp(completion_tag, "FETCH ", 6) == 0;
++}
++
++static int
++pgwasm_command_completion_rows(const char *completion_tag)
++{
++    const char *end = completion_tag + strlen(completion_tag);
++    const char *start;
++    long value = 0;
++
++    if (end == completion_tag || end[-1] < '0' || end[-1] > '9')
++        return 0;
++
++    while (end > completion_tag && end[-1] >= '0' && end[-1] <= '9')
++        end--;
++
++    start = end;
++    while (*end >= '0' && *end <= '9')
++    {
++        value = value * 10 + (*end - '0');
++        end++;
++    }
++    if (*end != '\0' || start == completion_tag)
++        return 0;
++    return (int)value;
++}
++
++static bool
++pgwasm_append_notification_result(char **json, size_t *json_length,
++                                 size_t *json_capacity, bool *first_result,
++                                 const unsigned char *message,
++                                 size_t body_length)
++{
++    size_t channel_start = 4;
++    size_t channel_length;
++    size_t payload_start;
++    size_t payload_length;
++
++    if (body_length < 6)
++        return false;
++
++    while (channel_start < body_length && message[channel_start] != '\0')
++        channel_start++;
++    if (channel_start >= body_length)
++        return false;
++    channel_length = channel_start - 4;
++    payload_start = channel_start + 1;
++
++    payload_length = payload_start;
++    while (payload_length < body_length && message[payload_length] != '\0')
++        payload_length++;
++    if (payload_length >= body_length)
++        return false;
++    payload_length -= payload_start;
++
++    if (!*first_result && !pgwasm_append(json, json_length, json_capacity, ","))
++        return false;
++    *first_result = false;
++
++    return pgwasm_append(json, json_length, json_capacity,
++                         "{\"rows\":[],\"fields\":[],\"affectedRows\":0,\"notifications\":[{\"channel\":") &&
++           pgwasm_append_json_string(json, json_length, json_capacity,
++                                     (const char *) message + 4,
++                                     channel_length) &&
++           pgwasm_append(json, json_length, json_capacity, ",\"payload\":") &&
++           pgwasm_append_json_string(json, json_length, json_capacity,
++                                     (const char *) message + payload_start,
++                                     payload_length) &&
++           pgwasm_append(json, json_length, json_capacity, "}]}");
++}
++
++static bool
++pgwasm_append_notice_result(char **json, size_t *json_length,
++                            size_t *json_capacity, bool *first_result,
++                            const unsigned char *message,
++                            size_t body_length)
++{
++    const char *severity = NULL;
++    const char *severity_nonlocalized = NULL;
++    const char *message_text = NULL;
++    const char *sqlstate = NULL;
++    const char *detail = NULL;
++    const char *hint = NULL;
++    const char *routine = NULL;
++    size_t p = 0;
++    bool first_field = true;
++
++    while (p < body_length && message[p] != '\0')
++    {
++        unsigned char field_type = message[p++];
++        const char *field_value = (const char *) message + p;
++        size_t field_length = strlen(field_value);
++
++        if (p + field_length >= body_length)
++            break;
++
++        if (field_type == 'S')
++            severity = field_value;
++        else if (field_type == 'V')
++            severity_nonlocalized = field_value;
++        else if (field_type == 'M')
++            message_text = field_value;
++        else if (field_type == 'C')
++            sqlstate = field_value;
++        else if (field_type == 'D')
++            detail = field_value;
++        else if (field_type == 'H')
++            hint = field_value;
++        else if (field_type == 'R')
++            routine = field_value;
++
++        p += field_length + 1;
++    }
++
++    if (!*first_result && !pgwasm_append(json, json_length, json_capacity, ","))
++        return false;
++    *first_result = false;
++
++    if (!pgwasm_append(json, json_length, json_capacity,
++                       "{\"rows\":[],\"fields\":[],\"affectedRows\":0,\"notices\":[{"))
++        return false;
++
++#define PGLITE_APPEND_NOTICE_FIELD(key, value) \
++    do { \
++        if ((value) != NULL) { \
++            if (!first_field && !pgwasm_append(json, json_length, json_capacity, ",")) \
++                return false; \
++            first_field = false; \
++            if (!pgwasm_append(json, json_length, json_capacity, "\"" key "\":") || \
++                !pgwasm_append_json_string(json, json_length, json_capacity, \
++                                          (value), strlen(value))) \
++                return false; \
++        } \
++    } while (0)
++
++    PGLITE_APPEND_NOTICE_FIELD("severity", severity);
++    PGLITE_APPEND_NOTICE_FIELD("severityNonlocalized", severity_nonlocalized);
++    PGLITE_APPEND_NOTICE_FIELD("message", message_text);
++    PGLITE_APPEND_NOTICE_FIELD("code", sqlstate);
++    PGLITE_APPEND_NOTICE_FIELD("detail", detail);
++    PGLITE_APPEND_NOTICE_FIELD("hint", hint);
++    PGLITE_APPEND_NOTICE_FIELD("routine", routine);
++#undef PGLITE_APPEND_NOTICE_FIELD
++
++    return pgwasm_append(json, json_length, json_capacity, "}]}");
++}
++
++static char *
++pgwasm_output_to_json(void)
++{
++    char **field_names = NULL;
++    uint32_t *field_types = NULL;
++    uint16_t field_count = 0;
++    bool result_started = false;
++    bool rows_open = false;
++    bool first_row = true;
++    bool first_result = true;
++    int affected_rows_total = 0;
++    char *json = NULL;
++    size_t json_length = 0;
++    size_t json_capacity = 0;
++    size_t pos = 0;
++
++    if (!pgwasm_append(&json, &json_length, &json_capacity, "["))
++        goto oom;
++
++    while (pos + 5 <= pgwasm_output_length)
++    {
++        unsigned char tag = pgwasm_output_buffer[pos++];
++        uint32_t message_length = pgwasm_read_u32(pgwasm_output_buffer + pos);
++        const unsigned char *message = pgwasm_output_buffer + pos + 4;
++        size_t body_length;
++
++        pos += 4;
++        if (message_length < 4 || pos + message_length - 4 > pgwasm_output_length)
++            break;
++
++        body_length = message_length - 4;
++
++        if (tag == 'T')
++        {
++            size_t p = 2;
++            pgwasm_free_fields(field_names, field_types, field_count);
++            field_names = NULL;
++            field_types = NULL;
++            field_count = 0;
++
++            field_count = pgwasm_read_u16(message);
++            field_names = calloc(field_count, sizeof(char *));
++            field_types = calloc(field_count, sizeof(uint32_t));
++            if (field_names == NULL || field_types == NULL)
++                goto oom;
++
++            for (uint16_t i = 0; i < field_count; i++)
++            {
++                size_t name_start = p;
++                size_t name_length;
++
++                while (p < body_length && message[p] != '\0')
++                    p++;
++                if (p >= body_length)
++                    goto parse_error;
++
++                name_length = p - name_start;
++                field_names[i] = malloc(name_length + 1);
++                if (field_names[i] == NULL)
++                    goto oom;
++                memcpy(field_names[i], message + name_start, name_length);
++                field_names[i][name_length] = '\0';
++                p++;
++
++                if (p + 18 > body_length)
++                    goto parse_error;
++                field_types[i] = pgwasm_read_u32(message + p + 6);
++                p += 18;
++            }
++        }
++        else if (tag == 'D')
++        {
++            size_t p = 2;
++            uint16_t column_count = pgwasm_read_u16(message);
++
++            if (!result_started)
++            {
++                if (!first_result && !pgwasm_append(&json, &json_length, &json_capacity, ","))
++                    goto oom;
++                first_result = false;
++                if (!pgwasm_append(&json, &json_length, &json_capacity, "{\"rows\":["))
++                    goto oom;
++                result_started = true;
++                rows_open = true;
++                first_row = true;
++            }
++
++            if (!first_row && !pgwasm_append(&json, &json_length, &json_capacity, ","))
++                goto oom;
++            first_row = false;
++
++            if (!pgwasm_append(&json, &json_length, &json_capacity, "{"))
++                goto oom;
++
++            for (uint16_t i = 0; i < column_count; i++)
++            {
++                int32_t value_length;
++
++                if (p + 4 > body_length)
++                    goto parse_error;
++                value_length = (int32_t)pgwasm_read_u32(message + p);
++                p += 4;
++
++                if (i > 0 && !pgwasm_append(&json, &json_length, &json_capacity, ","))
++                    goto oom;
++
++                if (!pgwasm_append_json_string(&json, &json_length, &json_capacity,
++                                               field_names[i], strlen(field_names[i])) ||
++                    !pgwasm_append(&json, &json_length, &json_capacity, ":"))
++                    goto oom;
++
++                if (value_length < 0)
++                {
++                    if (!pgwasm_append(&json, &json_length, &json_capacity, "null"))
++                        goto oom;
++                }
++                else
++                {
++                    if (p + (size_t)value_length > body_length)
++                        goto parse_error;
++                    if (!pgwasm_append_json_string(&json, &json_length, &json_capacity,
++                                                   (const char *)message + p,
++                                                   (size_t)value_length))
++                        goto oom;
++                    p += (size_t)value_length;
++                }
++            }
++
++            if (!pgwasm_append(&json, &json_length, &json_capacity, "}"))
++                goto oom;
++        }
++        else if (tag == 'C')
++        {
++            int completion_rows = pgwasm_command_completion_rows((const char *) message);
++            int affected_rows;
++            char affected_buffer[64];
++
++            if (pgwasm_command_counts_affected_rows((const char *) message))
++                affected_rows_total += completion_rows;
++            affected_rows = affected_rows_total;
++
++            if (!result_started)
++            {
++                if (!first_result && !pgwasm_append(&json, &json_length, &json_capacity, ","))
++                    goto oom;
++                first_result = false;
++                if (!pgwasm_append(&json, &json_length, &json_capacity, "{\"rows\":["))
++                    goto oom;
++                result_started = true;
++                rows_open = true;
++            }
++
++            if (rows_open)
++            {
++                if (!pgwasm_append(&json, &json_length, &json_capacity, "],\"fields\":["))
++                    goto oom;
++                rows_open = false;
++            }
++
++            for (uint16_t i = 0; i < field_count; i++)
++            {
++                char type_buffer[64];
++                if (i > 0 && !pgwasm_append(&json, &json_length, &json_capacity, ","))
++                    goto oom;
++                snprintf(type_buffer, sizeof(type_buffer), ",\"dataTypeID\":%u}", field_types[i]);
++                if (!pgwasm_append(&json, &json_length, &json_capacity, "{\"name\":") ||
++                    !pgwasm_append_json_string(&json, &json_length, &json_capacity,
++                                               field_names[i], strlen(field_names[i])) ||
++                    !pgwasm_append(&json, &json_length, &json_capacity, type_buffer))
++                    goto oom;
++            }
++
++            snprintf(affected_buffer, sizeof(affected_buffer), "],\"affectedRows\":%d}", affected_rows);
++            if (!pgwasm_append(&json, &json_length, &json_capacity, affected_buffer))
++                goto oom;
++
++            result_started = false;
++            rows_open = false;
++            first_row = true;
++            pgwasm_free_fields(field_names, field_types, field_count);
++            field_names = NULL;
++            field_types = NULL;
++            field_count = 0;
++        }
++        else if (tag == 'E')
++        {
++            const char *severity = NULL;
++            const char *message_text = NULL;
++            const char *sqlstate = NULL;
++            size_t p = 0;
++
++            while (p < body_length && message[p] != '\0')
++            {
++                unsigned char field_type = message[p++];
++                const char *field_value = (const char *) message + p;
++                size_t field_length = strlen(field_value);
++
++                if (p + field_length >= body_length)
++                    break;
++
++                if (field_type == 'S')
++                    severity = field_value;
++                else if (field_type == 'M')
++                    message_text = field_value;
++                else if (field_type == 'C')
++                    sqlstate = field_value;
++
++                p += field_length + 1;
++            }
++
++            if (message_text != NULL && sqlstate != NULL && severity != NULL)
++                pgwasm_set_error("%s: %s (%s)", severity, message_text, sqlstate);
++            else if (message_text != NULL)
++                pgwasm_set_error("%s", message_text);
++            else
++                pgwasm_set_error("PostgreSQL returned an error");
++            goto parse_error;
++        }
++        else if (tag == 'A')
++        {
++            if (!pgwasm_append_notification_result(&json, &json_length,
++                                                   &json_capacity,
++                                                   &first_result, message,
++                                                   body_length))
++                goto parse_error;
++        }
++        else if (tag == 'N')
++        {
++            if (!pgwasm_append_notice_result(&json, &json_length,
++                                             &json_capacity,
++                                             &first_result, message,
++                                             body_length))
++                goto parse_error;
++        }
++
++        pos += body_length;
++    }
++
++    if (result_started)
++    {
++        if (rows_open && !pgwasm_append(&json, &json_length, &json_capacity, "],\"fields\":["))
++            goto oom;
++        for (uint16_t i = 0; i < field_count; i++)
++        {
++            char type_buffer[64];
++            if (i > 0 && !pgwasm_append(&json, &json_length, &json_capacity, ","))
++                goto oom;
++            snprintf(type_buffer, sizeof(type_buffer), ",\"dataTypeID\":%u}", field_types[i]);
++            if (!pgwasm_append(&json, &json_length, &json_capacity, "{\"name\":") ||
++                !pgwasm_append_json_string(&json, &json_length, &json_capacity,
++                                           field_names[i], strlen(field_names[i])) ||
++                !pgwasm_append(&json, &json_length, &json_capacity, type_buffer))
++                goto oom;
++        }
++        if (!pgwasm_append(&json, &json_length, &json_capacity, "],\"affectedRows\":0}"))
++            goto oom;
++    }
++
++    if (!pgwasm_append(&json, &json_length, &json_capacity, "]"))
++        goto oom;
++
++    pgwasm_free_fields(field_names, field_types, field_count);
++    return json;
++
++oom:
++    pgwasm_set_error("out of memory");
++parse_error:
++    pgwasm_free_fields(field_names, field_types, field_count);
++    free(json);
++    return NULL;
++}
++
++static char *
++pgwasm_exec_json_internal(const char *sql)
++{
++    size_t sql_length = strlen(sql);
++    uint32_t message_length = (uint32_t)(sql_length + 5);
++    size_t packet_length = sql_length + 6;
++
++    free(pgwasm_input_buffer);
++    pgwasm_input_buffer = malloc(packet_length);
++    if (pgwasm_input_buffer == NULL)
++    {
++        pgwasm_set_error("out of memory");
++        return NULL;
++    }
++
++    pgwasm_input_buffer[0] = 'Q';
++    pgwasm_input_buffer[1] = (message_length >> 24) & 0xff;
++    pgwasm_input_buffer[2] = (message_length >> 16) & 0xff;
++    pgwasm_input_buffer[3] = (message_length >> 8) & 0xff;
++    pgwasm_input_buffer[4] = message_length & 0xff;
++    memcpy(pgwasm_input_buffer + 5, sql, sql_length);
++    pgwasm_input_buffer[5 + sql_length] = '\0';
++
++    pgwasm_input_length = packet_length;
++    pgwasm_input_offset = 0;
++    pgwasm_output_length = 0;
++
++    pgwasm_query_active = true;
++    while (pgwasm_input_offset < pgwasm_input_length || pq_buffer_remaining_data() > 0)
++    {
++        if (setjmp(pgwasm_query_jmp) == 0)
++            PostgresMainLoopOnce();
++        else
++            PostgresMainLongJmp();
++    }
++    PostgresSendReadyForQueryIfNecessary();
++    pgl_pq_flush();
++    pgwasm_query_active = false;
++
++    return pgwasm_output_to_json();
++}
++
++int EMSCRIPTEN_KEEPALIVE
++pgwasm_recover_from_error(void)
++{
++#if defined(__wasi__)
++    char *json;
++
++    if (!pgwasm_query_active)
++        return 0;
++
++    PostgresMainLongJmp();
++    PostgresSendReadyForQueryIfNecessary();
++    pgl_pq_flush();
++    pgwasm_query_active = false;
++
++    json = pgwasm_output_to_json();
++    if (json != NULL)
++        free(json);
++#endif
++    return 0;
++}
++
++void
++pgwasm_exit_alive(void)
++{
++    if (pgwasm_subprocess_active)
++    {
++        pgwasm_subprocess_exit_status = 0;
++        longjmp(pgwasm_subprocess_jmp, 1);
++    }
++
++    if (pgwasm_startup_active)
++        longjmp(pgwasm_startup_jmp, 1);
++
++    exit(99);
++}
++
++bool
++pgwasm_try_proc_exit(int code)
++{
++    if (pgwasm_subprocess_active)
++    {
++        pgwasm_subprocess_exit_status = code;
++        longjmp(pgwasm_subprocess_jmp, 1);
++    }
++
++    if (pgwasm_initdb_active)
++    {
++        pgwasm_initdb_exit_status = code;
++        longjmp(pgwasm_initdb_jmp, 1);
++    }
++
++    return false;
++}
++
++static int
++pgwasm_start_postgres(const char *pgdata, const char *database, const char *username)
++{
++    char *argv[] = {
++        "postgres",
++        "--single",
++        "-F",
++        "-O",
++        "-j",
++        "-c",
++        "search_path=public",
++        "-c",
++        "exit_on_error=false",
++        "-c",
++        "log_checkpoints=false",
++        "-c",
++        "max_worker_processes=0",
++        "-c",
++        "max_parallel_workers=0",
++        "-c",
++        "max_parallel_workers_per_gather=0",
++        "-c",
++        "io_method=sync",
++        "-c",
++        "max_parallel_maintenance_workers=0",
++        "-D",
++        (char *)pgdata,
++        (char *)database,
++    };
++    int argc = (int)(sizeof(argv) / sizeof(argv[0]));
++
++    pgl_set_rw_cbs(pgwasm_socket_read, pgwasm_socket_write);
++    pgl_setPGliteActive(1);
++
++    if (!pgwasm_memory_context_initialized)
++    {
++        MyProcPid = getpid();
++        MemoryContextInit();
++        pgwasm_memory_context_initialized = true;
++    }
++
++    pgwasm_startup_active = true;
++    if (setjmp(pgwasm_startup_jmp) == 0)
++        PostgresSingleUserMain(argc, argv, username);
++    pgwasm_startup_active = false;
++
++    pgl_startPGlite();
++    return 0;
++}
++#endif
++
++static void
++pgwasm_set_error(const char *fmt, ...)
++{
++    va_list args;
++
++    va_start(args, fmt);
++    vsnprintf(pgwasm_last_error_buffer, sizeof(pgwasm_last_error_buffer), fmt, args);
++    va_end(args);
++}
++
++int EMSCRIPTEN_KEEPALIVE
++pgwasm_init(void)
++{
++    return pgwasm_init_with_datadir("/tmp/pgdata", "postgres", "postgres");
++}
++
++int EMSCRIPTEN_KEEPALIVE
++pgwasm_init_with_datadir(const char *pgdata, const char *database, const char *username)
++{
++#if defined(__wasi__)
++    const char *effective_pgdata = pgdata == NULL || pgdata[0] == '\0' ? "/tmp/pgdata" : pgdata;
++    const char *effective_database = database == NULL || database[0] == '\0' ? "postgres" : database;
++    const char *effective_username = username == NULL || username[0] == '\0' ? "postgres" : username;
++
++    if (!pgwasm_postgres_started)
++    {
++        int startup_result = pgwasm_start_postgres(effective_pgdata, effective_database, effective_username);
++        if (startup_result != 0)
++            return startup_result;
++        pgwasm_postgres_started = true;
++    }
++#else
++    (void)pgdata;
++    (void)database;
++    (void)username;
++#endif
++    pgwasm_initialized = true;
++    pgwasm_last_error_buffer[0] = '\0';
++    return 0;
++}
++
++int EMSCRIPTEN_KEEPALIVE
++pgwasm_initdb(const char *pgdata, const char *database, const char *username)
++{
++    const char *effective_pgdata = pgdata == NULL || pgdata[0] == '\0' ? "/tmp/pgdata" : pgdata;
++    const char *effective_username = username == NULL || username[0] == '\0' ? "postgres" : username;
++    char *argv[] = {
++        "initdb",
++        "-D",
++        (char *)effective_pgdata,
++        "-U",
++        (char *)effective_username,
++        "-A",
++        "trust",
++        "-N",
++        "--no-instructions",
++        "-L",
++        "/pglite/share",
++    };
++    int argc = (int)(sizeof(argv) / sizeof(argv[0]));
++    int result;
++
++    (void)database;
++
++    if (!pgwasm_memory_context_initialized)
++    {
++        MyProcPid = getpid();
++        MemoryContextInit();
++        pgwasm_memory_context_initialized = true;
++    }
++
++    pgwasm_last_error_buffer[0] = '\0';
++    pgwasm_initdb_active = true;
++    pgwasm_initdb_exit_status = 0;
++    pgwasm_initdb_pgdata = effective_pgdata;
++    if (setjmp(pgwasm_initdb_jmp) == 0)
++        result = pglite_initdb_main(argc, argv);
++    else
++        result = pgwasm_initdb_exit_status;
++    pgwasm_initdb_active = false;
++    pgwasm_initdb_pgdata = NULL;
++    if (result != 0 && pgwasm_last_error_buffer[0] == '\0')
++        pgwasm_set_error("initdb failed with exit code %d", result);
++    return result;
++}
++
++#if defined(__wasi__)
++enum pg_log_level
++{
++    PG_LOG_NOTSET = 0,
++    PG_LOG_DEBUG,
++    PG_LOG_INFO,
++    PG_LOG_WARNING,
++    PG_LOG_ERROR,
++    PG_LOG_OFF,
++};
++
++enum pg_log_part
++{
++    PG_LOG_PRIMARY,
++    PG_LOG_DETAIL,
++    PG_LOG_HINT,
++};
++
++enum pg_log_level __pg_log_level = PG_LOG_INFO;
++
++void
++pg_logging_init(const char *argv0)
++{
++    (void)argv0;
++    __pg_log_level = PG_LOG_INFO;
++}
++
++void
++pg_logging_config(int new_flags)
++{
++    (void)new_flags;
++}
++
++void
++pg_logging_set_level(enum pg_log_level new_level)
++{
++    __pg_log_level = new_level;
++}
++
++void
++pg_logging_increase_verbosity(void)
++{
++    if (__pg_log_level > PG_LOG_NOTSET + 1)
++        __pg_log_level--;
++}
++
++void
++pg_logging_set_pre_callback(void (*cb) (void))
++{
++    (void)cb;
++}
++
++void
++pg_logging_set_locus_callback(void (*cb) (const char **filename, uint64_t *lineno))
++{
++    (void)cb;
++}
++
++void
++pg_log_generic(enum pg_log_level level, enum pg_log_part part, const char *fmt, ...)
++{
++    va_list args;
++
++    if (level < __pg_log_level || level == PG_LOG_OFF || part != PG_LOG_PRIMARY)
++        return;
++
++    va_start(args, fmt);
++    vsnprintf(pgwasm_last_error_buffer, sizeof(pgwasm_last_error_buffer), fmt, args);
++    va_end(args);
++}
++
++void *
++pg_malloc(size_t size)
++{
++    void *ptr = malloc(size == 0 ? 1 : size);
++
++    if (ptr == NULL)
++        abort();
++    return ptr;
++}
++
++void *
++pg_malloc0(size_t size)
++{
++    void *ptr = pg_malloc(size);
++
++    memset(ptr, 0, size == 0 ? 1 : size);
++    return ptr;
++}
++
++void *
++pg_malloc_extended(size_t size, int flags)
++{
++    void *ptr;
++
++    if (size == 0)
++        size = 1;
++    ptr = malloc(size);
++    if (ptr == NULL)
++    {
++        if ((flags & 0x02) != 0)
++            return NULL;
++        abort();
++    }
++    if ((flags & 0x04) != 0)
++        memset(ptr, 0, size);
++    return ptr;
++}
++
++void *
++pg_realloc(void *ptr, size_t size)
++{
++    void *new_ptr;
++
++    if (ptr == NULL && size == 0)
++        size = 1;
++    new_ptr = realloc(ptr, size);
++    if (new_ptr == NULL)
++        abort();
++    return new_ptr;
++}
++
++char *
++pg_strdup(const char *in)
++{
++    char *out;
++
++    if (in == NULL)
++        abort();
++    out = strdup(in);
++    if (out == NULL)
++        abort();
++    return out;
++}
++
++void
++pg_free(void *ptr)
++{
++    free(ptr);
++}
++
++typedef void (*pgl_pqsigfunc)(int);
++
++void
++pqsignal_fe(int signo, pgl_pqsigfunc func)
++{
++    (void)signo;
++    (void)func;
++}
++
++typedef struct PQExpBufferData *PQExpBuffer;
++extern void appendPQExpBufferChar(PQExpBuffer str, char ch);
++
++void
++appendShellString(PQExpBuffer buf, const char *str)
++{
++    const char *p;
++
++    appendPQExpBufferChar(buf, '\'');
++    for (p = str; *p; p++)
++    {
++        if (*p == '\'')
++        {
++            appendPQExpBufferChar(buf, '\'');
++            appendPQExpBufferChar(buf, '\\');
++            appendPQExpBufferChar(buf, '\'');
++            appendPQExpBufferChar(buf, '\'');
++        }
++        else
++        {
++            appendPQExpBufferChar(buf, *p);
++        }
++    }
++    appendPQExpBufferChar(buf, '\'');
++}
++
++const char *
++select_default_timezone(const char *share_path)
++{
++    (void)share_path;
++    return "GMT";
++}
++
++void
++sync_pgdata(const char *pg_data, int serverVersion, int sync_method, bool sync_data_files)
++{
++    (void)pg_data;
++    (void)serverVersion;
++    (void)sync_method;
++    (void)sync_data_files;
++}
++
++void
++get_restricted_token(void)
++{
++}
++
++char *
++simple_prompt(const char *prompt, bool echo)
++{
++    (void)prompt;
++    (void)echo;
++    return pg_strdup("");
++}
++
++void
++pgl_set_pglocale_pgservice(const char *argv0, const char *app)
++{
++    (void)argv0;
++    (void)app;
++}
++
++int
++pgl_find_other_exec(const char *argv0, const char *target, const char *versionstr, char *retpath)
++{
++    (void)argv0;
++    (void)target;
++    (void)versionstr;
++    strcpy(retpath, "/pglite/bin/postgres");
++    return 0;
++}
++
++int
++pgl_chmod(const char *path, mode_t mode)
++{
++    (void)path;
++    (void)mode;
++    return 0;
++}
++#endif
++
++void EMSCRIPTEN_KEEPALIVE
++pgwasm_set_exec_json_cb(pgwasm_exec_json_cb_t exec_json_cb)
++{
++    pgwasm_exec_json_cb = exec_json_cb;
++}
++
++void EMSCRIPTEN_KEEPALIVE
++pgwasm_set_last_error(const char *message)
++{
++    if (message == NULL)
++    {
++        pgwasm_last_error_buffer[0] = '\0';
++        return;
++    }
++
++    snprintf(pgwasm_last_error_buffer, sizeof(pgwasm_last_error_buffer), "%s", message);
++}
++
++char EMSCRIPTEN_KEEPALIVE *
++pgwasm_exec_json(const char *sql)
++{
++    char *result;
++
++    if (!pgwasm_initialized)
++    {
++        pgwasm_set_error("pgwasm_init must be called before pgwasm_exec_json");
++        return NULL;
++    }
++
++    if (sql == NULL)
++    {
++        pgwasm_set_error("sql must not be NULL");
++        return NULL;
++    }
++
++#if defined(__wasi__)
++    result = pgwasm_exec_json_internal(sql);
++#else
++    if (pgwasm_exec_json_cb == NULL)
++    {
++        pgwasm_set_error("pgwasm_exec_json callback is not registered");
++        return NULL;
++    }
++
++    result = pgwasm_exec_json_cb(sql);
++#endif
++    if (result == NULL && pgwasm_last_error_buffer[0] == '\0')
++        pgwasm_set_error("pgwasm_exec_json callback returned NULL");
++
++    return result;
++}
++
++size_t EMSCRIPTEN_KEEPALIVE
++pgwasm_string_length(const char *value)
++{
++    if (value == NULL)
++        return 0;
++    return strlen(value);
++}
++
++const char EMSCRIPTEN_KEEPALIVE *
++pgwasm_last_error(void)
++{
++    return pgwasm_last_error_buffer;
++}
++
++void EMSCRIPTEN_KEEPALIVE
++pgwasm_free(void *ptr)
++{
++    free(ptr);
++}
++
+ void EMSCRIPTEN_KEEPALIVE clear_setitimer(void) {
++#if defined(__wasi__)
++    return;
++#else
+     struct itimerval zero = {{0, 0}, {0, 0}};
+     setitimer(ITIMER_REAL, &zero, NULL);
++#endif
+ }
+ 
+ int pgl_setPGliteActive(int newValue) {
+@@ -73,6 +1299,10 @@ void EMSCRIPTEN_KEEPALIVE pgl_longjmp(jmp_buf env, int val) {
+         // reset this as it is expected
+         if (!ignore_till_sync)
+ 		    send_ready_for_query = true;	/* initially, or after error */
++#if defined(__wasi__)
++        if (pgwasm_query_active)
++            longjmp(pgwasm_query_jmp, 1);
++#endif
+         exit(POSTGRES_MAIN_LONGJMP);
+     }
+     longjmp(env, val);
+@@ -121,7 +1351,57 @@ pgl_popen(const char *command, const char *mode) {
+     if (pglite_popen) {
+         return pglite_popen(command, mode);
+     }
++#if defined(__wasi__)
++    if (mode != NULL && mode[0] == 'r' && strstr(command, "locale -a") != NULL)
++    {
++        if (pgwasm_command_stream != NULL)
++        {
++            errno = ENOSYS;
++            return NULL;
++        }
++
++        snprintf(pgwasm_command_output_path,
++                 sizeof(pgwasm_command_output_path),
++                 "/pglite/data/.pglite-command-output");
++        pgwasm_command_stream = fopen(pgwasm_command_output_path, "w+");
++        if (pgwasm_command_stream == NULL)
++            return NULL;
++        fputs("C\nC.UTF-8\nPOSIX\n", pgwasm_command_stream);
++        rewind(pgwasm_command_stream);
++        return pgwasm_command_stream;
++    }
++
++    if (mode == NULL || strcmp(mode, "w") != 0 || pgwasm_subprocess_stream != NULL)
++    {
++        errno = ENOSYS;
++        return NULL;
++    }
++
++    if (strstr(command, "--boot") != NULL)
++        pgwasm_subprocess_kind = PGLITE_WASI_SUBPROCESS_BOOTSTRAP;
++    else if (strstr(command, " template1") != NULL)
++        pgwasm_subprocess_kind = PGLITE_WASI_SUBPROCESS_SINGLE_USER;
++    else
++    {
++        errno = ENOSYS;
++        return NULL;
++    }
++
++    pgwasm_subprocess_input = NULL;
++    pgwasm_subprocess_input_length = 0;
++    snprintf(pgwasm_subprocess_input_path,
++             sizeof(pgwasm_subprocess_input_path),
++             "/pglite/data/.pglite-subprocess-input");
++    pgwasm_subprocess_stream = fopen(pgwasm_subprocess_input_path, "w+");
++    if (pgwasm_subprocess_stream == NULL)
++    {
++        pgwasm_subprocess_kind = PGLITE_WASI_SUBPROCESS_NONE;
++        return NULL;
++    }
++    return pgwasm_subprocess_stream;
++#else
+     return popen(command, mode);
++#endif
+ }
+ 
+ typedef int (*pglite_pclose_t)(FILE* stream);
+@@ -137,7 +1417,152 @@ pgl_pclose(FILE* stream) {
+     if (pglite_pclose) {
+         return pglite_pclose(stream);
+     }
++#if defined(__wasi__)
++    int result = 0;
++
++    if (stream != NULL && stream == pgwasm_command_stream)
++    {
++        result = fclose(stream);
++        pgwasm_command_stream = NULL;
++        if (pgwasm_command_output_path[0] != '\0')
++            unlink(pgwasm_command_output_path);
++        pgwasm_command_output_path[0] = '\0';
++        return result;
++    }
++
++    if (stream == NULL || stream != pgwasm_subprocess_stream)
++    {
++        errno = EINVAL;
++        return -1;
++    }
++
++    if (fflush(stream) != 0)
++        result = -1;
++    if (result == 0)
++    {
++        long input_size;
++
++        if (fseek(stream, 0, SEEK_END) != 0)
++            result = -1;
++        input_size = ftell(stream);
++        if (input_size < 0)
++            result = -1;
++        if (result == 0 && fseek(stream, 0, SEEK_SET) != 0)
++            result = -1;
++        if (result == 0)
++        {
++            pgwasm_subprocess_input = malloc((size_t)input_size + 1);
++            if (pgwasm_subprocess_input == NULL)
++                result = -1;
++            else
++            {
++                size_t read_len = fread(pgwasm_subprocess_input, 1,
++                                        (size_t)input_size, stream);
++                if (read_len != (size_t)input_size)
++                    result = -1;
++                pgwasm_subprocess_input[read_len] = '\0';
++                pgwasm_subprocess_input_length = read_len;
++            }
++        }
++    }
++    if (fclose(stream) != 0)
++        result = -1;
++
++    pgwasm_subprocess_stream = NULL;
++    if (result != 0)
++        goto cleanup;
++
++    pgwasm_subprocess_active = true;
++    pgwasm_subprocess_exit_status = 0;
++    if (setjmp(pgwasm_subprocess_jmp) == 0)
++    {
++        if (pgwasm_subprocess_kind == PGLITE_WASI_SUBPROCESS_BOOTSTRAP)
++        {
++            char *argv[] = {
++                "postgres",
++                "--boot",
++                "-F",
++                "-c",
++                "log_checkpoints=false",
++                "-c",
++                "dynamic_shared_memory_type=wasi",
++                "-X",
++                "16777216",
++                "-k",
++            };
++            int argc = (int)(sizeof(argv) / sizeof(argv[0]));
++
++            optind = 1;
++            pglite_set_bootstrap_input(pgwasm_subprocess_input,
++                                       (int)pgwasm_subprocess_input_length);
++            BootstrapModeMain(argc, argv, false);
++            proc_exit(0);
++        }
++        else
++        {
++            char *argv[] = {
++                "postgres",
++                "--single",
++                "-F",
++                "-O",
++                "-j",
++                "-c",
++                "search_path=pg_catalog",
++                "-c",
++                "exit_on_error=true",
++                "-c",
++                "log_checkpoints=false",
++                "-c",
++                "dynamic_shared_memory_type=wasi",
++                "-D",
++                (char *)(pgwasm_initdb_pgdata == NULL ? "/pglite/data" : pgwasm_initdb_pgdata),
++                "template1",
++            };
++            int argc = (int)(sizeof(argv) / sizeof(argv[0]));
++
++            optind = 1;
++            pgl_stdin = freopen(pgwasm_subprocess_input_path, "r", stdin);
++            if (pgl_stdin == NULL)
++                result = -1;
++            else
++            {
++                smgrreleaseall();
++                smgrdestroyall();
++                pglite_reset_file_access();
++                pglite_reset_relation_maps();
++                pglite_reset_relation_cache();
++                pglite_reset_memory_contexts();
++                pgwasm_memory_context_initialized = false;
++                Mode = PGLITE_INIT_PROCESSING;
++                pgl_setPGliteActive(0);
++                PostgresSingleUserMain(argc, argv, "postgres");
++                proc_exit(0);
++            }
++        }
++    }
++    else
++    {
++        result = pgwasm_subprocess_exit_status == 0 ? 0 : -1;
++    }
++    pgwasm_subprocess_active = false;
++
++cleanup:
++    if (pgwasm_subprocess_input_path[0] != '\0')
++        unlink(pgwasm_subprocess_input_path);
++    if (pgl_stdin != NULL)
++    {
++        fclose(pgl_stdin);
++        pgl_stdin = NULL;
++    }
++    free(pgwasm_subprocess_input);
++    pgwasm_subprocess_input = NULL;
++    pgwasm_subprocess_input_length = 0;
++    pgwasm_subprocess_input_path[0] = '\0';
++    pgwasm_subprocess_kind = PGLITE_WASI_SUBPROCESS_NONE;
++    return result;
++#else
+     return pclose(stream);
++#endif
+ }
+ 
+ /* ========== User related functions ==========
+@@ -213,14 +1638,19 @@ void EMSCRIPTEN_KEEPALIVE pgl_run_atexit_funcs(void) {
+ * we need to handle this manually mainly because we're also handling processes manually
+ */
+ 
+-FILE* pgl_stdin = NULL;
+-FILE* pgl_stdout = NULL;
+-
+ /*
+ * we override exit() to make sure we cleanup the stdin/stdout file descriptors
+ */
+ void EMSCRIPTEN_KEEPALIVE
+ pgl_exit(int status) {
++    if (pgwasm_subprocess_active) {
++        pgwasm_subprocess_exit_status = status;
++        longjmp(pgwasm_subprocess_jmp, 1);
++    }
++    if (pgwasm_initdb_active) {
++        pgwasm_initdb_exit_status = status;
++        longjmp(pgwasm_initdb_jmp, 1);
++    }
+     if (pgl_stdin != NULL) {
+         fclose(pgl_stdin);
+         pgl_stdin = NULL;
+@@ -404,13 +1834,11 @@ pgl_munmap(void *addr, size_t length) {
+ * read FROM JS
+ * Callback used for reading data from the frontend
+ */
+-typedef ssize_t (*pgl_read_t)(void *buffer, size_t max_length);
+ pgl_read_t pgl_read;
+ 
+ /* write TO JS
+ * Callback used for writing data to the frontend
+ */
+-typedef ssize_t (*pgl_write_t)(void *buffer, size_t length);
+ pgl_write_t pgl_write;
+ 
+ /*
+@@ -464,6 +1892,87 @@ ssize_t EMSCRIPTEN_KEEPALIVE pgl_send(int __fd, const void *__buf, size_t __n, i
+ 	return wrote;
+ }
+ 
++#if defined(__wasi__)
++#undef rename
++int EMSCRIPTEN_KEEPALIVE pgl_rename(const char *from, const char *to) {
++	char buffer[8192];
++	size_t nread;
++	int saved_errno;
++	FILE *src;
++	FILE *dst;
++
++	if (rename(from, to) == 0)
++		return 0;
++
++	if (errno != ENOTSUP && errno != ENOSYS
++#ifdef EOPNOTSUPP
++		&& errno != EOPNOTSUPP
++#endif
++		)
++		return -1;
++
++	src = fopen(from, "rb");
++	if (src == NULL)
++		return -1;
++
++	(void) unlink(to);
++	dst = fopen(to, "wb");
++	if (dst == NULL)
++	{
++		saved_errno = errno;
++		fclose(src);
++		errno = saved_errno;
++		return -1;
++	}
++
++	while ((nread = fread(buffer, 1, sizeof(buffer), src)) > 0)
++	{
++		if (fwrite(buffer, 1, nread, dst) != nread)
++		{
++			saved_errno = errno;
++			fclose(src);
++			fclose(dst);
++			(void) unlink(to);
++			errno = saved_errno;
++			return -1;
++		}
++	}
++
++	if (ferror(src))
++	{
++		saved_errno = errno;
++		fclose(src);
++		fclose(dst);
++		(void) unlink(to);
++		errno = saved_errno;
++		return -1;
++	}
++
++	if (fclose(dst) != 0)
++	{
++		saved_errno = errno;
++		fclose(src);
++		(void) unlink(to);
++		errno = saved_errno;
++		return -1;
++	}
++
++	if (fclose(src) != 0)
++		return -1;
++
++	if (unlink(from) != 0)
++	{
++		saved_errno = errno;
++		(void) unlink(to);
++		errno = saved_errno;
++		return -1;
++	}
++
++	return 0;
++}
++#define rename(from, to) pgl_rename(from, to)
++#endif
++
+ int EMSCRIPTEN_KEEPALIVE pgl_connect(int socket, const struct sockaddr *address, socklen_t address_len) {
+ 	// dummy
+ 	return 0;
+@@ -476,6 +1985,11 @@ struct pollfd {
+ };
+ 
+ int EMSCRIPTEN_KEEPALIVE pgl_poll(struct pollfd fds[], ssize_t nfds, int timeout) {
+-    // dummy
++    ssize_t i;
++
++    (void)timeout;
++    for (i = 0; i < nfds; i++)
++        fds[i].revents = fds[i].events;
++
+ 	return nfds;
+-}
+\ No newline at end of file
++}

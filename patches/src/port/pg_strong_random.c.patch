@@ -1,0 +1,35 @@
+diff --git a/src/port/pg_strong_random.c b/src/port/pg_strong_random.c
+index ea6780dcc9..e0de98a239 100644
+--- a/src/port/pg_strong_random.c
++++ b/src/port/pg_strong_random.c
+@@ -23,6 +23,9 @@
+ #include <fcntl.h>
+ #include <unistd.h>
+ #include <sys/time.h>
++#ifdef __wasi__
++#include <wasi/api.h>
++#endif
+ 
+ /*
+  * pg_strong_random & pg_strong_random_init
+@@ -92,6 +95,20 @@ pg_strong_random(void *buf, size_t len)
+ 	return false;
+ }
+ 
++#elif defined(__wasi__)
++
++void
++pg_strong_random_init(void)
++{
++	/* No initialization needed on WASI */
++}
++
++bool
++pg_strong_random(void *buf, size_t len)
++{
++	return __wasi_random_get(buf, len) == __WASI_ERRNO_SUCCESS;
++}
++
+ #elif WIN32
+ 
+ #include <wincrypt.h>

@@ -1,0 +1,30 @@
+diff --git a/src/port/pqsignal.c b/src/port/pqsignal.c
+index 26943845e2..15873a7db7 100644
+--- a/src/port/pqsignal.c
++++ b/src/port/pqsignal.c
+@@ -122,7 +122,13 @@ wrapper_handler(SIGNAL_ARGS)
+ void
+ pqsignal(int signo, pqsigfunc func)
+ {
+-#if !(defined(WIN32) && defined(FRONTEND))
++#if defined(__wasi__)
++	/*
++	 * WASI preview1 does not provide POSIX signal delivery.  Keep PostgreSQL's
++	 * handler table coherent for code paths that register handlers, but avoid
++	 * sigaction() and signal() dependencies in the reactor build.
++	 */
++#elif !(defined(WIN32) && defined(FRONTEND))
+ 	struct sigaction act;
+ #endif
+ 
+@@ -135,7 +141,9 @@ pqsignal(int signo, pqsigfunc func)
+ 		func = wrapper_handler;
+ 	}
+ 
+-#if !(defined(WIN32) && defined(FRONTEND))
++#if defined(__wasi__)
++	return;
++#elif !(defined(WIN32) && defined(FRONTEND))
+ 	act.sa_handler = func;
+ 	sigemptyset(&act.sa_mask);
+ 	act.sa_flags = SA_RESTART;

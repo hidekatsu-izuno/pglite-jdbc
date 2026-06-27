@@ -1,0 +1,20 @@
+diff --git a/src/backend/storage/ipc/ipc.c b/src/backend/storage/ipc/ipc.c
+index 0684d34346..c9c364df22 100644
+--- a/src/backend/storage/ipc/ipc.c
++++ b/src/backend/storage/ipc/ipc.c
+@@ -111,6 +111,15 @@ proc_exit(int code)
+ 	/* Clean up everything that must be cleaned up */
+ 	proc_exit_prepare(code);
+ 
++#ifdef __wasi__
++	{
++		extern bool pgwasm_try_proc_exit(int code);
++
++		if (pgwasm_try_proc_exit(code))
++			return;
++	}
++#endif
++
+ #ifdef PROFILE_PID_DIR
+ 	{
+ 		/*

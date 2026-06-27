@@ -1,0 +1,81 @@
+diff --git a/contrib/pgcrypto/pgp-mpi-openssl.c b/contrib/pgcrypto/pgp-mpi-openssl.c
+index 75e4c8b300..aa76c5575f 100644
+--- a/contrib/pgcrypto/pgp-mpi-openssl.c
++++ b/contrib/pgcrypto/pgp-mpi-openssl.c
+@@ -28,6 +28,71 @@
+  *
+  * contrib/pgcrypto/pgp-mpi-openssl.c
+  */
++#ifdef __wasi__
++#include "postgres.h"
++
++#include "pgp.h"
++#include "px.h"
++
++extern int pglite_crypto_modexp(const uint8 *base, int base_len,
++								const uint8 *exp, int exp_len,
++								const uint8 *mod, int mod_len,
++								uint8 *result, int result_len)
++__attribute__((import_module("env"), import_name("pglite_crypto_modexp")));
++
++static int
++wasi_modexp_mpi(PGP_MPI *base, PGP_MPI *exp, PGP_MPI *mod, PGP_MPI **result_p)
++{
++	uint8	   *buf;
++	int			bits;
++	int			bytes;
++	int			res;
++
++	buf = palloc0(mod->bytes);
++	bits = pglite_crypto_modexp(base->data, base->bytes,
++								exp->data, exp->bytes,
++								mod->data, mod->bytes,
++								buf, mod->bytes);
++	if (bits < 0)
++	{
++		pfree(buf);
++		return PXE_PGP_MATH_FAILED;
++	}
++
++	bytes = (bits + 7) / 8;
++	res = pgp_mpi_create(buf + mod->bytes - bytes, bits, result_p);
++	pfree(buf);
++	return res;
++}
++
++int
++pgp_elgamal_encrypt(PGP_PubKey *pk, PGP_MPI *_m,
++					PGP_MPI **c1_p, PGP_MPI **c2_p)
++{
++	return PXE_PGP_MATH_FAILED;
++}
++
++int
++pgp_elgamal_decrypt(PGP_PubKey *pk, PGP_MPI *_c1, PGP_MPI *_c2,
++					PGP_MPI **msg_p)
++{
++	return PXE_PGP_MATH_FAILED;
++}
++
++int
++pgp_rsa_encrypt(PGP_PubKey *pk, PGP_MPI *_m, PGP_MPI **c_p)
++{
++	return wasi_modexp_mpi(_m, pk->pub.rsa.e, pk->pub.rsa.n, c_p);
++}
++
++int
++pgp_rsa_decrypt(PGP_PubKey *pk, PGP_MPI *_c, PGP_MPI **m_p)
++{
++	return wasi_modexp_mpi(_c, pk->sec.rsa.d, pk->pub.rsa.n, m_p);
++}
++
++#else
++
+ #include "postgres.h"
+ 
+ #include <openssl/bn.h>
+@@ -282,3 +347,4 @@ err:
+ 		BN_clear_free(c);
+ 	return res;
+ }
++#endif

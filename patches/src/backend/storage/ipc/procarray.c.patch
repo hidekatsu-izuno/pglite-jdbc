@@ -1,0 +1,25 @@
+diff --git a/src/backend/storage/ipc/procarray.c b/src/backend/storage/ipc/procarray.c
+index e5b945a9ee..493faf67f5 100644
+--- a/src/backend/storage/ipc/procarray.c
++++ b/src/backend/storage/ipc/procarray.c
+@@ -3749,6 +3749,12 @@ CountUserBackends(Oid roleid)
+ bool
+ CountOtherDBBackends(Oid databaseId, int *nbackends, int *nprepared)
+ {
++#ifdef __wasi__
++	(void) databaseId;
++	*nbackends = 0;
++	*nprepared = 0;
++	return false;
++#else
+ 	ProcArrayStruct *arrayP = procArray;
+ 
+ #define MAXAUTOVACPIDS	10		/* max autovacs to SIGTERM per iteration */
+@@ -3811,6 +3817,7 @@ CountOtherDBBackends(Oid databaseId, int *nbackends, int *nprepared)
+ 	}
+ 
+ 	return true;				/* timed out, still conflicts */
++#endif
+ }
+ 
+ /*

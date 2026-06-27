@@ -1,0 +1,24 @@
+diff --git a/pglite/static/included.pglite.exports b/pglite/static/included.pglite.exports
+index 5a7d3b994d..1c1d69ddda 100644
+--- a/pglite/static/included.pglite.exports
++++ b/pglite/static/included.pglite.exports
+@@ -463,6 +463,12 @@ pgl_pq_flush
+ pgl_sendConnData
+ pgl_setPGliteActive
+ pgl_startPGlite
++pgwasm_exec_json
++pgwasm_free
++pgwasm_init
++pgwasm_last_error
++pgwasm_set_exec_json_cb
++pgwasm_set_last_error
+ post_parse_analyze_hook
+ PostgresMainLongJmp
+ PostgresMainLoopOnce
+@@ -680,4 +686,4 @@ WinGetPartitionLocalMemory
+ WinGetPartitionRowCount
+ wmemchr
+ wmemcmp
+-write
+\ No newline at end of file
++write

@@ -1,0 +1,19 @@
+diff --git a/src/backend/utils/init/postinit.c b/src/backend/utils/init/postinit.c
+index 6f2308ee7f..d5d3e95098 100644
+--- a/src/backend/utils/init/postinit.c
++++ b/src/backend/utils/init/postinit.c
+@@ -876,12 +876,12 @@ InitPostgres(const char *in_dbname, Oid dboid,
+ 	}
+ 	else if (!IsUnderPostmaster)
+ 	{
+-#if defined(__EMSCRIPTEN__)
++#if defined(__EMSCRIPTEN__) || defined(__wasi__)
+ if (!strcmp( username , WASM_USERNAME )) {
+ #endif		
+ 		InitializeSessionUserIdStandalone();
+ 		am_superuser = true;
+-#if defined(__EMSCRIPTEN__)
++#if defined(__EMSCRIPTEN__) || defined(__wasi__)
+ } else {
+         //puts("# 894: switching session id");
+         InitializeSessionUserId(username, InvalidOid, false);

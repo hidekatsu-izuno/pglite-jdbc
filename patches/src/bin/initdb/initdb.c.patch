@@ -1,0 +1,61 @@
+diff --git a/src/bin/initdb/initdb.c b/src/bin/initdb/initdb.c
+index 62bbd08d9f..4791a32de5 100644
+--- a/src/bin/initdb/initdb.c
++++ b/src/bin/initdb/initdb.c
+@@ -748,7 +748,13 @@ popen_check(const char *command, const char *mode)
+ 
+ 	fflush(NULL);
+ 	errno = 0;
++#ifdef __wasi__
++	extern FILE *pgl_popen(const char *command, const char *mode);
++
++	cmdfd = pgl_popen(command, mode);
++#else
+ 	cmdfd = popen(command, mode);
++#endif
+ 	if (cmdfd == NULL)
+ 		pg_log_error("could not execute command \"%s\": %m", command);
+ 	return cmdfd;
+@@ -816,7 +822,7 @@ get_id(void)
+ {
+ 	const char *username;
+ 
+-#ifndef WIN32
++#if !defined(WIN32) && !defined(__wasi__)
+ 	if (geteuid() == 0)			/* 0 is root's uid */
+ 	{
+ 		pg_log_error("cannot be run as root");
+@@ -1075,6 +1081,9 @@ set_null_conf(void)
+ static const char *
+ choose_dsm_implementation(void)
+ {
++#ifdef __wasi__
++	return "wasi";
++#endif
+ #if defined(HAVE_SHM_OPEN) && !defined(__sun__)
+ 	int			ntries = 10;
+ 	pg_prng_state prng_state;
+@@ -2029,7 +2038,10 @@ make_template0(FILE *cmdfd)
+ 	 */
+ 	PG_CMD_PUTS("CREATE DATABASE template0 IS_TEMPLATE = true ALLOW_CONNECTIONS = false"
+ 				" OID = " CppAsString2(Template0DbOid)
+-				" STRATEGY = file_copy;\n\n");
++#ifndef __wasi__
++				" STRATEGY = file_copy"
++#endif
++				";\n\n");
+ 
+ 	/*
+ 	 * template0 shouldn't have any collation-dependent objects, so unset the
+@@ -2069,7 +2081,10 @@ make_postgres(FILE *cmdfd)
+ 	 * OID to postgres and select the file_copy strategy.
+ 	 */
+ 	PG_CMD_PUTS("CREATE DATABASE postgres OID = " CppAsString2(PostgresDbOid)
+-				" STRATEGY = file_copy;\n\n");
++#ifndef __wasi__
++				" STRATEGY = file_copy"
++#endif
++				";\n\n");
+ 	PG_CMD_PUTS("COMMENT ON DATABASE postgres IS 'default administrative connection database';\n\n");
+ }
+ 

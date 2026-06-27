@@ -1,0 +1,59 @@
+diff --git a/src/backend/tcop/postgres.c b/src/backend/tcop/postgres.c
+index 825a785b62..f2d5bd13f5 100644
+--- a/src/backend/tcop/postgres.c
++++ b/src/backend/tcop/postgres.c
+@@ -206,6 +206,9 @@ static volatile bool idle_session_timeout_enabled = false;
+ extern sigjmp_buf postgresmain_sigjmp_buf;
+ extern int pgl_sigsetjmp(sigjmp_buf env, int savesigs);
+ extern int is_pglite_active;
++#ifdef __wasi__
++extern void pgwasm_exit_alive(void);
++#endif
+ 
+ void initDummyPort() {
+ 	ClientSocket s;
+@@ -4158,6 +4161,14 @@ PostgresSingleUserMain(int argc, char *argv[],
+ 
+ 	Assert(!IsUnderPostmaster);
+ 
++#ifdef __wasi__
++	if (TopMemoryContext == NULL)
++	{
++		MyProcPid = getpid();
++		MemoryContextInit();
++	}
++#endif
++
+ 	/* Initialize startup process environment. */
+ 	InitStandaloneProcess(argv[0]);
+ 
+@@ -4863,7 +4874,11 @@ void PostgresMainLoopOnce() {
+ 				 */
+ 				#ifdef __PGLITE__
+ 				if (is_pglite_active != 0)
++#ifdef __wasi__
++					pgwasm_exit_alive();
++#else
+ 					exit(PGLITE_EXIT_ALIVE);
++#endif
+ 				else 
+ 					proc_exit(0);
+ 				#else
+@@ -5328,7 +5343,7 @@ ShowUsage(const char *title)
+ 					 (long) user.tv_usec,
+ 					 (long) sys.tv_sec,
+ 					 (long) sys.tv_usec);
+-#ifndef WIN32
++#if !defined(WIN32) && !defined(__wasi__)
+ 
+ 	/*
+ 	 * The following rusage fields are not defined by POSIX, but they're
+@@ -5371,7 +5386,7 @@ ShowUsage(const char *title)
+ 					 r.ru_nvcsw - Save_r.ru_nvcsw,
+ 					 r.ru_nivcsw - Save_r.ru_nivcsw,
+ 					 r.ru_nvcsw, r.ru_nivcsw);
+-#endif							/* !WIN32 */
++#endif							/* !WIN32 && !__wasi__ */
+ 
+ 	/* remove trailing newline */
+ 	if (str.data[str.len - 1] == '\n')

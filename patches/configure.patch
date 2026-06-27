@@ -1,0 +1,31 @@
+diff --git a/configure b/configure
+index 09be7f11db..1fd0ffe17b 100755
+--- a/configure
++++ b/configure
+@@ -18300,7 +18300,14 @@ $as_echo "none" >&6; }
+ fi
+ 
+ # Select semaphore implementation type.
+-if test "$PORTNAME" != "win32"; then
++if test "$PORTNAME" = "wasi"; then
++  SEMA_IMPLEMENTATION="src/backend/port/wasi_sema.c"
++  sematype="WASI"
++  { $as_echo "$as_me:${as_lineno-$LINENO}: checking which semaphore API to use" >&5
++$as_echo_n "checking which semaphore API to use... " >&6; }
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $sematype" >&5
++$as_echo "$sematype" >&6; }
++elif test "$PORTNAME" != "win32"; then
+   if test x"$PREFERRED_SEMAPHORES" = x"NAMED_POSIX" ; then
+     # Need sem_open for this
+     { $as_echo "$as_me:${as_lineno-$LINENO}: checking for library containing sem_open" >&5
+@@ -18453,7 +18460,9 @@ fi
+ 
+ 
+ # Select shared-memory implementation type.
+-if test "$PORTNAME" != "win32"; then
++if test "$PORTNAME" = "wasi"; then
++  SHMEM_IMPLEMENTATION="src/backend/port/wasi_shmem.c"
++elif test "$PORTNAME" != "win32"; then
+ 
+ $as_echo "#define USE_SYSV_SHARED_MEMORY 1" >>confdefs.h
+ 

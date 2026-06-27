@@ -1,0 +1,165 @@
+diff --git a/src/memtable/posting.c b/src/memtable/posting.c
+index 144f4e40..bded4f2a 100644
+--- a/src/memtable/posting.c
++++ b/src/memtable/posting.c
+@@ -2,8 +2,7 @@
+  * Copyright (c) 2025-2026 Tiger Data, Inc.
+  * Licensed under the PostgreSQL License. See LICENSE for details.
+  *
+- * posting.c — posting list and doclength table management for
+- * the in-memory memtable cache.  See docs/memtable_cache.md.
++ * posting.c - Posting list management for in-memory indexes
+  */
+ #include <postgres.h>
+ 
+@@ -20,6 +19,7 @@
+ #include "index/metapage.h"
+ #include "index/registry.h"
+ #include "index/state.h"
++#include "memtable/memtable.h"
+ #include "memtable/posting.h"
+ #include "memtable/stringtable.h"
+ 
+@@ -192,6 +192,15 @@ tp_add_document_to_posting_list(
+ 
+ 	if (!local_state->is_build_mode)
+ 		LWLockRelease(&posting_list->lock);
++
++	/* Track total postings for spill threshold */
++	if (local_state->shared &&
++		DsaPointerIsValid(local_state->shared->memtable_dp))
++	{
++		TpMemtable *memtable = dsa_get_address(
++				local_state->dsa, local_state->shared->memtable_dp);
++		pg_atomic_fetch_add_u64(&memtable->total_postings, 1);
++	}
+ }
+ 
+ /*
+@@ -280,14 +289,14 @@ tp_doclength_table_attach(dsa_area *area, dshash_table_handle handle)
+ /*
+  * Reserve the doc-length slot for `ctid` in the document length hash
+  * table. Returns true if the entry is newly inserted (caller now
+- * owns the addition of this doc to the cache), false if an entry
++ * owns the addition of this doc to the memtable), false if an entry
+  * for `ctid` was already present.
+  *
+- * Used as the idempotency gate in tp_cache_apply_document so that
+- * concurrent cache appliers cannot double-add the same CTID into
+- * the cache.  The doc-length table is the gate (rather than a
+- * separate "seen" set) so we get insert + dedup in a single
+- * dshash op under the partition lock.
++ * Used as the idempotency gate in tp_add_document_terms so that a
++ * standby's docid-page rebuild and concurrent INSERT_TERMS redo
++ * cannot double-add the same CTID. The doc-length table is the gate
++ * (rather than a separate "seen" set) so we get insert + dedup in a
++ * single dshash op under the partition lock.
+  */
+ bool
+ tp_store_document_length(
+@@ -332,6 +341,59 @@ tp_store_document_length(
+ 	return !found;
+ }
+ 
++/*
++ * Walk the doc-length hash table and return (count, sum_lengths).
++ *
++ * Used by tp_rebuild_index_from_disk to compute the post-drain
++ * memtable size as ground truth for the corpus-stat write — see
++ * the comment in tp_rebuild_index_from_disk for why a single
++ * atomic_write is needed instead of fetch_add (review #11
++ * scenario where INSERT_TERMS replay during the drain ALSO ends
++ * up in fresh_metap.total_docs via SPILL's
++ * tp_sync_metapage_stats, and fetch_add would double-count).
++ *
++ * Caller must hold the per-index LWLock (any mode); we take the
++ * dshash partition locks via dshash_seq_init.
++ */
++void
++tp_doclength_summary(
++		TpLocalIndexState *local_state, uint32 *count, uint64 *sum_lengths)
++{
++	TpMemtable		 *memtable;
++	dshash_table	 *doclength_table;
++	dshash_seq_status status;
++	TpDocLengthEntry *entry;
++	uint32			  c = 0;
++	uint64			  s = 0;
++
++	Assert(local_state != NULL);
++	Assert(count != NULL);
++	Assert(sum_lengths != NULL);
++
++	memtable = get_memtable(local_state);
++	if (!memtable || memtable->doc_lengths_handle == DSHASH_HANDLE_INVALID)
++	{
++		*count		 = 0;
++		*sum_lengths = 0;
++		return;
++	}
++
++	doclength_table = tp_doclength_table_attach(
++			local_state->dsa, memtable->doc_lengths_handle);
++
++	dshash_seq_init(&status, doclength_table, false);
++	while ((entry = (TpDocLengthEntry *)dshash_seq_next(&status)) != NULL)
++	{
++		c++;
++		s += (uint32)entry->doc_length;
++	}
++	dshash_seq_term(&status);
++	dshash_detach(doclength_table);
++
++	*count		 = c;
++	*sum_lengths = s;
++}
++
+ /*
+  * Get document length using a pre-attached doclength table.
+  * This is the optimized version for bulk lookups - avoids repeated
+@@ -354,4 +416,43 @@ tp_get_document_length_attached(
+ 		return doc_length;
+ 	}
+ 	return -1; /* Not found */
+-}
+\ No newline at end of file
++}
++
++/*
++ * Get document length from the document length hash table.
++ * Falls back to searching segments if not found in memtable.
++ */
++int32
++tp_get_document_length(
++		TpLocalIndexState *local_state,
++		Relation index	   pg_attribute_unused(),
++		ItemPointer		   ctid)
++{
++	TpMemtable	 *memtable;
++	dshash_table *doclength_table;
++	int32		  doc_length;
++
++	Assert(local_state != NULL);
++	Assert(ctid != NULL);
++
++	memtable = get_memtable(local_state);
++	if (!memtable)
++		elog(ERROR, "Cannot get memtable - index state corrupted");
++
++	if (memtable->doc_lengths_handle == DSHASH_HANDLE_INVALID)
++		return -1; /* Not in memtable, may be in segment */
++
++	/* Attach to document length table */
++	doclength_table = tp_doclength_table_attach(
++			local_state->dsa, memtable->doc_lengths_handle);
++
++	/* Look up the document length using the attached table */
++	doc_length = tp_get_document_length_attached(doclength_table, ctid);
++
++	dshash_detach(doclength_table);
++	return doc_length;
++}
++
++/*
++ * Shared memory cleanup - simplified stub
++ */

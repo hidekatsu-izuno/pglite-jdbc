@@ -1,0 +1,3226 @@
+diff --git a/src/backend/utils/fmgr/dfmgr.c b/src/backend/utils/fmgr/dfmgr.c
+index 1366521f47..3a24f8eb30 100644
+--- a/src/backend/utils/fmgr/dfmgr.c
++++ b/src/backend/utils/fmgr/dfmgr.c
+@@ -19,13 +19,21 @@
+ #ifndef WIN32
+ #include <dlfcn.h>
+ #endif							/* !WIN32 */
++#ifdef __wasi__
++#include <time.h>
++#endif
+ 
+ #include "fmgr.h"
+ #include "lib/stringinfo.h"
+ #include "miscadmin.h"
++#include "port/pg_bswap.h"
+ #include "storage/fd.h"
+ #include "storage/shmem.h"
++#include "utils/builtins.h"
++#include "utils/float.h"
+ #include "utils/hsearch.h"
++#include "utils/timestamp.h"
++#include "utils/uuid.h"
+ 
+ 
+ /* signature for PostgreSQL-specific library init function */
+@@ -74,6 +82,2729 @@ pg_noreturn static void incompatible_module_error(const char *libname,
+ static char *expand_dynamic_library_name(const char *name);
+ static void check_restricted_library_name(const char *name);
+ 
++#ifdef __wasi__
++extern Datum dsnowball_init(PG_FUNCTION_ARGS);
++extern Datum dsnowball_lexize(PG_FUNCTION_ARGS);
++extern const Pg_finfo_record *pg_finfo_dsnowball_init(void);
++extern const Pg_finfo_record *pg_finfo_dsnowball_lexize(void);
++extern const Pg_magic_struct *pglite_dict_snowball_Pg_magic_func(void);
++extern Datum plpgsql_call_handler(PG_FUNCTION_ARGS);
++extern Datum plpgsql_inline_handler(PG_FUNCTION_ARGS);
++extern Datum plpgsql_validator(PG_FUNCTION_ARGS);
++extern const Pg_finfo_record *pg_finfo_plpgsql_call_handler(void);
++extern const Pg_finfo_record *pg_finfo_plpgsql_inline_handler(void);
++extern const Pg_finfo_record *pg_finfo_plpgsql_validator(void);
++extern const Pg_magic_struct *pglite_plpgsql_Pg_magic_func(void);
++extern void _PG_init(void);
++extern void pglite_pg_trgm_PG_init(void);
++extern void pglite_bloom_PG_init(void);
++extern const Pg_magic_struct *pglite_pg_trgm_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_bloom_Pg_magic_func(void);
++extern Datum set_limit(PG_FUNCTION_ARGS);
++extern Datum show_limit(PG_FUNCTION_ARGS);
++extern Datum show_trgm(PG_FUNCTION_ARGS);
++extern Datum similarity(PG_FUNCTION_ARGS);
++extern Datum word_similarity(PG_FUNCTION_ARGS);
++extern Datum strict_word_similarity(PG_FUNCTION_ARGS);
++extern Datum similarity_dist(PG_FUNCTION_ARGS);
++extern Datum similarity_op(PG_FUNCTION_ARGS);
++extern Datum word_similarity_op(PG_FUNCTION_ARGS);
++extern Datum word_similarity_commutator_op(PG_FUNCTION_ARGS);
++extern Datum word_similarity_dist_op(PG_FUNCTION_ARGS);
++extern Datum word_similarity_dist_commutator_op(PG_FUNCTION_ARGS);
++extern Datum strict_word_similarity_op(PG_FUNCTION_ARGS);
++extern Datum strict_word_similarity_commutator_op(PG_FUNCTION_ARGS);
++extern Datum strict_word_similarity_dist_op(PG_FUNCTION_ARGS);
++extern Datum strict_word_similarity_dist_commutator_op(PG_FUNCTION_ARGS);
++extern Datum gin_extract_trgm(PG_FUNCTION_ARGS);
++extern Datum gin_extract_value_trgm(PG_FUNCTION_ARGS);
++extern Datum gin_extract_query_trgm(PG_FUNCTION_ARGS);
++extern Datum gin_trgm_consistent(PG_FUNCTION_ARGS);
++extern Datum gin_trgm_triconsistent(PG_FUNCTION_ARGS);
++extern Datum gtrgm_in(PG_FUNCTION_ARGS);
++extern Datum gtrgm_out(PG_FUNCTION_ARGS);
++extern Datum gtrgm_compress(PG_FUNCTION_ARGS);
++extern Datum gtrgm_decompress(PG_FUNCTION_ARGS);
++extern Datum gtrgm_consistent(PG_FUNCTION_ARGS);
++extern Datum gtrgm_distance(PG_FUNCTION_ARGS);
++extern Datum gtrgm_union(PG_FUNCTION_ARGS);
++extern Datum gtrgm_same(PG_FUNCTION_ARGS);
++extern Datum gtrgm_penalty(PG_FUNCTION_ARGS);
++extern Datum gtrgm_picksplit(PG_FUNCTION_ARGS);
++extern Datum gtrgm_options(PG_FUNCTION_ARGS);
++extern const Pg_finfo_record *pg_finfo_set_limit(void);
++extern const Pg_finfo_record *pg_finfo_show_limit(void);
++extern const Pg_finfo_record *pg_finfo_show_trgm(void);
++extern const Pg_finfo_record *pg_finfo_similarity(void);
++extern const Pg_finfo_record *pg_finfo_word_similarity(void);
++extern const Pg_finfo_record *pg_finfo_strict_word_similarity(void);
++extern const Pg_finfo_record *pg_finfo_similarity_dist(void);
++extern const Pg_finfo_record *pg_finfo_similarity_op(void);
++extern const Pg_finfo_record *pg_finfo_word_similarity_op(void);
++extern const Pg_finfo_record *pg_finfo_word_similarity_commutator_op(void);
++extern const Pg_finfo_record *pg_finfo_word_similarity_dist_op(void);
++extern const Pg_finfo_record *pg_finfo_word_similarity_dist_commutator_op(void);
++extern const Pg_finfo_record *pg_finfo_strict_word_similarity_op(void);
++extern const Pg_finfo_record *pg_finfo_strict_word_similarity_commutator_op(void);
++extern const Pg_finfo_record *pg_finfo_strict_word_similarity_dist_op(void);
++extern const Pg_finfo_record *pg_finfo_strict_word_similarity_dist_commutator_op(void);
++extern const Pg_finfo_record *pg_finfo_gin_extract_trgm(void);
++extern const Pg_finfo_record *pg_finfo_gin_extract_value_trgm(void);
++extern const Pg_finfo_record *pg_finfo_gin_extract_query_trgm(void);
++extern const Pg_finfo_record *pg_finfo_gin_trgm_consistent(void);
++extern const Pg_finfo_record *pg_finfo_gin_trgm_triconsistent(void);
++extern const Pg_finfo_record *pg_finfo_gtrgm_in(void);
++extern const Pg_finfo_record *pg_finfo_gtrgm_out(void);
++extern const Pg_finfo_record *pg_finfo_gtrgm_compress(void);
++extern const Pg_finfo_record *pg_finfo_gtrgm_decompress(void);
++extern const Pg_finfo_record *pg_finfo_gtrgm_consistent(void);
++extern const Pg_finfo_record *pg_finfo_gtrgm_distance(void);
++extern const Pg_finfo_record *pg_finfo_gtrgm_union(void);
++extern const Pg_finfo_record *pg_finfo_gtrgm_same(void);
++extern const Pg_finfo_record *pg_finfo_gtrgm_penalty(void);
++extern const Pg_finfo_record *pg_finfo_gtrgm_picksplit(void);
++extern const Pg_finfo_record *pg_finfo_gtrgm_options(void);
++extern Datum unaccent_init(PG_FUNCTION_ARGS);
++extern Datum unaccent_lexize(PG_FUNCTION_ARGS);
++extern Datum unaccent_dict(PG_FUNCTION_ARGS);
++extern const Pg_finfo_record *pg_finfo_unaccent_init(void);
++extern const Pg_finfo_record *pg_finfo_unaccent_lexize(void);
++extern const Pg_finfo_record *pg_finfo_unaccent_dict(void);
++extern const Pg_magic_struct *pglite_unaccent_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_citext_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_cube_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_hstore_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_fuzzystrmatch_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_btree_gin_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_btree_gist_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_amcheck_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_dict_int_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_dict_xsyn_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_earthdistance_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_file_fdw_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_intarray_Pg_magic_func(void);
++extern void pglite_isn_PG_init(void);
++extern const Pg_magic_struct *pglite_isn_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_lo_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_ltree_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_pageinspect_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_pg_buffercache_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_pg_freespacemap_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_pg_visibility_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_pg_surgery_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_tcn_Pg_magic_func(void);
++extern void pglite_auto_explain_PG_init(void);
++extern const Pg_magic_struct *pglite_auto_explain_Pg_magic_func(void);
++extern void pglite_pg_stat_statements_PG_init(void);
++extern const Pg_magic_struct *pglite_pg_stat_statements_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_pg_walinspect_Pg_magic_func(void);
++extern void pglite_pgcrypto_PG_init(void);
++extern const Pg_magic_struct *pglite_pgcrypto_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_tablefunc_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_seg_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_tsm_system_rows_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_tsm_system_time_Pg_magic_func(void);
++extern const Pg_magic_struct *pglite_uuid_ossp_Pg_magic_func(void);
++extern Datum uuid_nil(PG_FUNCTION_ARGS);
++extern Datum uuid_ns_dns(PG_FUNCTION_ARGS);
++extern Datum uuid_ns_url(PG_FUNCTION_ARGS);
++extern Datum uuid_ns_oid(PG_FUNCTION_ARGS);
++extern Datum uuid_ns_x500(PG_FUNCTION_ARGS);
++extern Datum uuid_generate_v1(PG_FUNCTION_ARGS);
++extern Datum uuid_generate_v1mc(PG_FUNCTION_ARGS);
++extern Datum uuid_generate_v3(PG_FUNCTION_ARGS);
++extern Datum uuid_generate_v4(PG_FUNCTION_ARGS);
++extern Datum uuid_generate_v5(PG_FUNCTION_ARGS);
++extern const Pg_finfo_record *pg_finfo_uuid_nil(void);
++extern const Pg_finfo_record *pg_finfo_uuid_ns_dns(void);
++extern const Pg_finfo_record *pg_finfo_uuid_ns_url(void);
++extern const Pg_finfo_record *pg_finfo_uuid_ns_oid(void);
++extern const Pg_finfo_record *pg_finfo_uuid_ns_x500(void);
++extern const Pg_finfo_record *pg_finfo_uuid_generate_v1(void);
++extern const Pg_finfo_record *pg_finfo_uuid_generate_v1mc(void);
++extern const Pg_finfo_record *pg_finfo_uuid_generate_v3(void);
++extern const Pg_finfo_record *pg_finfo_uuid_generate_v4(void);
++extern const Pg_finfo_record *pg_finfo_uuid_generate_v5(void);
++extern Datum uuid_generate_v7(PG_FUNCTION_ARGS);
++extern Datum uuid_v7_to_timestamptz(PG_FUNCTION_ARGS);
++extern Datum uuid_v7_to_timestamp(PG_FUNCTION_ARGS);
++extern Datum uuid_timestamptz_to_v7(PG_FUNCTION_ARGS);
++extern Datum uuid_timestamp_to_v7(PG_FUNCTION_ARGS);
++extern const Pg_finfo_record *pg_finfo_uuid_generate_v7(void);
++extern const Pg_finfo_record *pg_finfo_uuid_v7_to_timestamptz(void);
++extern const Pg_finfo_record *pg_finfo_uuid_v7_to_timestamp(void);
++extern const Pg_finfo_record *pg_finfo_uuid_timestamptz_to_v7(void);
++extern const Pg_finfo_record *pg_finfo_uuid_timestamp_to_v7(void);
++extern const Pg_magic_struct *pglite_pg_uuidv7_Pg_magic_func(void);
++extern Datum id_encode(PG_FUNCTION_ARGS);
++extern Datum id_encode_array(PG_FUNCTION_ARGS);
++extern Datum id_decode(PG_FUNCTION_ARGS);
++extern Datum id_decode_once(PG_FUNCTION_ARGS);
++extern const Pg_finfo_record *pg_finfo_id_encode(void);
++extern const Pg_finfo_record *pg_finfo_id_encode_array(void);
++extern const Pg_finfo_record *pg_finfo_id_decode(void);
++extern const Pg_finfo_record *pg_finfo_id_decode_once(void);
++extern const Pg_magic_struct *pglite_pg_hashids_Pg_magic_func(void);
++extern void pglite_vector_PG_init(void);
++extern const Pg_magic_struct *pglite_vector_Pg_magic_func(void);
++extern void pglite_pg_ivm_PG_init(void);
++extern const Pg_magic_struct *pglite_pg_ivm_Pg_magic_func(void);
++extern void pglite_pg_textsearch_PG_init(void);
++extern const Pg_magic_struct *pglite_pg_textsearch_Pg_magic_func(void);
++extern void pglite_age_PG_init(void);
++extern const Pg_magic_struct *pglite_age_Pg_magic_func(void);
++extern void pglite_postgis_PG_init(void);
++extern const Pg_magic_struct *pglite_postgis_Pg_magic_func(void);
++extern void *pglite_postgis_lookup_function(const char *funcname);
++extern void pglite_postgis_raster_PG_init(void);
++extern const Pg_magic_struct *pglite_postgis_raster_Pg_magic_func(void);
++extern void *pglite_postgis_raster_lookup_function(const char *funcname);
++extern void pglite_postgis_topology_PG_init(void);
++extern const Pg_magic_struct *pglite_postgis_topology_Pg_magic_func(void);
++extern void *pglite_postgis_topology_lookup_function(const char *funcname);
++extern Datum create_immv(PG_FUNCTION_ARGS);
++extern Datum refresh_immv(PG_FUNCTION_ARGS);
++extern Datum get_immv_def(PG_FUNCTION_ARGS);
++extern Datum ivm_visible_in_prestate(PG_FUNCTION_ARGS);
++extern Datum IVM_immediate_before(PG_FUNCTION_ARGS);
++extern Datum IVM_immediate_maintenance(PG_FUNCTION_ARGS);
++extern Datum IVM_prevent_immv_change(PG_FUNCTION_ARGS);
++extern const Pg_finfo_record *pg_finfo_create_immv(void);
++extern const Pg_finfo_record *pg_finfo_refresh_immv(void);
++extern const Pg_finfo_record *pg_finfo_get_immv_def(void);
++extern const Pg_finfo_record *pg_finfo_ivm_visible_in_prestate(void);
++extern const Pg_finfo_record *pg_finfo_IVM_immediate_before(void);
++extern const Pg_finfo_record *pg_finfo_IVM_immediate_maintenance(void);
++extern const Pg_finfo_record *pg_finfo_IVM_prevent_immv_change(void);
++
++#define PGLITE_PG_TEXTSEARCH_FUNCTIONS(V) \
++	V(bm25_get_current_score) \
++	V(bm25_text_bm25query_score) \
++	V(bm25_text_text_score) \
++	V(bm25_textarray_bm25query_score) \
++	V(bm25_textarray_text_score) \
++	V(to_tpquery_text) \
++	V(to_tpquery_text_index) \
++	V(to_tpvector) \
++	V(tp_dump_index) \
++	V(tp_force_merge) \
++	V(tp_handler) \
++	V(tp_memory_usage) \
++	V(tp_spill_memtable) \
++	V(tp_summarize_index) \
++	V(tpquery_eq) \
++	V(tpquery_in) \
++	V(tpquery_out) \
++	V(tpquery_recv) \
++	V(tpquery_send) \
++	V(tpvector_eq) \
++	V(tpvector_in) \
++	V(tpvector_out) \
++	V(tpvector_recv) \
++	V(tpvector_send)
++
++#define PGLITE_DECLARE_PG_TEXTSEARCH_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_PG_TEXTSEARCH_FUNCTIONS(PGLITE_DECLARE_PG_TEXTSEARCH_FUNCTION)
++
++#define PGLITE_AGE_FUNCTIONS(V) \
++	V(_ag_enforce_edge_uniqueness) \
++	V(_ag_enforce_edge_uniqueness2) \
++	V(_ag_enforce_edge_uniqueness3) \
++	V(_ag_enforce_edge_uniqueness4) \
++	V(_agtype_build_edge) \
++	V(_agtype_build_path) \
++	V(_agtype_build_vertex) \
++	V(_cypher_create_clause) \
++	V(_cypher_delete_clause) \
++	V(_cypher_merge_clause) \
++	V(_cypher_set_clause) \
++	V(_extract_label_id) \
++	V(_graphid) \
++	V(_label_id) \
++	V(_label_name) \
++	V(age_abs) \
++	V(age_acos) \
++	V(age_agtype_float8_accum) \
++	V(age_agtype_larger_aggtransfn) \
++	V(age_agtype_smaller_aggtransfn) \
++	V(age_agtype_sum) \
++	V(age_asin) \
++	V(age_atan) \
++	V(age_atan2) \
++	V(age_build_vle_match_edge) \
++	V(age_ceil) \
++	V(age_collect_aggfinalfn) \
++	V(age_collect_aggtransfn) \
++	V(age_cos) \
++	V(age_cot) \
++	V(age_create_barbell_graph) \
++	V(age_degrees) \
++	V(age_delete_global_graphs) \
++	V(age_e) \
++	V(age_end_id) \
++	V(age_endnode) \
++	V(age_eq_tilde) \
++	V(age_exists) \
++	V(age_exp) \
++	V(age_float8_stddev_pop_aggfinalfn) \
++	V(age_float8_stddev_samp_aggfinalfn) \
++	V(age_floor) \
++	V(age_graph_exists) \
++	V(age_graph_stats) \
++	V(age_head) \
++	V(age_id) \
++	V(age_is_valid_label_name) \
++	V(age_isempty) \
++	V(age_keys) \
++	V(age_label) \
++	V(age_labels) \
++	V(age_last) \
++	V(age_left) \
++	V(age_length) \
++	V(age_log) \
++	V(age_log10) \
++	V(age_ltrim) \
++	V(age_match_two_vle_edges) \
++	V(age_match_vle_edge_to_id_qual) \
++	V(age_match_vle_terminal_edge) \
++	V(age_materialize_vle_edges) \
++	V(age_materialize_vle_path) \
++	V(age_nodes) \
++	V(age_percentile_aggtransfn) \
++	V(age_percentile_cont_aggfinalfn) \
++	V(age_percentile_disc_aggfinalfn) \
++	V(age_pi) \
++	V(age_prepare_cypher) \
++	V(age_properties) \
++	V(age_radians) \
++	V(age_rand) \
++	V(age_range) \
++	V(age_relationships) \
++	V(age_replace) \
++	V(age_reverse) \
++	V(age_right) \
++	V(age_round) \
++	V(age_rtrim) \
++	V(age_sign) \
++	V(age_sin) \
++	V(age_size) \
++	V(age_split) \
++	V(age_sqrt) \
++	V(age_start_id) \
++	V(age_startnode) \
++	V(age_substring) \
++	V(age_tail) \
++	V(age_tan) \
++	V(age_timestamp) \
++	V(age_toboolean) \
++	V(age_tobooleanlist) \
++	V(age_tofloat) \
++	V(age_tofloatlist) \
++	V(age_tointeger) \
++	V(age_tointegerlist) \
++	V(age_tolower) \
++	V(age_tostring) \
++	V(age_tostringlist) \
++	V(age_toupper) \
++	V(age_trim) \
++	V(age_type) \
++	V(age_unnest) \
++	V(age_vertex_stats) \
++	V(age_vle) \
++	V(agtype_access_operator) \
++	V(agtype_access_slice) \
++	V(agtype_add) \
++	V(agtype_any_add) \
++	V(agtype_any_div) \
++	V(agtype_any_eq) \
++	V(agtype_any_ge) \
++	V(agtype_any_gt) \
++	V(agtype_any_le) \
++	V(agtype_any_lt) \
++	V(agtype_any_mod) \
++	V(agtype_any_mul) \
++	V(agtype_any_ne) \
++	V(agtype_any_sub) \
++	V(agtype_array_element) \
++	V(agtype_array_element_text) \
++	V(agtype_array_to_agtype) \
++	V(agtype_btree_cmp) \
++	V(agtype_build_list) \
++	V(agtype_build_list_noargs) \
++	V(agtype_build_map) \
++	V(agtype_build_map_noargs) \
++	V(agtype_build_map_nonull) \
++	V(agtype_concat) \
++	V(agtype_contained_by) \
++	V(agtype_contained_by_top_level) \
++	V(agtype_contains) \
++	V(agtype_contains_top_level) \
++	V(agtype_div) \
++	V(agtype_eq) \
++	V(agtype_exists) \
++	V(agtype_exists_agtype) \
++	V(agtype_exists_all) \
++	V(agtype_exists_all_agtype) \
++	V(agtype_exists_any) \
++	V(agtype_exists_any_agtype) \
++	V(agtype_extract_path) \
++	V(agtype_extract_path_text) \
++	V(agtype_ge) \
++	V(agtype_gt) \
++	V(agtype_hash_cmp) \
++	V(agtype_in) \
++	V(agtype_in_operator) \
++	V(agtype_le) \
++	V(agtype_lt) \
++	V(agtype_mod) \
++	V(agtype_mul) \
++	V(agtype_ne) \
++	V(agtype_neg) \
++	V(agtype_object_field) \
++	V(agtype_object_field_agtype) \
++	V(agtype_object_field_text) \
++	V(agtype_object_field_text_agtype) \
++	V(agtype_out) \
++	V(agtype_pow) \
++	V(agtype_recv) \
++	V(agtype_send) \
++	V(agtype_string_match_contains) \
++	V(agtype_string_match_ends_with) \
++	V(agtype_string_match_starts_with) \
++	V(agtype_sub) \
++	V(agtype_to_bool) \
++	V(agtype_to_float8) \
++	V(agtype_to_graphid) \
++	V(agtype_to_int2) \
++	V(agtype_to_int4) \
++	V(agtype_to_int4_array) \
++	V(agtype_to_int8) \
++	V(agtype_to_json) \
++	V(agtype_to_text) \
++	V(agtype_typecast_bool) \
++	V(agtype_typecast_edge) \
++	V(agtype_typecast_float) \
++	V(agtype_typecast_int) \
++	V(agtype_typecast_numeric) \
++	V(agtype_typecast_path) \
++	V(agtype_typecast_vertex) \
++	V(agtype_volatile_wrapper) \
++	V(alter_graph) \
++	V(bool_to_agtype) \
++	V(create_complete_graph) \
++	V(create_elabel) \
++	V(create_graph) \
++	V(create_vlabel) \
++	V(cypher) \
++	V(drop_graph) \
++	V(drop_label) \
++	V(float8_to_agtype) \
++	V(get_cypher_keywords) \
++	V(gin_compare_agtype) \
++	V(gin_consistent_agtype) \
++	V(gin_extract_agtype) \
++	V(gin_extract_agtype_query) \
++	V(gin_triconsistent_agtype) \
++	V(graphid_btree_cmp) \
++	V(graphid_btree_sort) \
++	V(graphid_eq) \
++	V(graphid_ge) \
++	V(graphid_gt) \
++	V(graphid_hash_cmp) \
++	V(graphid_in) \
++	V(graphid_le) \
++	V(graphid_lt) \
++	V(graphid_ne) \
++	V(graphid_out) \
++	V(graphid_recv) \
++	V(graphid_send) \
++	V(graphid_to_agtype) \
++	V(int4_to_agtype) \
++	V(int8_to_agtype) \
++	V(load_edges_from_file) \
++	V(load_labels_from_file) \
++	V(text_to_agtype)
++
++#define PGLITE_DECLARE_AGE_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_AGE_FUNCTIONS(PGLITE_DECLARE_AGE_FUNCTION)
++
++#define PGLITE_CITEXT_FUNCTIONS(V) \
++	V(citext_cmp) \
++	V(citext_pattern_cmp) \
++	V(citext_hash) \
++	V(citext_hash_extended) \
++	V(citext_eq) \
++	V(citext_ne) \
++	V(citext_lt) \
++	V(citext_le) \
++	V(citext_gt) \
++	V(citext_ge) \
++	V(citext_pattern_lt) \
++	V(citext_pattern_le) \
++	V(citext_pattern_gt) \
++	V(citext_pattern_ge) \
++	V(citext_smaller) \
++	V(citext_larger)
++
++#define PGLITE_DECLARE_CITEXT_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_CITEXT_FUNCTIONS(PGLITE_DECLARE_CITEXT_FUNCTION)
++
++#define PGLITE_CUBE_FUNCTIONS(V) \
++	V(cube_in) \
++	V(cube_a_f8_f8) \
++	V(cube_a_f8) \
++	V(cube_out) \
++	V(cube_send) \
++	V(cube_recv) \
++	V(cube_f8) \
++	V(cube_f8_f8) \
++	V(cube_c_f8) \
++	V(cube_c_f8_f8) \
++	V(cube_dim) \
++	V(cube_ll_coord) \
++	V(cube_ur_coord) \
++	V(cube_coord) \
++	V(cube_coord_llur) \
++	V(cube_subset) \
++	V(g_cube_consistent) \
++	V(g_cube_compress) \
++	V(g_cube_decompress) \
++	V(g_cube_penalty) \
++	V(g_cube_picksplit) \
++	V(g_cube_union) \
++	V(g_cube_same) \
++	V(g_cube_distance) \
++	V(cube_eq) \
++	V(cube_ne) \
++	V(cube_lt) \
++	V(cube_gt) \
++	V(cube_le) \
++	V(cube_ge) \
++	V(cube_cmp) \
++	V(cube_contains) \
++	V(cube_contained) \
++	V(cube_overlap) \
++	V(cube_union) \
++	V(cube_inter) \
++	V(cube_size) \
++	V(distance_taxicab) \
++	V(cube_distance) \
++	V(distance_chebyshev) \
++	V(cube_is_point) \
++	V(cube_enlarge)
++
++#define PGLITE_DECLARE_CUBE_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_CUBE_FUNCTIONS(PGLITE_DECLARE_CUBE_FUNCTION)
++
++#define PGLITE_HSTORE_FUNCTIONS(V) \
++	V(ghstore_in) \
++	V(ghstore_out) \
++	V(ghstore_consistent) \
++	V(ghstore_compress) \
++	V(ghstore_decompress) \
++	V(ghstore_penalty) \
++	V(ghstore_picksplit) \
++	V(ghstore_union) \
++	V(ghstore_same) \
++	V(ghstore_options) \
++	V(hstore_in) \
++	V(hstore_recv) \
++	V(hstore_from_text) \
++	V(hstore_from_arrays) \
++	V(hstore_from_array) \
++	V(hstore_from_record) \
++	V(hstore_populate_record) \
++	V(hstore_out) \
++	V(hstore_send) \
++	V(hstore_to_json_loose) \
++	V(hstore_to_json) \
++	V(hstore_to_jsonb) \
++	V(hstore_to_jsonb_loose) \
++	V(hstore_fetchval) \
++	V(hstore_exists) \
++	V(hstore_exists_any) \
++	V(hstore_exists_all) \
++	V(hstore_defined) \
++	V(hstore_delete) \
++	V(hstore_delete_array) \
++	V(hstore_delete_hstore) \
++	V(hstore_concat) \
++	V(hstore_slice_to_array) \
++	V(hstore_slice_to_hstore) \
++	V(hstore_akeys) \
++	V(hstore_avals) \
++	V(hstore_to_array) \
++	V(hstore_to_matrix) \
++	V(hstore_skeys) \
++	V(hstore_svals) \
++	V(hstore_contains) \
++	V(hstore_contained) \
++	V(hstore_each) \
++	V(hstore_cmp) \
++	V(hstore_eq) \
++	V(hstore_ne) \
++	V(hstore_gt) \
++	V(hstore_ge) \
++	V(hstore_lt) \
++	V(hstore_le) \
++	V(hstore_hash) \
++	V(hstore_hash_extended) \
++	V(hstore_version_diag) \
++	V(gin_extract_hstore) \
++	V(gin_extract_hstore_query) \
++	V(gin_consistent_hstore) \
++	V(hstore_subscript_handler)
++
++#define PGLITE_DECLARE_HSTORE_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_HSTORE_FUNCTIONS(PGLITE_DECLARE_HSTORE_FUNCTION)
++
++#define PGLITE_FUZZYSTRMATCH_FUNCTIONS(V) \
++	V(levenshtein_with_costs) \
++	V(levenshtein) \
++	V(levenshtein_less_equal_with_costs) \
++	V(levenshtein_less_equal) \
++	V(metaphone) \
++	V(soundex) \
++	V(difference) \
++	V(dmetaphone) \
++	V(dmetaphone_alt) \
++	V(daitch_mokotoff)
++
++#define PGLITE_DECLARE_FUZZYSTRMATCH_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_FUZZYSTRMATCH_FUNCTIONS(PGLITE_DECLARE_FUZZYSTRMATCH_FUNCTION)
++
++#define PGLITE_BTREE_GIN_FUNCTIONS(V) \
++	V(gin_btree_consistent) \
++	V(gin_extract_value_int2) \
++	V(gin_extract_query_int2) \
++	V(gin_compare_prefix_int2) \
++	V(gin_extract_value_int4) \
++	V(gin_extract_query_int4) \
++	V(gin_compare_prefix_int4) \
++	V(gin_extract_value_int8) \
++	V(gin_extract_query_int8) \
++	V(gin_compare_prefix_int8) \
++	V(gin_extract_value_float4) \
++	V(gin_extract_query_float4) \
++	V(gin_compare_prefix_float4) \
++	V(gin_extract_value_float8) \
++	V(gin_extract_query_float8) \
++	V(gin_compare_prefix_float8) \
++	V(gin_extract_value_money) \
++	V(gin_extract_query_money) \
++	V(gin_compare_prefix_money) \
++	V(gin_extract_value_oid) \
++	V(gin_extract_query_oid) \
++	V(gin_compare_prefix_oid) \
++	V(gin_extract_value_timestamp) \
++	V(gin_extract_query_timestamp) \
++	V(gin_compare_prefix_timestamp) \
++	V(gin_extract_value_timestamptz) \
++	V(gin_extract_query_timestamptz) \
++	V(gin_compare_prefix_timestamptz) \
++	V(gin_extract_value_time) \
++	V(gin_extract_query_time) \
++	V(gin_compare_prefix_time) \
++	V(gin_extract_value_timetz) \
++	V(gin_extract_query_timetz) \
++	V(gin_compare_prefix_timetz) \
++	V(gin_extract_value_date) \
++	V(gin_extract_query_date) \
++	V(gin_compare_prefix_date) \
++	V(gin_extract_value_interval) \
++	V(gin_extract_query_interval) \
++	V(gin_compare_prefix_interval) \
++	V(gin_extract_value_macaddr) \
++	V(gin_extract_query_macaddr) \
++	V(gin_compare_prefix_macaddr) \
++	V(gin_extract_value_macaddr8) \
++	V(gin_extract_query_macaddr8) \
++	V(gin_compare_prefix_macaddr8) \
++	V(gin_extract_value_inet) \
++	V(gin_extract_query_inet) \
++	V(gin_compare_prefix_inet) \
++	V(gin_extract_value_cidr) \
++	V(gin_extract_query_cidr) \
++	V(gin_compare_prefix_cidr) \
++	V(gin_extract_value_text) \
++	V(gin_extract_query_text) \
++	V(gin_compare_prefix_text) \
++	V(gin_extract_value_bpchar) \
++	V(gin_extract_query_bpchar) \
++	V(gin_compare_prefix_bpchar) \
++	V(gin_extract_value_char) \
++	V(gin_extract_query_char) \
++	V(gin_compare_prefix_char) \
++	V(gin_extract_value_bytea) \
++	V(gin_extract_query_bytea) \
++	V(gin_compare_prefix_bytea) \
++	V(gin_extract_value_bit) \
++	V(gin_extract_query_bit) \
++	V(gin_compare_prefix_bit) \
++	V(gin_extract_value_varbit) \
++	V(gin_extract_query_varbit) \
++	V(gin_compare_prefix_varbit) \
++	V(gin_numeric_cmp) \
++	V(gin_extract_value_numeric) \
++	V(gin_extract_query_numeric) \
++	V(gin_compare_prefix_numeric) \
++	V(gin_enum_cmp) \
++	V(gin_extract_value_anyenum) \
++	V(gin_extract_query_anyenum) \
++	V(gin_compare_prefix_anyenum) \
++	V(gin_extract_value_uuid) \
++	V(gin_extract_query_uuid) \
++	V(gin_compare_prefix_uuid) \
++	V(gin_extract_value_name) \
++	V(gin_extract_query_name) \
++	V(gin_compare_prefix_name) \
++	V(gin_extract_value_bool) \
++	V(gin_extract_query_bool) \
++	V(gin_compare_prefix_bool)
++
++#define PGLITE_DECLARE_BTREE_GIN_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_BTREE_GIN_FUNCTIONS(PGLITE_DECLARE_BTREE_GIN_FUNCTION)
++
++#define PGLITE_BTREE_GIST_FUNCTIONS(V) \
++	V(cash_dist) \
++	V(date_dist) \
++	V(float4_dist) \
++	V(float8_dist) \
++	V(gbt_bit_compress) \
++	V(gbt_bit_consistent) \
++	V(gbt_bit_penalty) \
++	V(gbt_bit_picksplit) \
++	V(gbt_bit_same) \
++	V(gbt_bit_sortsupport) \
++	V(gbt_bit_union) \
++	V(gbt_bool_compress) \
++	V(gbt_bool_consistent) \
++	V(gbt_bool_fetch) \
++	V(gbt_bool_penalty) \
++	V(gbt_bool_picksplit) \
++	V(gbt_bool_same) \
++	V(gbt_bool_sortsupport) \
++	V(gbt_bool_union) \
++	V(gbt_bpchar_compress) \
++	V(gbt_bpchar_consistent) \
++	V(gbt_bpchar_sortsupport) \
++	V(gbt_bytea_compress) \
++	V(gbt_bytea_consistent) \
++	V(gbt_bytea_penalty) \
++	V(gbt_bytea_picksplit) \
++	V(gbt_bytea_same) \
++	V(gbt_bytea_sortsupport) \
++	V(gbt_bytea_union) \
++	V(gbt_cash_compress) \
++	V(gbt_cash_consistent) \
++	V(gbt_cash_distance) \
++	V(gbt_cash_fetch) \
++	V(gbt_cash_penalty) \
++	V(gbt_cash_picksplit) \
++	V(gbt_cash_same) \
++	V(gbt_cash_sortsupport) \
++	V(gbt_cash_union) \
++	V(gbt_date_compress) \
++	V(gbt_date_consistent) \
++	V(gbt_date_distance) \
++	V(gbt_date_fetch) \
++	V(gbt_date_penalty) \
++	V(gbt_date_picksplit) \
++	V(gbt_date_same) \
++	V(gbt_date_sortsupport) \
++	V(gbt_date_union) \
++	V(gbt_decompress) \
++	V(gbt_enum_compress) \
++	V(gbt_enum_consistent) \
++	V(gbt_enum_fetch) \
++	V(gbt_enum_penalty) \
++	V(gbt_enum_picksplit) \
++	V(gbt_enum_same) \
++	V(gbt_enum_sortsupport) \
++	V(gbt_enum_union) \
++	V(gbt_float4_compress) \
++	V(gbt_float4_consistent) \
++	V(gbt_float4_distance) \
++	V(gbt_float4_fetch) \
++	V(gbt_float4_penalty) \
++	V(gbt_float4_picksplit) \
++	V(gbt_float4_same) \
++	V(gbt_float4_sortsupport) \
++	V(gbt_float4_union) \
++	V(gbt_float8_compress) \
++	V(gbt_float8_consistent) \
++	V(gbt_float8_distance) \
++	V(gbt_float8_fetch) \
++	V(gbt_float8_penalty) \
++	V(gbt_float8_picksplit) \
++	V(gbt_float8_same) \
++	V(gbt_float8_sortsupport) \
++	V(gbt_float8_union) \
++	V(gbt_inet_compress) \
++	V(gbt_inet_consistent) \
++	V(gbt_inet_penalty) \
++	V(gbt_inet_picksplit) \
++	V(gbt_inet_same) \
++	V(gbt_inet_sortsupport) \
++	V(gbt_inet_union) \
++	V(gbt_int2_compress) \
++	V(gbt_int2_consistent) \
++	V(gbt_int2_distance) \
++	V(gbt_int2_fetch) \
++	V(gbt_int2_penalty) \
++	V(gbt_int2_picksplit) \
++	V(gbt_int2_same) \
++	V(gbt_int2_sortsupport) \
++	V(gbt_int2_union) \
++	V(gbt_int4_compress) \
++	V(gbt_int4_consistent) \
++	V(gbt_int4_distance) \
++	V(gbt_int4_fetch) \
++	V(gbt_int4_penalty) \
++	V(gbt_int4_picksplit) \
++	V(gbt_int4_same) \
++	V(gbt_int4_sortsupport) \
++	V(gbt_int4_union) \
++	V(gbt_int8_compress) \
++	V(gbt_int8_consistent) \
++	V(gbt_int8_distance) \
++	V(gbt_int8_fetch) \
++	V(gbt_int8_penalty) \
++	V(gbt_int8_picksplit) \
++	V(gbt_int8_same) \
++	V(gbt_int8_sortsupport) \
++	V(gbt_int8_union) \
++	V(gbt_intv_compress) \
++	V(gbt_intv_consistent) \
++	V(gbt_intv_decompress) \
++	V(gbt_intv_distance) \
++	V(gbt_intv_fetch) \
++	V(gbt_intv_penalty) \
++	V(gbt_intv_picksplit) \
++	V(gbt_intv_same) \
++	V(gbt_intv_sortsupport) \
++	V(gbt_intv_union) \
++	V(gbt_macad8_compress) \
++	V(gbt_macad8_consistent) \
++	V(gbt_macad8_fetch) \
++	V(gbt_macad8_penalty) \
++	V(gbt_macad8_picksplit) \
++	V(gbt_macad8_same) \
++	V(gbt_macad8_sortsupport) \
++	V(gbt_macad8_union) \
++	V(gbt_macad_compress) \
++	V(gbt_macad_consistent) \
++	V(gbt_macad_fetch) \
++	V(gbt_macad_penalty) \
++	V(gbt_macad_picksplit) \
++	V(gbt_macad_same) \
++	V(gbt_macad_union) \
++	V(gbt_macaddr_sortsupport) \
++	V(gbt_numeric_compress) \
++	V(gbt_numeric_consistent) \
++	V(gbt_numeric_penalty) \
++	V(gbt_numeric_picksplit) \
++	V(gbt_numeric_same) \
++	V(gbt_numeric_sortsupport) \
++	V(gbt_numeric_union) \
++	V(gbt_oid_compress) \
++	V(gbt_oid_consistent) \
++	V(gbt_oid_distance) \
++	V(gbt_oid_fetch) \
++	V(gbt_oid_penalty) \
++	V(gbt_oid_picksplit) \
++	V(gbt_oid_same) \
++	V(gbt_oid_sortsupport) \
++	V(gbt_oid_union) \
++	V(gbt_text_compress) \
++	V(gbt_text_consistent) \
++	V(gbt_text_penalty) \
++	V(gbt_text_picksplit) \
++	V(gbt_text_same) \
++	V(gbt_text_sortsupport) \
++	V(gbt_text_union) \
++	V(gbt_time_compress) \
++	V(gbt_time_consistent) \
++	V(gbt_time_distance) \
++	V(gbt_time_fetch) \
++	V(gbt_time_penalty) \
++	V(gbt_time_picksplit) \
++	V(gbt_time_same) \
++	V(gbt_time_sortsupport) \
++	V(gbt_time_union) \
++	V(gbt_timetz_compress) \
++	V(gbt_timetz_consistent) \
++	V(gbt_ts_compress) \
++	V(gbt_ts_consistent) \
++	V(gbt_ts_distance) \
++	V(gbt_ts_fetch) \
++	V(gbt_ts_penalty) \
++	V(gbt_ts_picksplit) \
++	V(gbt_ts_same) \
++	V(gbt_ts_sortsupport) \
++	V(gbt_ts_union) \
++	V(gbt_tstz_compress) \
++	V(gbt_tstz_consistent) \
++	V(gbt_tstz_distance) \
++	V(gbt_uuid_compress) \
++	V(gbt_uuid_consistent) \
++	V(gbt_uuid_fetch) \
++	V(gbt_uuid_penalty) \
++	V(gbt_uuid_picksplit) \
++	V(gbt_uuid_same) \
++	V(gbt_uuid_sortsupport) \
++	V(gbt_uuid_union) \
++	V(gbt_var_decompress) \
++	V(gbt_var_fetch) \
++	V(gbt_varbit_sortsupport) \
++	V(gbtreekey_in) \
++	V(gbtreekey_out) \
++	V(gist_translate_cmptype_btree) \
++	V(int2_dist) \
++	V(int4_dist) \
++	V(int8_dist) \
++	V(interval_dist) \
++	V(oid_dist) \
++	V(time_dist) \
++	V(ts_dist) \
++	V(tstz_dist)
++
++#define PGLITE_DECLARE_BTREE_GIST_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_BTREE_GIST_FUNCTIONS(PGLITE_DECLARE_BTREE_GIST_FUNCTION)
++
++#define PGLITE_AMCHECK_FUNCTIONS(V) \
++	V(bt_index_check) \
++	V(bt_index_parent_check) \
++	V(gin_index_check) \
++	V(verify_heapam)
++
++#define PGLITE_DECLARE_AMCHECK_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_AMCHECK_FUNCTIONS(PGLITE_DECLARE_AMCHECK_FUNCTION)
++
++#define PGLITE_BLOOM_FUNCTIONS(V) \
++	V(blhandler)
++
++#define PGLITE_DECLARE_BLOOM_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_BLOOM_FUNCTIONS(PGLITE_DECLARE_BLOOM_FUNCTION)
++
++#define PGLITE_DICT_INT_FUNCTIONS(V) \
++	V(dintdict_init) \
++	V(dintdict_lexize)
++
++#define PGLITE_DECLARE_DICT_INT_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_DICT_INT_FUNCTIONS(PGLITE_DECLARE_DICT_INT_FUNCTION)
++
++#define PGLITE_DICT_XSYN_FUNCTIONS(V) \
++	V(dxsyn_init) \
++	V(dxsyn_lexize)
++
++#define PGLITE_DECLARE_DICT_XSYN_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_DICT_XSYN_FUNCTIONS(PGLITE_DECLARE_DICT_XSYN_FUNCTION)
++
++#define PGLITE_EARTHDISTANCE_FUNCTIONS(V) \
++	V(geo_distance)
++
++#define PGLITE_DECLARE_EARTHDISTANCE_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_EARTHDISTANCE_FUNCTIONS(PGLITE_DECLARE_EARTHDISTANCE_FUNCTION)
++
++#define PGLITE_FILE_FDW_FUNCTIONS(V) \
++	V(file_fdw_handler) \
++	V(file_fdw_validator)
++
++#define PGLITE_DECLARE_FILE_FDW_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_FILE_FDW_FUNCTIONS(PGLITE_DECLARE_FILE_FDW_FUNCTION)
++
++#define PGLITE_INTARRAY_FUNCTIONS(V) \
++	V(_int_contained) \
++	V(_int_contained_joinsel) \
++	V(_int_contained_sel) \
++	V(_int_contains) \
++	V(_int_contains_joinsel) \
++	V(_int_contains_sel) \
++	V(_int_different) \
++	V(_int_inter) \
++	V(_int_matchsel) \
++	V(_int_overlap) \
++	V(_int_overlap_joinsel) \
++	V(_int_overlap_sel) \
++	V(_int_same) \
++	V(_int_union) \
++	V(_intbig_in) \
++	V(_intbig_out) \
++	V(boolop) \
++	V(bqarr_in) \
++	V(bqarr_out) \
++	V(g_int_compress) \
++	V(g_int_consistent) \
++	V(g_int_decompress) \
++	V(g_int_options) \
++	V(g_int_penalty) \
++	V(g_int_picksplit) \
++	V(g_int_same) \
++	V(g_int_union) \
++	V(g_intbig_compress) \
++	V(g_intbig_consistent) \
++	V(g_intbig_decompress) \
++	V(g_intbig_options) \
++	V(g_intbig_penalty) \
++	V(g_intbig_picksplit) \
++	V(g_intbig_same) \
++	V(g_intbig_union) \
++	V(ginint4_consistent) \
++	V(ginint4_queryextract) \
++	V(icount) \
++	V(idx) \
++	V(intarray_del_elem) \
++	V(intarray_push_array) \
++	V(intarray_push_elem) \
++	V(intset) \
++	V(intset_subtract) \
++	V(intset_union_elem) \
++	V(querytree) \
++	V(rboolop) \
++	V(sort) \
++	V(sort_asc) \
++	V(sort_desc) \
++	V(subarray) \
++	V(uniq)
++
++#define PGLITE_DECLARE_INTARRAY_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_INTARRAY_FUNCTIONS(PGLITE_DECLARE_INTARRAY_FUNCTION)
++
++#define PGLITE_ISN_FUNCTIONS(V) \
++	V(accept_weak_input) \
++	V(ean13_in) \
++	V(ean13_out) \
++	V(is_valid) \
++	V(isbn_cast_from_ean13) \
++	V(isbn_in) \
++	V(ismn_cast_from_ean13) \
++	V(ismn_in) \
++	V(isn_out) \
++	V(issn_cast_from_ean13) \
++	V(issn_in) \
++	V(make_valid) \
++	V(upc_cast_from_ean13) \
++	V(upc_in) \
++	V(weak_input_status)
++
++#define PGLITE_DECLARE_ISN_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_ISN_FUNCTIONS(PGLITE_DECLARE_ISN_FUNCTION)
++
++#define PGLITE_LO_FUNCTIONS(V) \
++	V(lo_manage)
++
++#define PGLITE_DECLARE_LO_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_LO_FUNCTIONS(PGLITE_DECLARE_LO_FUNCTION)
++
++#define PGLITE_LTREE_FUNCTIONS(V) \
++	V(_lca) \
++	V(_lt_q_regex) \
++	V(_lt_q_rregex) \
++	V(_ltq_extract_regex) \
++	V(_ltq_regex) \
++	V(_ltq_rregex) \
++	V(_ltree_compress) \
++	V(_ltree_consistent) \
++	V(_ltree_extract_isparent) \
++	V(_ltree_extract_risparent) \
++	V(_ltree_gist_options) \
++	V(_ltree_isparent) \
++	V(_ltree_penalty) \
++	V(_ltree_picksplit) \
++	V(_ltree_r_isparent) \
++	V(_ltree_r_risparent) \
++	V(_ltree_risparent) \
++	V(_ltree_same) \
++	V(_ltree_union) \
++	V(_ltxtq_exec) \
++	V(_ltxtq_extract_exec) \
++	V(_ltxtq_rexec) \
++	V(hash_ltree) \
++	V(hash_ltree_extended) \
++	V(lca) \
++	V(lquery_in) \
++	V(lquery_out) \
++	V(lquery_recv) \
++	V(lquery_send) \
++	V(lt_q_regex) \
++	V(lt_q_rregex) \
++	V(ltq_regex) \
++	V(ltq_rregex) \
++	V(ltree2text) \
++	V(ltree_addltree) \
++	V(ltree_addtext) \
++	V(ltree_cmp) \
++	V(ltree_compress) \
++	V(ltree_consistent) \
++	V(ltree_decompress) \
++	V(ltree_eq) \
++	V(ltree_ge) \
++	V(ltree_gist_in) \
++	V(ltree_gist_options) \
++	V(ltree_gist_out) \
++	V(ltree_gt) \
++	V(ltree_in) \
++	V(ltree_index) \
++	V(ltree_isparent) \
++	V(ltree_le) \
++	V(ltree_lt) \
++	V(ltree_ne) \
++	V(ltree_out) \
++	V(ltree_penalty) \
++	V(ltree_picksplit) \
++	V(ltree_recv) \
++	V(ltree_risparent) \
++	V(ltree_same) \
++	V(ltree_send) \
++	V(ltree_textadd) \
++	V(ltree_union) \
++	V(ltreeparentsel) \
++	V(ltxtq_exec) \
++	V(ltxtq_in) \
++	V(ltxtq_out) \
++	V(ltxtq_recv) \
++	V(ltxtq_rexec) \
++	V(ltxtq_send) \
++	V(nlevel) \
++	V(subltree) \
++	V(subpath) \
++	V(text2ltree)
++
++#define PGLITE_DECLARE_LTREE_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_LTREE_FUNCTIONS(PGLITE_DECLARE_LTREE_FUNCTION)
++
++#define PGLITE_PAGEINSPECT_FUNCTIONS(V) \
++	V(brin_metapage_info) \
++	V(brin_page_items) \
++	V(brin_page_type) \
++	V(brin_revmap_data) \
++	V(bt_metap) \
++	V(bt_multi_page_stats) \
++	V(bt_page_items) \
++	V(bt_page_items_1_9) \
++	V(bt_page_items_bytea) \
++	V(bt_page_stats) \
++	V(bt_page_stats_1_9) \
++	V(fsm_page_contents) \
++	V(get_raw_page) \
++	V(get_raw_page_1_9) \
++	V(get_raw_page_fork) \
++	V(get_raw_page_fork_1_9) \
++	V(gin_leafpage_items) \
++	V(gin_metapage_info) \
++	V(gin_page_opaque_info) \
++	V(gist_page_items) \
++	V(gist_page_items_bytea) \
++	V(gist_page_opaque_info) \
++	V(hash_bitmap_info) \
++	V(hash_metapage_info) \
++	V(hash_page_items) \
++	V(hash_page_stats) \
++	V(hash_page_type) \
++	V(heap_page_items) \
++	V(heap_tuple_infomask_flags) \
++	V(page_checksum) \
++	V(page_checksum_1_9) \
++	V(page_header) \
++	V(tuple_data_split)
++
++#define PGLITE_DECLARE_PAGEINSPECT_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_PAGEINSPECT_FUNCTIONS(PGLITE_DECLARE_PAGEINSPECT_FUNCTION)
++
++#define PGLITE_PG_BUFFERCACHE_FUNCTIONS(V) \
++	V(pg_buffercache_evict) \
++	V(pg_buffercache_evict_all) \
++	V(pg_buffercache_evict_relation) \
++	V(pg_buffercache_numa_pages) \
++	V(pg_buffercache_pages) \
++	V(pg_buffercache_summary) \
++	V(pg_buffercache_usage_counts)
++
++#define PGLITE_DECLARE_PG_BUFFERCACHE_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_PG_BUFFERCACHE_FUNCTIONS(PGLITE_DECLARE_PG_BUFFERCACHE_FUNCTION)
++
++#define PGLITE_PG_FREESPACEMAP_FUNCTIONS(V) \
++	V(pg_freespace) \
++	V(pg_freespace_rel)
++
++#define PGLITE_DECLARE_PG_FREESPACEMAP_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_PG_FREESPACEMAP_FUNCTIONS(PGLITE_DECLARE_PG_FREESPACEMAP_FUNCTION)
++
++#define PGLITE_PG_VISIBILITY_FUNCTIONS(V) \
++	V(pg_check_frozen) \
++	V(pg_check_visible) \
++	V(pg_truncate_visibility_map) \
++	V(pg_visibility) \
++	V(pg_visibility_map) \
++	V(pg_visibility_map_rel) \
++	V(pg_visibility_map_summary) \
++	V(pg_visibility_rel)
++
++#define PGLITE_DECLARE_PG_VISIBILITY_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_PG_VISIBILITY_FUNCTIONS(PGLITE_DECLARE_PG_VISIBILITY_FUNCTION)
++
++#define PGLITE_PG_SURGERY_FUNCTIONS(V) \
++	V(heap_force_freeze) \
++	V(heap_force_kill)
++
++#define PGLITE_DECLARE_PG_SURGERY_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_PG_SURGERY_FUNCTIONS(PGLITE_DECLARE_PG_SURGERY_FUNCTION)
++
++#define PGLITE_TCN_FUNCTIONS(V) \
++	V(triggered_change_notification)
++
++#define PGLITE_DECLARE_TCN_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_TCN_FUNCTIONS(PGLITE_DECLARE_TCN_FUNCTION)
++
++#define PGLITE_PG_STAT_STATEMENTS_FUNCTIONS(V) \
++	V(pg_stat_statements) \
++	V(pg_stat_statements_1_10) \
++	V(pg_stat_statements_1_11) \
++	V(pg_stat_statements_1_12) \
++	V(pg_stat_statements_1_2) \
++	V(pg_stat_statements_1_3) \
++	V(pg_stat_statements_1_8) \
++	V(pg_stat_statements_1_9) \
++	V(pg_stat_statements_info) \
++	V(pg_stat_statements_reset) \
++	V(pg_stat_statements_reset_1_11) \
++	V(pg_stat_statements_reset_1_7)
++
++#define PGLITE_DECLARE_PG_STAT_STATEMENTS_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_PG_STAT_STATEMENTS_FUNCTIONS(PGLITE_DECLARE_PG_STAT_STATEMENTS_FUNCTION)
++
++#define PGLITE_PG_WALINSPECT_FUNCTIONS(V) \
++	V(pg_get_wal_block_info) \
++	V(pg_get_wal_record_info) \
++	V(pg_get_wal_records_info) \
++	V(pg_get_wal_records_info_till_end_of_wal) \
++	V(pg_get_wal_stats) \
++	V(pg_get_wal_stats_till_end_of_wal)
++
++#define PGLITE_DECLARE_PG_WALINSPECT_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_PG_WALINSPECT_FUNCTIONS(PGLITE_DECLARE_PG_WALINSPECT_FUNCTION)
++
++#define PGLITE_PGCRYPTO_FUNCTIONS(V) \
++	V(pg_digest) \
++	V(pg_hmac) \
++	V(pg_gen_salt) \
++	V(pg_gen_salt_rounds) \
++	V(pg_crypt) \
++	V(pg_encrypt) \
++	V(pg_decrypt) \
++	V(pg_encrypt_iv) \
++	V(pg_decrypt_iv) \
++	V(pg_random_bytes) \
++	V(pg_random_uuid) \
++	V(pg_check_fipsmode) \
++	V(pgp_sym_encrypt_bytea) \
++	V(pgp_sym_encrypt_text) \
++	V(pgp_sym_decrypt_bytea) \
++	V(pgp_sym_decrypt_text) \
++	V(pgp_pub_encrypt_bytea) \
++	V(pgp_pub_encrypt_text) \
++	V(pgp_pub_decrypt_bytea) \
++	V(pgp_pub_decrypt_text) \
++	V(pgp_key_id_w) \
++	V(pg_armor) \
++	V(pg_dearmor) \
++	V(pgp_armor_headers)
++
++#define PGLITE_DECLARE_PGCRYPTO_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_PGCRYPTO_FUNCTIONS(PGLITE_DECLARE_PGCRYPTO_FUNCTION)
++
++#define PGLITE_TABLEFUNC_FUNCTIONS(V) \
++	V(connectby_text) \
++	V(connectby_text_serial) \
++	V(crosstab) \
++	V(crosstab_hash) \
++	V(normal_rand)
++
++#define PGLITE_DECLARE_TABLEFUNC_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_TABLEFUNC_FUNCTIONS(PGLITE_DECLARE_TABLEFUNC_FUNCTION)
++
++#define PGLITE_SEG_FUNCTIONS(V) \
++	V(gseg_compress) \
++	V(gseg_consistent) \
++	V(gseg_decompress) \
++	V(gseg_penalty) \
++	V(gseg_picksplit) \
++	V(gseg_same) \
++	V(gseg_union) \
++	V(seg_center) \
++	V(seg_cmp) \
++	V(seg_contained) \
++	V(seg_contains) \
++	V(seg_different) \
++	V(seg_ge) \
++	V(seg_gt) \
++	V(seg_in) \
++	V(seg_inter) \
++	V(seg_le) \
++	V(seg_left) \
++	V(seg_lower) \
++	V(seg_lt) \
++	V(seg_out) \
++	V(seg_over_left) \
++	V(seg_over_right) \
++	V(seg_overlap) \
++	V(seg_right) \
++	V(seg_same) \
++	V(seg_size) \
++	V(seg_union) \
++	V(seg_upper)
++
++#define PGLITE_DECLARE_SEG_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_SEG_FUNCTIONS(PGLITE_DECLARE_SEG_FUNCTION)
++
++#define PGLITE_TSM_SYSTEM_ROWS_FUNCTIONS(V) \
++	V(tsm_system_rows_handler)
++
++#define PGLITE_DECLARE_TSM_SYSTEM_ROWS_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_TSM_SYSTEM_ROWS_FUNCTIONS(PGLITE_DECLARE_TSM_SYSTEM_ROWS_FUNCTION)
++
++#define PGLITE_TSM_SYSTEM_TIME_FUNCTIONS(V) \
++	V(tsm_system_time_handler)
++
++#define PGLITE_DECLARE_TSM_SYSTEM_TIME_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_TSM_SYSTEM_TIME_FUNCTIONS(PGLITE_DECLARE_TSM_SYSTEM_TIME_FUNCTION)
++
++#define PGLITE_VECTOR_FUNCTIONS(V) \
++	V(array_to_halfvec) \
++	V(array_to_sparsevec) \
++	V(array_to_vector) \
++	V(binary_quantize) \
++	V(cosine_distance) \
++	V(halfvec) \
++	V(halfvec_accum) \
++	V(halfvec_add) \
++	V(halfvec_avg) \
++	V(halfvec_binary_quantize) \
++	V(halfvec_cmp) \
++	V(halfvec_concat) \
++	V(halfvec_cosine_distance) \
++	V(halfvec_eq) \
++	V(halfvec_ge) \
++	V(halfvec_gt) \
++	V(halfvec_in) \
++	V(halfvec_inner_product) \
++	V(halfvec_l1_distance) \
++	V(halfvec_l2_distance) \
++	V(halfvec_l2_norm) \
++	V(halfvec_l2_normalize) \
++	V(halfvec_l2_squared_distance) \
++	V(halfvec_le) \
++	V(halfvec_lt) \
++	V(halfvec_mul) \
++	V(halfvec_ne) \
++	V(halfvec_negative_inner_product) \
++	V(halfvec_out) \
++	V(halfvec_recv) \
++	V(halfvec_send) \
++	V(halfvec_spherical_distance) \
++	V(halfvec_sub) \
++	V(halfvec_subvector) \
++	V(halfvec_to_float4) \
++	V(halfvec_to_sparsevec) \
++	V(halfvec_to_vector) \
++	V(halfvec_typmod_in) \
++	V(halfvec_vector_dims) \
++	V(hamming_distance) \
++	V(hnsw_bit_support) \
++	V(hnsw_halfvec_support) \
++	V(hnsw_sparsevec_support) \
++	V(hnswhandler) \
++	V(inner_product) \
++	V(ivfflat_bit_support) \
++	V(ivfflat_halfvec_support) \
++	V(ivfflathandler) \
++	V(jaccard_distance) \
++	V(l1_distance) \
++	V(l2_distance) \
++	V(l2_normalize) \
++	V(sparsevec) \
++	V(sparsevec_cmp) \
++	V(sparsevec_cosine_distance) \
++	V(sparsevec_eq) \
++	V(sparsevec_ge) \
++	V(sparsevec_gt) \
++	V(sparsevec_in) \
++	V(sparsevec_inner_product) \
++	V(sparsevec_l1_distance) \
++	V(sparsevec_l2_distance) \
++	V(sparsevec_l2_norm) \
++	V(sparsevec_l2_normalize) \
++	V(sparsevec_l2_squared_distance) \
++	V(sparsevec_le) \
++	V(sparsevec_lt) \
++	V(sparsevec_ne) \
++	V(sparsevec_negative_inner_product) \
++	V(sparsevec_out) \
++	V(sparsevec_recv) \
++	V(sparsevec_send) \
++	V(sparsevec_to_halfvec) \
++	V(sparsevec_to_vector) \
++	V(sparsevec_typmod_in) \
++	V(subvector) \
++	V(vector) \
++	V(vector_accum) \
++	V(vector_add) \
++	V(vector_avg) \
++	V(vector_cmp) \
++	V(vector_combine) \
++	V(vector_concat) \
++	V(vector_dims) \
++	V(vector_eq) \
++	V(vector_ge) \
++	V(vector_gt) \
++	V(vector_in) \
++	V(vector_l2_squared_distance) \
++	V(vector_le) \
++	V(vector_lt) \
++	V(vector_mul) \
++	V(vector_ne) \
++	V(vector_negative_inner_product) \
++	V(vector_norm) \
++	V(vector_out) \
++	V(vector_recv) \
++	V(vector_send) \
++	V(vector_spherical_distance) \
++	V(vector_sub) \
++	V(vector_to_float4) \
++	V(vector_to_halfvec) \
++	V(vector_to_sparsevec) \
++	V(vector_typmod_in)
++
++#define PGLITE_DECLARE_VECTOR_FUNCTION(name) \
++	extern Datum name(PG_FUNCTION_ARGS); \
++	extern const Pg_finfo_record *CppConcat(pg_finfo_, name)(void);
++
++PGLITE_VECTOR_FUNCTIONS(PGLITE_DECLARE_VECTOR_FUNCTION)
++
++static char pglite_static_dict_snowball_handle;
++static char pglite_static_plpgsql_handle;
++static char pglite_static_pg_trgm_handle;
++static char pglite_static_unaccent_handle;
++static char pglite_static_citext_handle;
++static char pglite_static_cube_handle;
++static char pglite_static_hstore_handle;
++static char pglite_static_fuzzystrmatch_handle;
++static char pglite_static_btree_gin_handle;
++static char pglite_static_btree_gist_handle;
++static char pglite_static_amcheck_handle;
++static char pglite_static_bloom_handle;
++static char pglite_static_dict_int_handle;
++static char pglite_static_dict_xsyn_handle;
++static char pglite_static_earthdistance_handle;
++static char pglite_static_file_fdw_handle;
++static char pglite_static_intarray_handle;
++static char pglite_static_isn_handle;
++static char pglite_static_lo_handle;
++static char pglite_static_ltree_handle;
++static char pglite_static_pageinspect_handle;
++static char pglite_static_pg_buffercache_handle;
++static char pglite_static_pg_freespacemap_handle;
++static char pglite_static_pg_visibility_handle;
++static char pglite_static_pg_surgery_handle;
++static char pglite_static_tcn_handle;
++static char pglite_static_auto_explain_handle;
++static char pglite_static_pg_stat_statements_handle;
++static char pglite_static_pg_walinspect_handle;
++static char pglite_static_pgcrypto_handle;
++static char pglite_static_tablefunc_handle;
++static char pglite_static_seg_handle;
++static char pglite_static_tsm_system_rows_handle;
++static char pglite_static_tsm_system_time_handle;
++static char pglite_static_uuid_ossp_handle;
++static char pglite_static_pg_uuidv7_handle;
++static char pglite_static_pg_hashids_handle;
++static char pglite_static_vector_handle;
++static char pglite_static_pg_ivm_handle;
++static char pglite_static_pg_textsearch_handle;
++static char pglite_static_age_handle;
++static char pglite_static_postgis_handle;
++static char pglite_static_postgis_raster_handle;
++static char pglite_static_postgis_topology_handle;
++
++float
++pglite_vector_strtof(const char *num, char **endptr)
++{
++	return float4in_internal((char *) num, endptr, "real", num, NULL);
++}
++
++#define PGLITE_UUIDV7_EPOCH_DIFF_USECS \
++	((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * USECS_PER_DAY)
++
++const Pg_magic_struct *
++pglite_pg_uuidv7_Pg_magic_func(void)
++{
++	static const Pg_magic_struct Pg_magic_data = PG_MODULE_MAGIC_DATA(.name = NULL);
++	return &Pg_magic_data;
++}
++
++const Pg_magic_struct *
++pglite_uuid_ossp_Pg_magic_func(void)
++{
++	static const Pg_magic_struct Pg_magic_data = PG_MODULE_MAGIC_DATA(.name = "uuid-ossp");
++	return &Pg_magic_data;
++}
++
++static Datum
++pglite_uuid_from_cstring(const char *value)
++{
++	return DirectFunctionCall1(uuid_in, CStringGetDatum(value));
++}
++
++static Datum
++pglite_uuid_random_with_version(int version)
++{
++	pg_uuid_t  *uuid = palloc(UUID_LEN);
++
++	if (!pg_strong_random(uuid->data, UUID_LEN))
++		ereport(ERROR,
++				(errcode(ERRCODE_INTERNAL_ERROR),
++				 errmsg("could not generate random values")));
++
++	uuid->data[6] = (uuid->data[6] & 0x0f) | ((version & 0x0f) << 4);
++	uuid->data[8] = (uuid->data[8] & 0x3f) | 0x80;
++	PG_RETURN_UUID_P(uuid);
++}
++
++PG_FUNCTION_INFO_V1(uuid_nil);
++Datum
++uuid_nil(PG_FUNCTION_ARGS)
++{
++	return pglite_uuid_from_cstring("00000000-0000-0000-0000-000000000000");
++}
++
++PG_FUNCTION_INFO_V1(uuid_ns_dns);
++Datum
++uuid_ns_dns(PG_FUNCTION_ARGS)
++{
++	return pglite_uuid_from_cstring("6ba7b810-9dad-11d1-80b4-00c04fd430c8");
++}
++
++PG_FUNCTION_INFO_V1(uuid_ns_url);
++Datum
++uuid_ns_url(PG_FUNCTION_ARGS)
++{
++	return pglite_uuid_from_cstring("6ba7b811-9dad-11d1-80b4-00c04fd430c8");
++}
++
++PG_FUNCTION_INFO_V1(uuid_ns_oid);
++Datum
++uuid_ns_oid(PG_FUNCTION_ARGS)
++{
++	return pglite_uuid_from_cstring("6ba7b812-9dad-11d1-80b4-00c04fd430c8");
++}
++
++PG_FUNCTION_INFO_V1(uuid_ns_x500);
++Datum
++uuid_ns_x500(PG_FUNCTION_ARGS)
++{
++	return pglite_uuid_from_cstring("6ba7b814-9dad-11d1-80b4-00c04fd430c8");
++}
++
++PG_FUNCTION_INFO_V1(uuid_generate_v1);
++Datum
++uuid_generate_v1(PG_FUNCTION_ARGS)
++{
++	return pglite_uuid_random_with_version(1);
++}
++
++PG_FUNCTION_INFO_V1(uuid_generate_v1mc);
++Datum
++uuid_generate_v1mc(PG_FUNCTION_ARGS)
++{
++	return pglite_uuid_random_with_version(1);
++}
++
++PG_FUNCTION_INFO_V1(uuid_generate_v3);
++Datum
++uuid_generate_v3(PG_FUNCTION_ARGS)
++{
++	return pglite_uuid_random_with_version(3);
++}
++
++PG_FUNCTION_INFO_V1(uuid_generate_v4);
++Datum
++uuid_generate_v4(PG_FUNCTION_ARGS)
++{
++	return pglite_uuid_random_with_version(4);
++}
++
++PG_FUNCTION_INFO_V1(uuid_generate_v5);
++Datum
++uuid_generate_v5(PG_FUNCTION_ARGS)
++{
++	return pglite_uuid_random_with_version(5);
++}
++
++PG_FUNCTION_INFO_V1(uuid_generate_v7);
++Datum
++uuid_generate_v7(PG_FUNCTION_ARGS)
++{
++	pg_uuid_t  *uuid = palloc(UUID_LEN);
++	struct timespec ts;
++	uint64		tms;
++
++	if (clock_gettime(CLOCK_REALTIME, &ts) != 0)
++		ereport(ERROR,
++				(errcode(ERRCODE_INTERNAL_ERROR),
++				 errmsg("could not get CLOCK_REALTIME")));
++
++	tms = ((uint64) ts.tv_sec * 1000) + ((uint64) ts.tv_nsec / 1000000);
++	tms = pg_hton64(tms << 16);
++	memcpy(&uuid->data[0], &tms, 6);
++
++	if (!pg_strong_random(&uuid->data[6], UUID_LEN - 6))
++		ereport(ERROR,
++				(errcode(ERRCODE_INTERNAL_ERROR),
++				 errmsg("could not generate random values")));
++
++	uuid->data[6] = (uuid->data[6] & 0x0f) | 0x70;
++	uuid->data[8] = (uuid->data[8] & 0x3f) | 0x80;
++
++	PG_RETURN_UUID_P(uuid);
++}
++
++static uint64
++pglite_uuid_v7_to_uint64(pg_uuid_t *uuid)
++{
++	uint64		ts;
++
++	memcpy(&ts, &uuid->data[0], 6);
++	ts = pg_ntoh64(ts) >> 16;
++	ts = 1000 * ts - PGLITE_UUIDV7_EPOCH_DIFF_USECS;
++
++	return ts;
++}
++
++PG_FUNCTION_INFO_V1(uuid_v7_to_timestamptz);
++Datum
++uuid_v7_to_timestamptz(PG_FUNCTION_ARGS)
++{
++	pg_uuid_t  *uuid = PG_GETARG_UUID_P(0);
++	uint64		ts = pglite_uuid_v7_to_uint64(uuid);
++
++	PG_RETURN_TIMESTAMPTZ(ts);
++}
++
++PG_FUNCTION_INFO_V1(uuid_v7_to_timestamp);
++Datum
++uuid_v7_to_timestamp(PG_FUNCTION_ARGS)
++{
++	pg_uuid_t  *uuid = PG_GETARG_UUID_P(0);
++	uint64		ts = pglite_uuid_v7_to_uint64(uuid);
++
++	PG_RETURN_TIMESTAMP(ts);
++}
++
++static Datum
++pglite_uuid_uint64_to_v7(uint64 ts, bool zero)
++{
++	pg_uuid_t  *uuid = palloc(UUID_LEN);
++	uint64		tms;
++
++	tms = (ts + PGLITE_UUIDV7_EPOCH_DIFF_USECS) / 1000;
++	tms = pg_hton64(tms << 16);
++	memcpy(&uuid->data[0], &tms, 6);
++
++	if (zero)
++		memset(&uuid->data[6], 0, UUID_LEN - 6);
++	else if (!pg_strong_random(&uuid->data[6], UUID_LEN - 6))
++		ereport(ERROR,
++				(errcode(ERRCODE_INTERNAL_ERROR),
++				 errmsg("could not generate random values")));
++
++	uuid->data[6] = (uuid->data[6] & 0x0f) | 0x70;
++	uuid->data[8] = (uuid->data[8] & 0x3f) | 0x80;
++
++	PG_RETURN_UUID_P(uuid);
++}
++
++PG_FUNCTION_INFO_V1(uuid_timestamptz_to_v7);
++Datum
++uuid_timestamptz_to_v7(PG_FUNCTION_ARGS)
++{
++	TimestampTz ts = PG_GETARG_TIMESTAMPTZ(0);
++	bool		zero = false;
++
++	if (!PG_ARGISNULL(1))
++		zero = PG_GETARG_BOOL(1);
++
++	return pglite_uuid_uint64_to_v7(ts, zero);
++}
++
++PG_FUNCTION_INFO_V1(uuid_timestamp_to_v7);
++Datum
++uuid_timestamp_to_v7(PG_FUNCTION_ARGS)
++{
++	Timestamp	ts = PG_GETARG_TIMESTAMP(0);
++	bool		zero = false;
++
++	if (!PG_ARGISNULL(1))
++		zero = PG_GETARG_BOOL(1);
++
++	return pglite_uuid_uint64_to_v7(ts, zero);
++}
++
++static bool
++pglite_wasi_is_static_library(const char *filename, const char *name)
++{
++	size_t		name_len = strlen(name);
++	size_t		filename_len = strlen(filename);
++	const char *suffix = "";
++	size_t		suffix_len = 0;
++
++	if (filename_len > 3 && strcmp(filename + filename_len - 3, ".so") == 0)
++	{
++		suffix = ".so";
++		suffix_len = 3;
++	}
++
++	if (strcmp(filename, name) == 0)
++		return true;
++	if (filename_len == name_len + suffix_len &&
++		strncmp(filename, name, name_len) == 0 &&
++		strcmp(filename + name_len, suffix) == 0)
++		return true;
++	if (filename_len > name_len + suffix_len &&
++		strncmp(filename + filename_len - name_len - suffix_len, name, name_len) == 0 &&
++		strcmp(filename + filename_len - suffix_len, suffix) == 0 &&
++		(filename[filename_len - name_len - suffix_len - 1] == '/' ||
++		 filename[filename_len - name_len - suffix_len - 1] == '\\'))
++		return true;
++	if (filename_len > name_len + suffix_len + 3 &&
++		strncmp(filename + filename_len - name_len - suffix_len - 3, "lib", 3) == 0 &&
++		strncmp(filename + filename_len - name_len - suffix_len, name, name_len) == 0 &&
++		strcmp(filename + filename_len - suffix_len, suffix) == 0 &&
++		(filename[filename_len - name_len - suffix_len - 4] == '/' ||
++		 filename[filename_len - name_len - suffix_len - 4] == '\\'))
++		return true;
++	return false;
++}
++
++static void *
++pglite_wasi_lookup_static_function(const char *filename, const char *funcname)
++{
++	if (pglite_wasi_is_static_library(filename, "postgis-3") ||
++		pglite_wasi_is_static_library(filename, "postgis"))
++	{
++		void	   *retval;
++
++		retval = pglite_postgis_lookup_function(funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (pglite_wasi_is_static_library(filename, "postgis_raster-3") ||
++		pglite_wasi_is_static_library(filename, "postgis_raster"))
++	{
++		void	   *retval;
++
++		retval = pglite_postgis_raster_lookup_function(funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (pglite_wasi_is_static_library(filename, "postgis_topology-3") ||
++		pglite_wasi_is_static_library(filename, "postgis_topology"))
++	{
++		void	   *retval;
++
++		retval = pglite_postgis_topology_lookup_function(funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (pglite_wasi_is_static_library(filename, "dict_snowball"))
++	{
++		if (strcmp(funcname, "dsnowball_init") == 0)
++			return dsnowball_init;
++		if (strcmp(funcname, "dsnowball_lexize") == 0)
++			return dsnowball_lexize;
++		if (strcmp(funcname, "pg_finfo_dsnowball_init") == 0)
++			return pg_finfo_dsnowball_init;
++		if (strcmp(funcname, "pg_finfo_dsnowball_lexize") == 0)
++			return pg_finfo_dsnowball_lexize;
++	}
++	if (pglite_wasi_is_static_library(filename, "plpgsql"))
++	{
++		if (strcmp(funcname, "plpgsql_call_handler") == 0)
++			return plpgsql_call_handler;
++		if (strcmp(funcname, "plpgsql_inline_handler") == 0)
++			return plpgsql_inline_handler;
++		if (strcmp(funcname, "plpgsql_validator") == 0)
++			return plpgsql_validator;
++		if (strcmp(funcname, "pg_finfo_plpgsql_call_handler") == 0)
++			return pg_finfo_plpgsql_call_handler;
++		if (strcmp(funcname, "pg_finfo_plpgsql_inline_handler") == 0)
++			return pg_finfo_plpgsql_inline_handler;
++		if (strcmp(funcname, "pg_finfo_plpgsql_validator") == 0)
++			return pg_finfo_plpgsql_validator;
++	}
++	if (pglite_wasi_is_static_library(filename, "pg_trgm"))
++	{
++		if (strcmp(funcname, "_PG_init") == 0)
++			return pglite_pg_trgm_PG_init;
++		if (strcmp(funcname, "set_limit") == 0)
++			return set_limit;
++		if (strcmp(funcname, "show_limit") == 0)
++			return show_limit;
++		if (strcmp(funcname, "show_trgm") == 0)
++			return show_trgm;
++		if (strcmp(funcname, "similarity") == 0)
++			return similarity;
++		if (strcmp(funcname, "word_similarity") == 0)
++			return word_similarity;
++		if (strcmp(funcname, "strict_word_similarity") == 0)
++			return strict_word_similarity;
++		if (strcmp(funcname, "similarity_dist") == 0)
++			return similarity_dist;
++		if (strcmp(funcname, "similarity_op") == 0)
++			return similarity_op;
++		if (strcmp(funcname, "word_similarity_op") == 0)
++			return word_similarity_op;
++		if (strcmp(funcname, "word_similarity_commutator_op") == 0)
++			return word_similarity_commutator_op;
++		if (strcmp(funcname, "word_similarity_dist_op") == 0)
++			return word_similarity_dist_op;
++		if (strcmp(funcname, "word_similarity_dist_commutator_op") == 0)
++			return word_similarity_dist_commutator_op;
++		if (strcmp(funcname, "strict_word_similarity_op") == 0)
++			return strict_word_similarity_op;
++		if (strcmp(funcname, "strict_word_similarity_commutator_op") == 0)
++			return strict_word_similarity_commutator_op;
++		if (strcmp(funcname, "strict_word_similarity_dist_op") == 0)
++			return strict_word_similarity_dist_op;
++		if (strcmp(funcname, "strict_word_similarity_dist_commutator_op") == 0)
++			return strict_word_similarity_dist_commutator_op;
++		if (strcmp(funcname, "gin_extract_trgm") == 0)
++			return gin_extract_trgm;
++		if (strcmp(funcname, "gin_extract_value_trgm") == 0)
++			return gin_extract_value_trgm;
++		if (strcmp(funcname, "gin_extract_query_trgm") == 0)
++			return gin_extract_query_trgm;
++		if (strcmp(funcname, "gin_trgm_consistent") == 0)
++			return gin_trgm_consistent;
++		if (strcmp(funcname, "gin_trgm_triconsistent") == 0)
++			return gin_trgm_triconsistent;
++		if (strcmp(funcname, "gtrgm_in") == 0)
++			return gtrgm_in;
++		if (strcmp(funcname, "gtrgm_out") == 0)
++			return gtrgm_out;
++		if (strcmp(funcname, "gtrgm_compress") == 0)
++			return gtrgm_compress;
++		if (strcmp(funcname, "gtrgm_decompress") == 0)
++			return gtrgm_decompress;
++		if (strcmp(funcname, "gtrgm_consistent") == 0)
++			return gtrgm_consistent;
++		if (strcmp(funcname, "gtrgm_distance") == 0)
++			return gtrgm_distance;
++		if (strcmp(funcname, "gtrgm_union") == 0)
++			return gtrgm_union;
++		if (strcmp(funcname, "gtrgm_same") == 0)
++			return gtrgm_same;
++		if (strcmp(funcname, "gtrgm_penalty") == 0)
++			return gtrgm_penalty;
++		if (strcmp(funcname, "gtrgm_picksplit") == 0)
++			return gtrgm_picksplit;
++		if (strcmp(funcname, "gtrgm_options") == 0)
++			return gtrgm_options;
++		if (strcmp(funcname, "pg_finfo_set_limit") == 0)
++			return pg_finfo_set_limit;
++		if (strcmp(funcname, "pg_finfo_show_limit") == 0)
++			return pg_finfo_show_limit;
++		if (strcmp(funcname, "pg_finfo_show_trgm") == 0)
++			return pg_finfo_show_trgm;
++		if (strcmp(funcname, "pg_finfo_similarity") == 0)
++			return pg_finfo_similarity;
++		if (strcmp(funcname, "pg_finfo_word_similarity") == 0)
++			return pg_finfo_word_similarity;
++		if (strcmp(funcname, "pg_finfo_strict_word_similarity") == 0)
++			return pg_finfo_strict_word_similarity;
++		if (strcmp(funcname, "pg_finfo_similarity_dist") == 0)
++			return pg_finfo_similarity_dist;
++		if (strcmp(funcname, "pg_finfo_similarity_op") == 0)
++			return pg_finfo_similarity_op;
++		if (strcmp(funcname, "pg_finfo_word_similarity_op") == 0)
++			return pg_finfo_word_similarity_op;
++		if (strcmp(funcname, "pg_finfo_word_similarity_commutator_op") == 0)
++			return pg_finfo_word_similarity_commutator_op;
++		if (strcmp(funcname, "pg_finfo_word_similarity_dist_op") == 0)
++			return pg_finfo_word_similarity_dist_op;
++		if (strcmp(funcname, "pg_finfo_word_similarity_dist_commutator_op") == 0)
++			return pg_finfo_word_similarity_dist_commutator_op;
++		if (strcmp(funcname, "pg_finfo_strict_word_similarity_op") == 0)
++			return pg_finfo_strict_word_similarity_op;
++		if (strcmp(funcname, "pg_finfo_strict_word_similarity_commutator_op") == 0)
++			return pg_finfo_strict_word_similarity_commutator_op;
++		if (strcmp(funcname, "pg_finfo_strict_word_similarity_dist_op") == 0)
++			return pg_finfo_strict_word_similarity_dist_op;
++		if (strcmp(funcname, "pg_finfo_strict_word_similarity_dist_commutator_op") == 0)
++			return pg_finfo_strict_word_similarity_dist_commutator_op;
++		if (strcmp(funcname, "pg_finfo_gin_extract_trgm") == 0)
++			return pg_finfo_gin_extract_trgm;
++		if (strcmp(funcname, "pg_finfo_gin_extract_value_trgm") == 0)
++			return pg_finfo_gin_extract_value_trgm;
++		if (strcmp(funcname, "pg_finfo_gin_extract_query_trgm") == 0)
++			return pg_finfo_gin_extract_query_trgm;
++		if (strcmp(funcname, "pg_finfo_gin_trgm_consistent") == 0)
++			return pg_finfo_gin_trgm_consistent;
++		if (strcmp(funcname, "pg_finfo_gin_trgm_triconsistent") == 0)
++			return pg_finfo_gin_trgm_triconsistent;
++		if (strcmp(funcname, "pg_finfo_gtrgm_in") == 0)
++			return pg_finfo_gtrgm_in;
++		if (strcmp(funcname, "pg_finfo_gtrgm_out") == 0)
++			return pg_finfo_gtrgm_out;
++		if (strcmp(funcname, "pg_finfo_gtrgm_compress") == 0)
++			return pg_finfo_gtrgm_compress;
++		if (strcmp(funcname, "pg_finfo_gtrgm_decompress") == 0)
++			return pg_finfo_gtrgm_decompress;
++		if (strcmp(funcname, "pg_finfo_gtrgm_consistent") == 0)
++			return pg_finfo_gtrgm_consistent;
++		if (strcmp(funcname, "pg_finfo_gtrgm_distance") == 0)
++			return pg_finfo_gtrgm_distance;
++		if (strcmp(funcname, "pg_finfo_gtrgm_union") == 0)
++			return pg_finfo_gtrgm_union;
++		if (strcmp(funcname, "pg_finfo_gtrgm_same") == 0)
++			return pg_finfo_gtrgm_same;
++		if (strcmp(funcname, "pg_finfo_gtrgm_penalty") == 0)
++			return pg_finfo_gtrgm_penalty;
++		if (strcmp(funcname, "pg_finfo_gtrgm_picksplit") == 0)
++			return pg_finfo_gtrgm_picksplit;
++		if (strcmp(funcname, "pg_finfo_gtrgm_options") == 0)
++			return pg_finfo_gtrgm_options;
++	}
++	if (pglite_wasi_is_static_library(filename, "unaccent"))
++	{
++		if (strcmp(funcname, "unaccent_init") == 0)
++			return unaccent_init;
++		if (strcmp(funcname, "unaccent_lexize") == 0)
++			return unaccent_lexize;
++		if (strcmp(funcname, "unaccent_dict") == 0)
++			return unaccent_dict;
++		if (strcmp(funcname, "pg_finfo_unaccent_init") == 0)
++			return pg_finfo_unaccent_init;
++		if (strcmp(funcname, "pg_finfo_unaccent_lexize") == 0)
++			return pg_finfo_unaccent_lexize;
++		if (strcmp(funcname, "pg_finfo_unaccent_dict") == 0)
++			return pg_finfo_unaccent_dict;
++	}
++	if (pglite_wasi_is_static_library(filename, "citext"))
++	{
++#define PGLITE_LOOKUP_CITEXT_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_CITEXT_FUNCTIONS(PGLITE_LOOKUP_CITEXT_FUNCTION)
++#undef PGLITE_LOOKUP_CITEXT_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "cube"))
++	{
++#define PGLITE_LOOKUP_CUBE_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_CUBE_FUNCTIONS(PGLITE_LOOKUP_CUBE_FUNCTION)
++#undef PGLITE_LOOKUP_CUBE_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "hstore"))
++	{
++#define PGLITE_LOOKUP_HSTORE_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_HSTORE_FUNCTIONS(PGLITE_LOOKUP_HSTORE_FUNCTION)
++#undef PGLITE_LOOKUP_HSTORE_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "fuzzystrmatch"))
++	{
++#define PGLITE_LOOKUP_FUZZYSTRMATCH_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_FUZZYSTRMATCH_FUNCTIONS(PGLITE_LOOKUP_FUZZYSTRMATCH_FUNCTION)
++#undef PGLITE_LOOKUP_FUZZYSTRMATCH_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "btree_gin"))
++	{
++#define PGLITE_LOOKUP_BTREE_GIN_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_BTREE_GIN_FUNCTIONS(PGLITE_LOOKUP_BTREE_GIN_FUNCTION)
++#undef PGLITE_LOOKUP_BTREE_GIN_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "btree_gist"))
++	{
++#define PGLITE_LOOKUP_BTREE_GIST_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_BTREE_GIST_FUNCTIONS(PGLITE_LOOKUP_BTREE_GIST_FUNCTION)
++#undef PGLITE_LOOKUP_BTREE_GIST_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "amcheck"))
++	{
++#define PGLITE_LOOKUP_AMCHECK_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_AMCHECK_FUNCTIONS(PGLITE_LOOKUP_AMCHECK_FUNCTION)
++#undef PGLITE_LOOKUP_AMCHECK_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "bloom"))
++	{
++		if (strcmp(funcname, "_PG_init") == 0)
++			return pglite_bloom_PG_init;
++
++#define PGLITE_LOOKUP_BLOOM_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_BLOOM_FUNCTIONS(PGLITE_LOOKUP_BLOOM_FUNCTION)
++#undef PGLITE_LOOKUP_BLOOM_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "dict_int"))
++	{
++#define PGLITE_LOOKUP_DICT_INT_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_DICT_INT_FUNCTIONS(PGLITE_LOOKUP_DICT_INT_FUNCTION)
++#undef PGLITE_LOOKUP_DICT_INT_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "dict_xsyn"))
++	{
++#define PGLITE_LOOKUP_DICT_XSYN_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_DICT_XSYN_FUNCTIONS(PGLITE_LOOKUP_DICT_XSYN_FUNCTION)
++#undef PGLITE_LOOKUP_DICT_XSYN_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "earthdistance"))
++	{
++#define PGLITE_LOOKUP_EARTHDISTANCE_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_EARTHDISTANCE_FUNCTIONS(PGLITE_LOOKUP_EARTHDISTANCE_FUNCTION)
++#undef PGLITE_LOOKUP_EARTHDISTANCE_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "file_fdw"))
++	{
++#define PGLITE_LOOKUP_FILE_FDW_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_FILE_FDW_FUNCTIONS(PGLITE_LOOKUP_FILE_FDW_FUNCTION)
++#undef PGLITE_LOOKUP_FILE_FDW_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "_int"))
++	{
++#define PGLITE_LOOKUP_INTARRAY_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_INTARRAY_FUNCTIONS(PGLITE_LOOKUP_INTARRAY_FUNCTION)
++#undef PGLITE_LOOKUP_INTARRAY_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "isn"))
++	{
++		if (strcmp(funcname, "_PG_init") == 0)
++			return pglite_isn_PG_init;
++
++#define PGLITE_LOOKUP_ISN_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_ISN_FUNCTIONS(PGLITE_LOOKUP_ISN_FUNCTION)
++#undef PGLITE_LOOKUP_ISN_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "lo"))
++	{
++#define PGLITE_LOOKUP_LO_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_LO_FUNCTIONS(PGLITE_LOOKUP_LO_FUNCTION)
++#undef PGLITE_LOOKUP_LO_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "ltree"))
++	{
++#define PGLITE_LOOKUP_LTREE_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_LTREE_FUNCTIONS(PGLITE_LOOKUP_LTREE_FUNCTION)
++#undef PGLITE_LOOKUP_LTREE_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "pageinspect"))
++	{
++#define PGLITE_LOOKUP_PAGEINSPECT_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_PAGEINSPECT_FUNCTIONS(PGLITE_LOOKUP_PAGEINSPECT_FUNCTION)
++#undef PGLITE_LOOKUP_PAGEINSPECT_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "pg_buffercache"))
++	{
++#define PGLITE_LOOKUP_PG_BUFFERCACHE_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_PG_BUFFERCACHE_FUNCTIONS(PGLITE_LOOKUP_PG_BUFFERCACHE_FUNCTION)
++#undef PGLITE_LOOKUP_PG_BUFFERCACHE_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "pg_freespacemap"))
++	{
++#define PGLITE_LOOKUP_PG_FREESPACEMAP_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_PG_FREESPACEMAP_FUNCTIONS(PGLITE_LOOKUP_PG_FREESPACEMAP_FUNCTION)
++#undef PGLITE_LOOKUP_PG_FREESPACEMAP_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "pg_visibility"))
++	{
++#define PGLITE_LOOKUP_PG_VISIBILITY_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_PG_VISIBILITY_FUNCTIONS(PGLITE_LOOKUP_PG_VISIBILITY_FUNCTION)
++#undef PGLITE_LOOKUP_PG_VISIBILITY_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "pg_surgery"))
++	{
++#define PGLITE_LOOKUP_PG_SURGERY_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_PG_SURGERY_FUNCTIONS(PGLITE_LOOKUP_PG_SURGERY_FUNCTION)
++#undef PGLITE_LOOKUP_PG_SURGERY_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "tcn"))
++	{
++#define PGLITE_LOOKUP_TCN_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_TCN_FUNCTIONS(PGLITE_LOOKUP_TCN_FUNCTION)
++#undef PGLITE_LOOKUP_TCN_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "auto_explain"))
++	{
++		if (strcmp(funcname, "_PG_init") == 0)
++			return pglite_auto_explain_PG_init;
++	}
++	if (pglite_wasi_is_static_library(filename, "pg_stat_statements"))
++	{
++#define PGLITE_LOOKUP_PG_STAT_STATEMENTS_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_PG_STAT_STATEMENTS_FUNCTIONS(PGLITE_LOOKUP_PG_STAT_STATEMENTS_FUNCTION)
++#undef PGLITE_LOOKUP_PG_STAT_STATEMENTS_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "pg_walinspect"))
++	{
++#define PGLITE_LOOKUP_PG_WALINSPECT_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_PG_WALINSPECT_FUNCTIONS(PGLITE_LOOKUP_PG_WALINSPECT_FUNCTION)
++#undef PGLITE_LOOKUP_PG_WALINSPECT_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "pgcrypto"))
++	{
++#define PGLITE_LOOKUP_PGCRYPTO_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_PGCRYPTO_FUNCTIONS(PGLITE_LOOKUP_PGCRYPTO_FUNCTION)
++#undef PGLITE_LOOKUP_PGCRYPTO_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "tablefunc"))
++	{
++#define PGLITE_LOOKUP_TABLEFUNC_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_TABLEFUNC_FUNCTIONS(PGLITE_LOOKUP_TABLEFUNC_FUNCTION)
++#undef PGLITE_LOOKUP_TABLEFUNC_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "seg"))
++	{
++#define PGLITE_LOOKUP_SEG_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_SEG_FUNCTIONS(PGLITE_LOOKUP_SEG_FUNCTION)
++#undef PGLITE_LOOKUP_SEG_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "tsm_system_rows"))
++	{
++#define PGLITE_LOOKUP_TSM_SYSTEM_ROWS_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_TSM_SYSTEM_ROWS_FUNCTIONS(PGLITE_LOOKUP_TSM_SYSTEM_ROWS_FUNCTION)
++#undef PGLITE_LOOKUP_TSM_SYSTEM_ROWS_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "tsm_system_time"))
++	{
++#define PGLITE_LOOKUP_TSM_SYSTEM_TIME_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		PGLITE_TSM_SYSTEM_TIME_FUNCTIONS(PGLITE_LOOKUP_TSM_SYSTEM_TIME_FUNCTION)
++#undef PGLITE_LOOKUP_TSM_SYSTEM_TIME_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "uuid-ossp"))
++	{
++		if (strcmp(funcname, "uuid_nil") == 0)
++			return uuid_nil;
++		if (strcmp(funcname, "uuid_ns_dns") == 0)
++			return uuid_ns_dns;
++		if (strcmp(funcname, "uuid_ns_url") == 0)
++			return uuid_ns_url;
++		if (strcmp(funcname, "uuid_ns_oid") == 0)
++			return uuid_ns_oid;
++		if (strcmp(funcname, "uuid_ns_x500") == 0)
++			return uuid_ns_x500;
++		if (strcmp(funcname, "uuid_generate_v1") == 0)
++			return uuid_generate_v1;
++		if (strcmp(funcname, "uuid_generate_v1mc") == 0)
++			return uuid_generate_v1mc;
++		if (strcmp(funcname, "uuid_generate_v3") == 0)
++			return uuid_generate_v3;
++		if (strcmp(funcname, "uuid_generate_v4") == 0)
++			return uuid_generate_v4;
++		if (strcmp(funcname, "uuid_generate_v5") == 0)
++			return uuid_generate_v5;
++		if (strcmp(funcname, "pg_finfo_uuid_nil") == 0)
++			return pg_finfo_uuid_nil;
++		if (strcmp(funcname, "pg_finfo_uuid_ns_dns") == 0)
++			return pg_finfo_uuid_ns_dns;
++		if (strcmp(funcname, "pg_finfo_uuid_ns_url") == 0)
++			return pg_finfo_uuid_ns_url;
++		if (strcmp(funcname, "pg_finfo_uuid_ns_oid") == 0)
++			return pg_finfo_uuid_ns_oid;
++		if (strcmp(funcname, "pg_finfo_uuid_ns_x500") == 0)
++			return pg_finfo_uuid_ns_x500;
++		if (strcmp(funcname, "pg_finfo_uuid_generate_v1") == 0)
++			return pg_finfo_uuid_generate_v1;
++		if (strcmp(funcname, "pg_finfo_uuid_generate_v1mc") == 0)
++			return pg_finfo_uuid_generate_v1mc;
++		if (strcmp(funcname, "pg_finfo_uuid_generate_v3") == 0)
++			return pg_finfo_uuid_generate_v3;
++		if (strcmp(funcname, "pg_finfo_uuid_generate_v4") == 0)
++			return pg_finfo_uuid_generate_v4;
++		if (strcmp(funcname, "pg_finfo_uuid_generate_v5") == 0)
++			return pg_finfo_uuid_generate_v5;
++	}
++	if (pglite_wasi_is_static_library(filename, "pg_uuidv7"))
++	{
++		if (strcmp(funcname, "uuid_generate_v7") == 0)
++			return uuid_generate_v7;
++		if (strcmp(funcname, "uuid_v7_to_timestamptz") == 0)
++			return uuid_v7_to_timestamptz;
++		if (strcmp(funcname, "uuid_v7_to_timestamp") == 0)
++			return uuid_v7_to_timestamp;
++		if (strcmp(funcname, "uuid_timestamptz_to_v7") == 0)
++			return uuid_timestamptz_to_v7;
++		if (strcmp(funcname, "uuid_timestamp_to_v7") == 0)
++			return uuid_timestamp_to_v7;
++		if (strcmp(funcname, "pg_finfo_uuid_generate_v7") == 0)
++			return pg_finfo_uuid_generate_v7;
++		if (strcmp(funcname, "pg_finfo_uuid_v7_to_timestamptz") == 0)
++			return pg_finfo_uuid_v7_to_timestamptz;
++		if (strcmp(funcname, "pg_finfo_uuid_v7_to_timestamp") == 0)
++			return pg_finfo_uuid_v7_to_timestamp;
++		if (strcmp(funcname, "pg_finfo_uuid_timestamptz_to_v7") == 0)
++			return pg_finfo_uuid_timestamptz_to_v7;
++		if (strcmp(funcname, "pg_finfo_uuid_timestamp_to_v7") == 0)
++			return pg_finfo_uuid_timestamp_to_v7;
++	}
++	if (pglite_wasi_is_static_library(filename, "pg_hashids"))
++	{
++		if (strcmp(funcname, "id_encode") == 0)
++			return id_encode;
++		if (strcmp(funcname, "id_encode_array") == 0)
++			return id_encode_array;
++		if (strcmp(funcname, "id_decode") == 0)
++			return id_decode;
++		if (strcmp(funcname, "id_decode_once") == 0)
++			return id_decode_once;
++		if (strcmp(funcname, "pg_finfo_id_encode") == 0)
++			return pg_finfo_id_encode;
++		if (strcmp(funcname, "pg_finfo_id_encode_array") == 0)
++			return pg_finfo_id_encode_array;
++		if (strcmp(funcname, "pg_finfo_id_decode") == 0)
++			return pg_finfo_id_decode;
++		if (strcmp(funcname, "pg_finfo_id_decode_once") == 0)
++			return pg_finfo_id_decode_once;
++	}
++	if (pglite_wasi_is_static_library(filename, "vector"))
++	{
++#define PGLITE_LOOKUP_VECTOR_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		if (strcmp(funcname, "_PG_init") == 0)
++			return pglite_vector_PG_init;
++		PGLITE_VECTOR_FUNCTIONS(PGLITE_LOOKUP_VECTOR_FUNCTION)
++#undef PGLITE_LOOKUP_VECTOR_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "pg_ivm"))
++	{
++		if (strcmp(funcname, "_PG_init") == 0)
++			return pglite_pg_ivm_PG_init;
++		if (strcmp(funcname, "create_immv") == 0)
++			return create_immv;
++		if (strcmp(funcname, "refresh_immv") == 0)
++			return refresh_immv;
++		if (strcmp(funcname, "get_immv_def") == 0)
++			return get_immv_def;
++		if (strcmp(funcname, "ivm_visible_in_prestate") == 0)
++			return ivm_visible_in_prestate;
++		if (strcmp(funcname, "IVM_immediate_before") == 0)
++			return IVM_immediate_before;
++		if (strcmp(funcname, "IVM_immediate_maintenance") == 0)
++			return IVM_immediate_maintenance;
++		if (strcmp(funcname, "IVM_prevent_immv_change") == 0)
++			return IVM_prevent_immv_change;
++		if (strcmp(funcname, "pg_finfo_create_immv") == 0)
++			return pg_finfo_create_immv;
++		if (strcmp(funcname, "pg_finfo_refresh_immv") == 0)
++			return pg_finfo_refresh_immv;
++		if (strcmp(funcname, "pg_finfo_get_immv_def") == 0)
++			return pg_finfo_get_immv_def;
++		if (strcmp(funcname, "pg_finfo_ivm_visible_in_prestate") == 0)
++			return pg_finfo_ivm_visible_in_prestate;
++		if (strcmp(funcname, "pg_finfo_IVM_immediate_before") == 0)
++			return pg_finfo_IVM_immediate_before;
++		if (strcmp(funcname, "pg_finfo_IVM_immediate_maintenance") == 0)
++			return pg_finfo_IVM_immediate_maintenance;
++		if (strcmp(funcname, "pg_finfo_IVM_prevent_immv_change") == 0)
++			return pg_finfo_IVM_prevent_immv_change;
++	}
++	if (pglite_wasi_is_static_library(filename, "pg_textsearch"))
++	{
++#define PGLITE_LOOKUP_PG_TEXTSEARCH_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		if (strcmp(funcname, "_PG_init") == 0)
++			return pglite_pg_textsearch_PG_init;
++		PGLITE_PG_TEXTSEARCH_FUNCTIONS(PGLITE_LOOKUP_PG_TEXTSEARCH_FUNCTION)
++#undef PGLITE_LOOKUP_PG_TEXTSEARCH_FUNCTION
++	}
++	if (pglite_wasi_is_static_library(filename, "age"))
++	{
++#define PGLITE_LOOKUP_AGE_FUNCTION(name) \
++		if (strcmp(funcname, #name) == 0) \
++			return name; \
++		if (strcmp(funcname, "pg_finfo_" #name) == 0) \
++			return CppConcat(pg_finfo_, name);
++
++		if (strcmp(funcname, "_PG_init") == 0)
++			return pglite_age_PG_init;
++		PGLITE_AGE_FUNCTIONS(PGLITE_LOOKUP_AGE_FUNCTION)
++#undef PGLITE_LOOKUP_AGE_FUNCTION
++	}
++	return NULL;
++}
++
++static void *
++pglite_wasi_static_handle_for_library(const char *filename)
++{
++	if (pglite_wasi_is_static_library(filename, "dict_snowball"))
++		return &pglite_static_dict_snowball_handle;
++	if (pglite_wasi_is_static_library(filename, "plpgsql"))
++		return &pglite_static_plpgsql_handle;
++	if (pglite_wasi_is_static_library(filename, "pg_trgm"))
++		return &pglite_static_pg_trgm_handle;
++	if (pglite_wasi_is_static_library(filename, "unaccent"))
++		return &pglite_static_unaccent_handle;
++	if (pglite_wasi_is_static_library(filename, "citext"))
++		return &pglite_static_citext_handle;
++	if (pglite_wasi_is_static_library(filename, "cube"))
++		return &pglite_static_cube_handle;
++	if (pglite_wasi_is_static_library(filename, "hstore"))
++		return &pglite_static_hstore_handle;
++	if (pglite_wasi_is_static_library(filename, "fuzzystrmatch"))
++		return &pglite_static_fuzzystrmatch_handle;
++	if (pglite_wasi_is_static_library(filename, "btree_gin"))
++		return &pglite_static_btree_gin_handle;
++	if (pglite_wasi_is_static_library(filename, "btree_gist"))
++		return &pglite_static_btree_gist_handle;
++	if (pglite_wasi_is_static_library(filename, "amcheck"))
++		return &pglite_static_amcheck_handle;
++	if (pglite_wasi_is_static_library(filename, "bloom"))
++		return &pglite_static_bloom_handle;
++	if (pglite_wasi_is_static_library(filename, "dict_int"))
++		return &pglite_static_dict_int_handle;
++	if (pglite_wasi_is_static_library(filename, "dict_xsyn"))
++		return &pglite_static_dict_xsyn_handle;
++	if (pglite_wasi_is_static_library(filename, "earthdistance"))
++		return &pglite_static_earthdistance_handle;
++	if (pglite_wasi_is_static_library(filename, "file_fdw"))
++		return &pglite_static_file_fdw_handle;
++	if (pglite_wasi_is_static_library(filename, "_int"))
++		return &pglite_static_intarray_handle;
++	if (pglite_wasi_is_static_library(filename, "isn"))
++		return &pglite_static_isn_handle;
++	if (pglite_wasi_is_static_library(filename, "lo"))
++		return &pglite_static_lo_handle;
++	if (pglite_wasi_is_static_library(filename, "ltree"))
++		return &pglite_static_ltree_handle;
++	if (pglite_wasi_is_static_library(filename, "pageinspect"))
++		return &pglite_static_pageinspect_handle;
++	if (pglite_wasi_is_static_library(filename, "pg_buffercache"))
++		return &pglite_static_pg_buffercache_handle;
++	if (pglite_wasi_is_static_library(filename, "pg_freespacemap"))
++		return &pglite_static_pg_freespacemap_handle;
++	if (pglite_wasi_is_static_library(filename, "pg_visibility"))
++		return &pglite_static_pg_visibility_handle;
++	if (pglite_wasi_is_static_library(filename, "pg_surgery"))
++		return &pglite_static_pg_surgery_handle;
++	if (pglite_wasi_is_static_library(filename, "tcn"))
++		return &pglite_static_tcn_handle;
++	if (pglite_wasi_is_static_library(filename, "auto_explain"))
++		return &pglite_static_auto_explain_handle;
++	if (pglite_wasi_is_static_library(filename, "pg_stat_statements"))
++		return &pglite_static_pg_stat_statements_handle;
++	if (pglite_wasi_is_static_library(filename, "pg_walinspect"))
++		return &pglite_static_pg_walinspect_handle;
++	if (pglite_wasi_is_static_library(filename, "pgcrypto"))
++		return &pglite_static_pgcrypto_handle;
++	if (pglite_wasi_is_static_library(filename, "tablefunc"))
++		return &pglite_static_tablefunc_handle;
++	if (pglite_wasi_is_static_library(filename, "seg"))
++		return &pglite_static_seg_handle;
++	if (pglite_wasi_is_static_library(filename, "tsm_system_rows"))
++		return &pglite_static_tsm_system_rows_handle;
++	if (pglite_wasi_is_static_library(filename, "tsm_system_time"))
++		return &pglite_static_tsm_system_time_handle;
++	if (pglite_wasi_is_static_library(filename, "uuid-ossp"))
++		return &pglite_static_uuid_ossp_handle;
++	if (pglite_wasi_is_static_library(filename, "pg_uuidv7"))
++		return &pglite_static_pg_uuidv7_handle;
++	if (pglite_wasi_is_static_library(filename, "pg_hashids"))
++		return &pglite_static_pg_hashids_handle;
++	if (pglite_wasi_is_static_library(filename, "vector"))
++		return &pglite_static_vector_handle;
++	if (pglite_wasi_is_static_library(filename, "pg_ivm"))
++		return &pglite_static_pg_ivm_handle;
++	if (pglite_wasi_is_static_library(filename, "pg_textsearch"))
++		return &pglite_static_pg_textsearch_handle;
++	if (pglite_wasi_is_static_library(filename, "age"))
++		return &pglite_static_age_handle;
++	if (pglite_wasi_is_static_library(filename, "postgis-3") ||
++		pglite_wasi_is_static_library(filename, "postgis"))
++		return &pglite_static_postgis_handle;
++	if (pglite_wasi_is_static_library(filename, "postgis_raster-3") ||
++		pglite_wasi_is_static_library(filename, "postgis_raster"))
++		return &pglite_static_postgis_raster_handle;
++	if (pglite_wasi_is_static_library(filename, "postgis_topology-3") ||
++		pglite_wasi_is_static_library(filename, "postgis_topology"))
++		return &pglite_static_postgis_topology_handle;
++	return NULL;
++}
++
++static const Pg_magic_struct *
++pglite_wasi_static_magic_for_library(const char *filename)
++{
++	if (pglite_wasi_is_static_library(filename, "dict_snowball"))
++		return pglite_dict_snowball_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "plpgsql"))
++		return pglite_plpgsql_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "pg_trgm"))
++		return pglite_pg_trgm_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "unaccent"))
++		return pglite_unaccent_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "citext"))
++		return pglite_citext_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "cube"))
++		return pglite_cube_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "hstore"))
++		return pglite_hstore_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "fuzzystrmatch"))
++		return pglite_fuzzystrmatch_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "btree_gin"))
++		return pglite_btree_gin_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "btree_gist"))
++		return pglite_btree_gist_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "amcheck"))
++		return pglite_amcheck_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "bloom"))
++		return pglite_bloom_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "dict_int"))
++		return pglite_dict_int_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "dict_xsyn"))
++		return pglite_dict_xsyn_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "earthdistance"))
++		return pglite_earthdistance_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "file_fdw"))
++		return pglite_file_fdw_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "_int"))
++		return pglite_intarray_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "isn"))
++		return pglite_isn_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "lo"))
++		return pglite_lo_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "ltree"))
++		return pglite_ltree_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "pageinspect"))
++		return pglite_pageinspect_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "pg_buffercache"))
++		return pglite_pg_buffercache_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "pg_freespacemap"))
++		return pglite_pg_freespacemap_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "pg_visibility"))
++		return pglite_pg_visibility_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "pg_surgery"))
++		return pglite_pg_surgery_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "tcn"))
++		return pglite_tcn_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "auto_explain"))
++		return pglite_auto_explain_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "pg_stat_statements"))
++		return pglite_pg_stat_statements_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "pg_walinspect"))
++		return pglite_pg_walinspect_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "pgcrypto"))
++		return pglite_pgcrypto_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "tablefunc"))
++		return pglite_tablefunc_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "seg"))
++		return pglite_seg_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "tsm_system_rows"))
++		return pglite_tsm_system_rows_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "tsm_system_time"))
++		return pglite_tsm_system_time_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "uuid-ossp"))
++		return pglite_uuid_ossp_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "pg_uuidv7"))
++		return pglite_pg_uuidv7_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "pg_hashids"))
++		return pglite_pg_hashids_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "vector"))
++		return pglite_vector_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "pg_ivm"))
++		return pglite_pg_ivm_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "pg_textsearch"))
++		return pglite_pg_textsearch_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "age"))
++		return pglite_age_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "postgis-3") ||
++		pglite_wasi_is_static_library(filename, "postgis"))
++		return pglite_postgis_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "postgis_raster-3") ||
++		pglite_wasi_is_static_library(filename, "postgis_raster"))
++		return pglite_postgis_raster_Pg_magic_func();
++	if (pglite_wasi_is_static_library(filename, "postgis_topology-3") ||
++		pglite_wasi_is_static_library(filename, "postgis_topology"))
++		return pglite_postgis_topology_Pg_magic_func();
++	return NULL;
++}
++
++static PG_init_t
++pglite_wasi_static_init_for_library(const char *filename)
++{
++	if (pglite_wasi_is_static_library(filename, "plpgsql"))
++		return _PG_init;
++	if (pglite_wasi_is_static_library(filename, "pg_trgm"))
++		return pglite_pg_trgm_PG_init;
++	if (pglite_wasi_is_static_library(filename, "bloom"))
++		return pglite_bloom_PG_init;
++	if (pglite_wasi_is_static_library(filename, "isn"))
++		return pglite_isn_PG_init;
++	if (pglite_wasi_is_static_library(filename, "vector"))
++		return pglite_vector_PG_init;
++	if (pglite_wasi_is_static_library(filename, "pg_ivm"))
++		return pglite_pg_ivm_PG_init;
++	if (pglite_wasi_is_static_library(filename, "pg_textsearch"))
++		return pglite_pg_textsearch_PG_init;
++	if (pglite_wasi_is_static_library(filename, "auto_explain"))
++		return pglite_auto_explain_PG_init;
++	if (pglite_wasi_is_static_library(filename, "pg_stat_statements"))
++		return pglite_pg_stat_statements_PG_init;
++	if (pglite_wasi_is_static_library(filename, "pgcrypto"))
++		return pglite_pgcrypto_PG_init;
++	if (pglite_wasi_is_static_library(filename, "age"))
++		return pglite_age_PG_init;
++	if (pglite_wasi_is_static_library(filename, "postgis-3") ||
++		pglite_wasi_is_static_library(filename, "postgis"))
++		return pglite_postgis_PG_init;
++	if (pglite_wasi_is_static_library(filename, "postgis_raster-3") ||
++		pglite_wasi_is_static_library(filename, "postgis_raster"))
++		return pglite_postgis_raster_PG_init;
++	if (pglite_wasi_is_static_library(filename, "postgis_topology-3") ||
++		pglite_wasi_is_static_library(filename, "postgis_topology"))
++		return pglite_postgis_topology_PG_init;
++	return NULL;
++}
++#endif
++
+ /* ABI values that module needs to match to be accepted */
+ static const Pg_abi_values magic_data = PG_MODULE_ABI_DATA;
+ 
+@@ -99,6 +2830,17 @@ load_external_function(const char *filename, const char *funcname,
+ 	void	   *lib_handle;
+ 	void	   *retval;
+ 
++#ifdef __wasi__
++	retval = pglite_wasi_lookup_static_function(filename, funcname);
++	if (retval != NULL)
++	{
++		lib_handle = internal_load_library(filename);
++		if (filehandle)
++			*filehandle = lib_handle;
++		return retval;
++	}
++#endif
++
+ 	/*
+ 	 * For extensions with hardcoded '$libdir/' library names, we strip the
+ 	 * prefix to allow the library search path to be used. This is done only
+@@ -117,6 +2859,18 @@ load_external_function(const char *filename, const char *funcname,
+ 	/* Expand the possibly-abbreviated filename to an exact path name */
+ 	fullname = expand_dynamic_library_name(filename);
+ 
++#ifdef __wasi__
++	retval = pglite_wasi_lookup_static_function(fullname, funcname);
++	if (retval != NULL)
++	{
++		lib_handle = internal_load_library(fullname);
++		if (filehandle)
++			*filehandle = lib_handle;
++		pfree(fullname);
++		return retval;
++	}
++#endif
++
+ 	/* Load the shared library, unless we already did */
+ 	lib_handle = internal_load_library(fullname);
+ 
+@@ -170,6 +2924,361 @@ load_file(const char *filename, bool restricted)
+ void *
+ lookup_external_function(void *filehandle, const char *funcname)
+ {
++#ifdef __wasi__
++	if (filehandle == &pglite_static_dict_snowball_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("dict_snowball", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_plpgsql_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("plpgsql", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_pg_trgm_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("pg_trgm", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_unaccent_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("unaccent", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_citext_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("citext", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_cube_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("cube", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_hstore_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("hstore", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_fuzzystrmatch_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("fuzzystrmatch", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_btree_gin_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("btree_gin", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_btree_gist_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("btree_gist", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_amcheck_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("amcheck", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_bloom_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("bloom", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_dict_int_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("dict_int", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_dict_xsyn_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("dict_xsyn", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_earthdistance_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("earthdistance", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_file_fdw_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("file_fdw", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_intarray_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("_int", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_isn_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("isn", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_lo_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("lo", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_ltree_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("ltree", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_pageinspect_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("pageinspect", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_pg_buffercache_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("pg_buffercache", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_pg_freespacemap_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("pg_freespacemap", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_pg_visibility_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("pg_visibility", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_pg_surgery_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("pg_surgery", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_tcn_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("tcn", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_auto_explain_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("auto_explain", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_pg_stat_statements_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("pg_stat_statements", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_pg_walinspect_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("pg_walinspect", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_pgcrypto_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("pgcrypto", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_tablefunc_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("tablefunc", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_seg_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("seg", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_tsm_system_rows_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("tsm_system_rows", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_tsm_system_time_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("tsm_system_time", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_uuid_ossp_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("uuid-ossp", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_pg_uuidv7_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("pg_uuidv7", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_pg_hashids_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("pg_hashids", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_vector_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("vector", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_pg_ivm_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("pg_ivm", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_pg_textsearch_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("pg_textsearch", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_age_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("age", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_postgis_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("postgis-3", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_postgis_raster_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("postgis_raster-3", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++	if (filehandle == &pglite_static_postgis_topology_handle)
++	{
++		void	   *retval;
++
++		retval = pglite_wasi_lookup_static_function("postgis_topology-3", funcname);
++		if (retval != NULL)
++			return retval;
++	}
++#endif
++
+ 	return dlsym(filehandle, funcname);
+ }
+ 
+@@ -193,6 +3302,70 @@ internal_load_library(const char *libname)
+ 	char	   *load_error;
+ 	struct stat stat_buf;
+ 	PG_init_t	PG_init;
++#ifdef __wasi__
++	void	   *static_handle;
++#endif
++
++#ifdef __wasi__
++	static_handle = pglite_wasi_static_handle_for_library(libname);
++	if (static_handle != NULL)
++	{
++		for (file_scanner = file_list;
++			 file_scanner != NULL &&
++			 file_scanner->handle != static_handle &&
++			 strcmp(libname, file_scanner->filename) != 0;
++			 file_scanner = file_scanner->next)
++			;
++
++		if (file_scanner == NULL)
++		{
++			const Pg_magic_struct *magic_data_ptr;
++
++			file_scanner = (DynamicFileList *)
++				malloc(offsetof(DynamicFileList, filename) + strlen(libname) + 1);
++			if (file_scanner == NULL)
++				ereport(ERROR,
++						(errcode(ERRCODE_OUT_OF_MEMORY),
++						 errmsg("out of memory")));
++
++			MemSet(file_scanner, 0, offsetof(DynamicFileList, filename));
++			strcpy(file_scanner->filename, libname);
++			file_scanner->handle = static_handle;
++
++			magic_data_ptr = pglite_wasi_static_magic_for_library(libname);
++			if (magic_data_ptr == NULL)
++			{
++				free(file_scanner);
++				ereport(ERROR,
++						(errmsg("incompatible library \"%s\": missing magic block",
++								libname),
++						 errhint("Extension libraries are required to use the PG_MODULE_MAGIC macro.")));
++			}
++			if (magic_data_ptr->len != sizeof(Pg_magic_struct) ||
++				memcmp(&magic_data_ptr->abi_fields, &magic_data,
++					   sizeof(Pg_abi_values)) != 0)
++			{
++				Pg_magic_struct module_magic_data = *magic_data_ptr;
++
++				free(file_scanner);
++				incompatible_module_error(libname, &module_magic_data.abi_fields);
++			}
++			file_scanner->magic = magic_data_ptr;
++
++			PG_init = pglite_wasi_static_init_for_library(libname);
++			if (PG_init)
++				(*PG_init) ();
++
++			if (file_list == NULL)
++				file_list = file_scanner;
++			else
++				file_tail->next = file_scanner;
++			file_tail = file_scanner;
++		}
++
++		return file_scanner->handle;
++	}
++#endif
+ 
+ 	/*
+ 	 * Scan the list of loaded FILES to see if the file has been loaded.

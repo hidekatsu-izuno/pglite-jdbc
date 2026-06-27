@@ -1,0 +1,36 @@
+diff --git a/src/backend/utils/cache/relcache.c b/src/backend/utils/cache/relcache.c
+index 559ba9cdb2..2a6a439a52 100644
+--- a/src/backend/utils/cache/relcache.c
++++ b/src/backend/utils/cache/relcache.c
+@@ -203,6 +203,31 @@ static TupleDesc *EOXactTupleDescArray;
+ static int	NextEOXactTupleDescNum = 0;
+ static int	EOXactTupleDescArrayLen = 0;
+ 
++#ifdef __wasi__
++void
++pglite_reset_relation_cache(void)
++{
++	if (RelationIdCache != NULL)
++		hash_destroy(RelationIdCache);
++	RelationIdCache = NULL;
++
++	criticalRelcachesBuilt = false;
++	criticalSharedRelcachesBuilt = false;
++	relcacheInvalsReceived = 0L;
++
++	in_progress_list = NULL;
++	in_progress_list_len = 0;
++	in_progress_list_maxlen = 0;
++
++	eoxact_list_len = 0;
++	eoxact_list_overflowed = false;
++
++	EOXactTupleDescArray = NULL;
++	NextEOXactTupleDescNum = 0;
++	EOXactTupleDescArrayLen = 0;
++}
++#endif
++
+ /*
+  *		macros to manipulate the lookup hashtable
+  */

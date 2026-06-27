@@ -1,0 +1,26 @@
+diff --git a/src/pl/plpgsql/src/pl_exec.c b/src/pl/plpgsql/src/pl_exec.c
+index 756d5f7778..1c4773deda 100644
+--- a/src/pl/plpgsql/src/pl_exec.c
++++ b/src/pl/plpgsql/src/pl_exec.c
+@@ -1172,7 +1172,9 @@ plpgsql_exec_trigger(PLpgSQL_function *func,
+  * ----------
+  */
+ void
+-plpgsql_exec_event_trigger(PLpgSQL_function *func, EventTriggerData *trigdata)
++plpgsql_exec_event_trigger(PLpgSQL_function *func, EventTriggerData *trigdata,
++						   EState *simple_eval_estate,
++						   ResourceOwner simple_eval_resowner)
+ {
+ 	PLpgSQL_execstate estate;
+ 	ErrorContextCallback plerrcontext;
+@@ -1181,7 +1183,9 @@ plpgsql_exec_event_trigger(PLpgSQL_function *func, EventTriggerData *trigdata)
+ 	/*
+ 	 * Setup the execution state
+ 	 */
+-	plpgsql_estate_setup(&estate, func, NULL, NULL, NULL);
++	plpgsql_estate_setup(&estate, func, NULL,
++						 simple_eval_estate,
++						 simple_eval_resowner);
+ 	estate.evtrigdata = trigdata;
+ 
+ 	/*

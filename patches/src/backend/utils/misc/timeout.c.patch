@@ -1,0 +1,24 @@
+diff --git a/src/backend/utils/misc/timeout.c b/src/backend/utils/misc/timeout.c
+index d92efa1255..dd633116ab 100644
+--- a/src/backend/utils/misc/timeout.c
++++ b/src/backend/utils/misc/timeout.c
+@@ -209,6 +209,11 @@ enable_timeout(TimeoutId id, TimestampTz now, TimestampTz fin_time,
+ static void
+ schedule_alarm(TimestampTz now)
+ {
++#ifdef __wasi__
++	(void) now;
++	signal_pending = false;
++	return;
++#else
+ 	if (num_active_timeouts > 0)
+ 	{
+ 		struct itimerval timeval;
+@@ -347,6 +352,7 @@ schedule_alarm(TimestampTz now)
+ 			elog(FATAL, "could not enable SIGALRM timer: %m");
+ 		}
+ 	}
++#endif
+ }
+ 
+ 
