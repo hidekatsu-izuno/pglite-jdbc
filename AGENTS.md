@@ -5,10 +5,8 @@
 </tech_stack>
 
 <project_layout>
-- pglite/src: This Node.js programs are the original sources for the migration and must not be changed.
-- pgjdbc/src: This Java programs are the original sources for the jdbc support and must not be changed.
-- lib/src/main/java: Java source code
-- lib/src/test/java: JUnit5 test code
+- src/main/java: Java source code
+- src/test/java: JUnit5 test code
 </project_layout>
 
 <commands>
@@ -25,7 +23,6 @@
 </conversion_hints>
 
 <workflow>
-- Output temporary code to ./tmp. And Do not delete files that are not in ./tmp.
 - Do not add code to your application just to pass the test.
 - Do not use simplified or fallback implementations, as they prevent proper evaluation of the final result.
 - Use DataView for the pg-protocol BufferWriter buffer view.
