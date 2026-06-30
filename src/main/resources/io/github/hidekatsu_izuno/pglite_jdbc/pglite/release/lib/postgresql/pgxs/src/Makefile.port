@@ -1,0 +1,19 @@
+# src/makefiles/Makefile.wasi
+
+rpath =
+AROPT = crs
+comma := ,
+wasi_export_flags := -Wl$(comma)--export-table -Wl$(comma)--export-memory -Wl$(comma)--export-all --export-table --export-memory --export-all
+pglite_wasi_shared_ldflags = $(filter-out $(wasi_export_flags),$(LDFLAGS))
+pglite_wasi_shared_ldflags_sl = $(filter-out $(wasi_export_flags),$(LDFLAGS_SL))
+
+# Rule for building a PostgreSQL extension module.  Keep DLSUFFIX as ".so" for
+# extension archive compatibility while producing a wasm dynamic module.
+%.so: %.o
+	$(CC) $(CFLAGS) $< $(pglite_wasi_shared_ldflags) $(pglite_wasi_shared_ldflags_sl) -shared -o $@
+
+pglite_wasm_include_dir := $(pkgincludedir)/wasi
+pglite_wasm_base_dir := $(pglite_wasm_include_dir)/base
+pglite_wasm_imports_dir := /install/pglite/imports
+pglite_wasm_extension_dir := $(pglite_wasm_include_dir)/extension
+pglite_wasm_extension_imports_dir := $(pglite_wasm_extension_dir)/imports

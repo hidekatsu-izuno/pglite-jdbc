@@ -168,7 +168,7 @@ final class PgStatement implements InvocationHandler {
                     yield null;
                 }
                 var described = connection.describe(preparedProtocolSql);
-                yield PgResultSetMetaData.create(JdbcCompat.toColumns(described.resultFields()));
+                yield PgResultSetMetaData.create(JdbcCompat.toResultFieldColumns(described.resultFields()));
             }
             case "getParameterMetaData" -> {
                 if (preparedSql == null) {

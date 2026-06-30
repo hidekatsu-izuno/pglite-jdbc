@@ -229,6 +229,22 @@ final class JdbcCompat {
         return out;
     }
 
+    static List<Column> toResultFieldColumns(List<interface_.ResultField> fields) {
+        if (fields == null || fields.isEmpty()) {
+            return List.of();
+        }
+        var out = new ArrayList<Column>(fields.size());
+        for (var i = 0; i < fields.size(); i++) {
+            var field = fields.get(i);
+            var label = field.name();
+            if (label == null || label.isBlank()) {
+                label = "column" + (i + 1);
+            }
+            out.add(new Column(label, field.dataTypeID()));
+        }
+        return out;
+    }
+
     static Number toNumber(Object value) {
         if (value == null) {
             return 0;

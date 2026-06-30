@@ -1,13 +1,51 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pglite;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.base;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.tarUtils.DumpTarCompressionOptions;
+import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
+import java.net.URL;
 import java.util.List;
 import java.util.Map;
-import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
 import java.util.function.Consumer;
 
 public class interface_ {
     private interface_() {}
+
+    public enum DebugLevel {
+        LEVEL_0(0),
+        LEVEL_1(1),
+        LEVEL_2(2),
+        LEVEL_3(3),
+        LEVEL_4(4),
+        LEVEL_5(5);
+
+        private final int value;
+
+        DebugLevel(int value) {
+            this.value = value;
+        }
+
+        public int value() {
+            return this.value;
+        }
+
+        public static DebugLevel of(int value) {
+            return switch (value) {
+                case 1 -> LEVEL_1;
+                case 2 -> LEVEL_2;
+                case 3 -> LEVEL_3;
+                case 4 -> LEVEL_4;
+                case 5 -> LEVEL_5;
+                default -> LEVEL_0;
+            };
+        }
+    }
+
+    public enum RowMode {
+        array,
+        object,
+    }
 
     public interface Parser {
         Object parse(String value, Integer typeId);
@@ -18,7 +56,7 @@ public class interface_ {
     }
 
     public record QueryOptions(
-        String rowMode,
+        RowMode rowMode,
         Map<Integer, Parser> parsers,
         Map<Integer, Serializer> serializers,
         byte[] blob,
@@ -32,11 +70,20 @@ public class interface_ {
         Consumer<messages.NoticeMessage> onNotice
     ) {}
 
+    public record ExecProtocolOptionsStream(
+        boolean syncToFs,
+        Consumer<byte[]> onRawData
+    ) {}
+
     public record Field(String name, int dataTypeID) {}
 
+    public record QueryParamField(int dataTypeID, Serializer serializer) {}
+
+    public record ResultField(String name, int dataTypeID, Parser parser) {}
+
     public record DescribeQueryResult(
-        List<Field> queryParams,
-        List<Field> resultFields
+        List<QueryParamField> queryParams,
+        List<ResultField> resultFields
     ) {}
 
     public record Results<T>(
@@ -50,6 +97,58 @@ public class interface_ {
         List<messages.BackendMessage> messages,
         byte[] data
     ) {}
+
+    public record DumpDataDirResult(
+        byte[] tarball,
+        String extension,
+        String filename
+    ) {}
+
+    public record PGliteOptions(
+        Boolean noInitDb,
+        String dataDir,
+        String username,
+        String database,
+        base.Filesystem fs,
+        DebugLevel debug,
+        Boolean relaxedDurability,
+        Map<String, Object> extensions,
+        byte[] loadDataDir,
+        byte[] icuDataDir,
+        Integer initialMemory,
+        byte[] pgliteWasmModule,
+        byte[] initdbWasmModule,
+        byte[] fsBundle,
+        Map<Integer, Parser> parsers,
+        Map<Integer, Serializer> serializers,
+        String[] startParams,
+        String[] initDbStartParams,
+        Object postgresqlconf
+    ) {
+        public PGliteOptions() {
+            this(
+                null,
+                null,
+                null,
+                null,
+                null,
+                DebugLevel.LEVEL_0,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+            );
+        }
+    }
 
     public interface Transaction {
         <T> Promise<Results<T>> query(String query, Object[] params, QueryOptions options);
@@ -94,6 +193,11 @@ public class interface_ {
 
         Promise<byte[]> execProtocolRaw(byte[] message, ExecProtocolOptions options);
 
+        Promise<Void> execProtocolRawStream(
+            byte[] message,
+            ExecProtocolOptionsStream options
+        );
+
         <T> Promise<T> runExclusive(java.util.function.Supplier<Promise<T>> fn);
 
         Promise<java.util.function.Function<Transaction, Promise<Void>>> listen(
@@ -114,7 +218,9 @@ public class interface_ {
 
         void offNotification(java.util.function.BiConsumer<String, String> callback);
 
-        Promise<byte[]> dumpDataDir(String compression);
+        Promise<DumpDataDirResult> dumpDataDir(DumpTarCompressionOptions compression);
+
+        Promise<Void> refreshArrayTypes();
     }
 
     @FunctionalInterface
@@ -134,8 +240,13 @@ public class interface_ {
     public record ExtensionSetupResult(
         Object emscriptenOpts,
         Map<String, Object> namespaceObj,
-        String bundlePath,
-        Runnable init,
-        Runnable close
+        URL bundlePath,
+        List<String> sharedPreloadLibraries,
+        java.util.function.Supplier<Promise<Void>> init,
+        java.util.function.Supplier<Promise<Void>> close
     ) {}
+
+    public interface PGliteInterfaceExtensions {
+        Map<String, Object> namespaces();
+    }
 }

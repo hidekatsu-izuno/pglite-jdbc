@@ -16,7 +16,7 @@ final class PgParameterMetaData implements InvocationHandler {
         this.parameterTypes = parameterTypes;
     }
 
-    static ParameterMetaData create(List<interface_.Field> params) {
+    static ParameterMetaData create(List<interface_.QueryParamField> params) {
         var types = new int[params != null ? params.size() : 0];
         for (var i = 0; i < types.length; i++) {
             types[i] = params.get(i).dataTypeID();

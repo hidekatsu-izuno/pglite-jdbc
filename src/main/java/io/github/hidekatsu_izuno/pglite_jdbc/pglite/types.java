@@ -1,6 +1,10 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pglite;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatterBuilder;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -13,6 +17,7 @@ public class types {
     public static final int INT2 = 21;
     public static final int INT4 = 23;
     public static final int TEXT = 25;
+    public static final int OID = 26;
     public static final int JSON = 114;
     public static final int FLOAT4 = 700;
     public static final int FLOAT8 = 701;
@@ -34,10 +39,12 @@ public class types {
     public static final Map<Integer, Serializer> serializers = new HashMap<>();
 
     static {
+        serializers.put(0, v -> String.valueOf(v));
         registerString(TEXT);
         registerString(VARCHAR);
         registerNumber(INT2);
         registerNumber(INT4);
+        registerNumber(OID);
         registerNumber(FLOAT4);
         registerNumber(FLOAT8);
         registerBigInt(INT8);
@@ -72,17 +79,74 @@ public class types {
 
     private static void registerBoolean(int oid) {
         parsers.put(oid, (x, t) -> "t".equals(x));
-        serializers.put(oid, v -> Boolean.TRUE.equals(v) ? "t" : "f");
+        serializers.put(oid, v -> {
+            if (v instanceof Boolean bool) {
+                return bool ? "t" : "f";
+            }
+            if (v instanceof Number number) {
+                var value = number.doubleValue();
+                if (value == 1.0d) {
+                    return "t";
+                }
+                if (value == 0.0d) {
+                    return "f";
+                }
+                throw new IllegalArgumentException("Invalid input for boolean type");
+            }
+            if (v instanceof String string) {
+                var normalized = string.trim().toLowerCase();
+                if (List.of("true", "t", "yes", "y", "on", "1").contains(normalized)) {
+                    return "t";
+                }
+                if (List.of("false", "f", "no", "n", "off", "0").contains(normalized)) {
+                    return "f";
+                }
+            }
+            throw new IllegalArgumentException("Invalid input for boolean type");
+        });
     }
 
     private static void registerDate(int oid) {
-        parsers.put(oid, (x, t) -> Instant.parse(x));
-        serializers.put(oid, v -> String.valueOf(v));
+        parsers.put(oid, (x, t) -> parseInstant(x));
+        serializers.put(oid, v -> {
+            if (v instanceof Instant instant) {
+                return formatInstant(instant);
+            }
+            if (v instanceof Number number) {
+                return formatInstant(Instant.ofEpochMilli(number.longValue()));
+            }
+            if (v instanceof String string) {
+                return formatInstant(parseInstant(string));
+            }
+            throw new IllegalArgumentException("Invalid input for timestamp type");
+        });
+    }
+
+    private static Instant parseInstant(String value) {
+        if (value == null) {
+            return null;
+        }
+        if (value.indexOf('T') < 0) {
+            return LocalDate.parse(value).atStartOfDay().toInstant(ZoneOffset.UTC);
+        }
+        if (value.endsWith("Z") || value.matches(".*[+-][0-9]{2}:[0-9]{2}$")) {
+            return Instant.parse(value);
+        }
+        return LocalDateTime.parse(value).toInstant(ZoneOffset.UTC);
+    }
+
+    private static String formatInstant(Instant instant) {
+        return new DateTimeFormatterBuilder().appendInstant(3).toFormatter().format(instant);
     }
 
     private static void registerJson(int oid) {
-        parsers.put(oid, (x, t) -> x);
-        serializers.put(oid, v -> String.valueOf(v));
+        parsers.put(oid, (x, t) -> io.github.hidekatsu_izuno.pglite_jdbc.polyfills.JSON.parse(x));
+        serializers.put(
+            oid,
+            v -> v instanceof String string
+                ? string
+                : io.github.hidekatsu_izuno.pglite_jdbc.polyfills.JSON.stringify(v)
+        );
     }
 
     private static void registerBytea(int oid) {
