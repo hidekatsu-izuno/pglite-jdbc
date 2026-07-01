@@ -366,6 +366,9 @@ public final class ChicoryPostgresMod implements initdbModFactory.InitdbMod {
         if (normalized == null || normalized.isBlank()) {
             return root;
         }
+        if (isPostgresDataPath(normalized)) {
+            return dataRoot.resolve(normalized).normalize();
+        }
         if (normalized.equals("data")) {
             return dataRoot;
         }
@@ -373,6 +376,31 @@ public final class ChicoryPostgresMod implements initdbModFactory.InitdbMod {
             return dataRoot.resolve(normalized.substring("data/".length())).normalize();
         }
         return root.resolve(normalized).normalize();
+    }
+
+    private static boolean isPostgresDataPath(String path) {
+        return path.equals("PG_VERSION")
+            || path.equals("postgresql.conf")
+            || path.equals("postgresql.auto.conf")
+            || path.equals("postmaster.pid")
+            || path.equals("postmaster.opts")
+            || path.startsWith("base/")
+            || path.startsWith("global/")
+            || path.startsWith("pg_commit_ts/")
+            || path.startsWith("pg_dynshmem/")
+            || path.startsWith("pg_logical/")
+            || path.startsWith("pg_multixact/")
+            || path.startsWith("pg_notify/")
+            || path.startsWith("pg_replslot/")
+            || path.startsWith("pg_serial/")
+            || path.startsWith("pg_snapshots/")
+            || path.startsWith("pg_stat/")
+            || path.startsWith("pg_stat_tmp/")
+            || path.startsWith("pg_subtrans/")
+            || path.startsWith("pg_tblspc/")
+            || path.startsWith("pg_twophase/")
+            || path.startsWith("pg_wal/")
+            || path.startsWith("pg_xact/");
     }
 
     private void growCallbackTables(com.dylibso.chicory.wasm.WasmModule module) {

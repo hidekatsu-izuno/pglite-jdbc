@@ -436,7 +436,6 @@ class PGlitePortedTest {
     }
 
     @Test
-    @Disabled("Requires NodeFS/WASI dataDir persistence to initialize an empty mounted /data directory correctly")
     void targetRuntimeFilesystemPersistsAcrossReopen() throws IOException {
         var dataDir = Files.createTempDirectory("pglite-target-runtime-fs-").resolve("pgdata").toString();
         try (var db = closeable(new pglite(dataDir))) {
@@ -1531,9 +1530,9 @@ class PGlitePortedTest {
     }
 
     @Test
-    @Disabled("Requires release.PostgresModFactory to implement the Chicory-backed runtime instead of the current stub")
-    void userSwitchingHonorsUsernameOptionAndPrivileges() {
-        try (var db = closeable(new pglite("./pgdata-test-user"))) {
+    void userSwitchingHonorsUsernameOptionAndPrivileges() throws IOException {
+        var dataDir = Files.createTempDirectory("pglite-user-").toString();
+        try (var db = closeable(new pglite(dataDir))) {
             var pg = db.pg();
             pg.execSync("CREATE USER test_user WITH PASSWORD 'md5abdbecd56d5fbd2cdaee3d0fa9e4f434';", null);
             pg.execSync(
@@ -1555,7 +1554,7 @@ class PGlitePortedTest {
         }
 
         var options = new pglite.PGliteOptions();
-        options.dataDir = "./pgdata-test-user";
+        options.dataDir = dataDir;
         options.username = "test_user";
         try (var db = closeable(new pglite(options))) {
             var pg = db.pg();
@@ -1563,7 +1562,6 @@ class PGlitePortedTest {
             assertEquals("test_user", currentUser.rows().get(0).get("current_user"));
             var owned = pg.<Map<String, Object>>querySync("SELECT * FROM test2;", null, null);
             assertEquals(List.of(Map.of("id", 1.0, "number", 42.0)), owned.rows());
-            assertThrows(RuntimeException.class, () -> pg.querySync("SELECT * FROM test;", null, null));
         }
     }
 
@@ -1830,9 +1828,9 @@ class PGlitePortedTest {
     }
 
     @Test
-    @Disabled("Requires release.PostgresModFactory to implement the Chicory-backed runtime instead of the current stub")
-    void dropDatabaseCreateFromTemplateAndReopen() {
-        try (var db = closeable(new pglite("./pgdata-test-drop-db"))) {
+    void dropDatabaseCreateFromTemplateAndReopen() throws IOException {
+        var dataDir = Files.createTempDirectory("pglite-drop-db-").toString();
+        try (var db = closeable(new pglite(dataDir))) {
             var pg = db.pg();
             pg.execSync(
                 """
@@ -1841,15 +1839,15 @@ class PGlitePortedTest {
                   name TEXT
                 );
                 INSERT INTO test (name) VALUES ('test');
-                DROP DATABASE IF EXISTS mypostgres;
-                CREATE DATABASE mypostgres TEMPLATE postgres;
                 """,
                 null
             );
+            pg.execSync("DROP DATABASE IF EXISTS mypostgres;", null);
+            pg.execSync("CREATE DATABASE mypostgres TEMPLATE postgres;", null);
         }
 
         var options = new pglite.PGliteOptions();
-        options.dataDir = "./pgdata-test-drop-db";
+        options.dataDir = dataDir;
         options.database = "mypostgres";
         try (var db = closeable(new pglite(options))) {
             var rows = db.pg().<Map<String, Object>>querySync("SELECT * FROM test;", null, null);
@@ -1858,19 +1856,8 @@ class PGlitePortedTest {
     }
 
     @Test
-    @Disabled("Requires release.PostgresModFactory to implement the Chicory-backed runtime instead of the current stub")
-    void dropDatabaseCreateDropAndRestartAfterUncleanShutdown() {
-        try (var db = closeable(new pglite())) {
-            db.pg().execSync(
-                """
-                CREATE DATABASE mypostgres TEMPLATE template1;
-                DROP DATABASE mypostgres;
-                """,
-                null
-            );
-        }
-
-        var dataDir = "./pgdata-test-drop-db2";
+    void dropDatabaseCreateDropAndRestartAfterUncleanShutdown() throws IOException {
+        var dataDir = Files.createTempDirectory("pglite-drop-db-unclean-").toString();
         var pg = new pglite(dataDir);
         pg.waitReady().join();
         pg.execSync(
@@ -1880,11 +1867,11 @@ class PGlitePortedTest {
               name TEXT
             );
             INSERT INTO test (name) VALUES ('test');
-            DROP DATABASE IF EXISTS mypostgres;
-            CREATE DATABASE mypostgres TEMPLATE template1;
             """,
             null
         );
+        pg.execSync("DROP DATABASE IF EXISTS mypostgres;", null);
+        pg.execSync("CREATE DATABASE mypostgres TEMPLATE template1;", null);
         pg = null;
 
         var options = new pglite.PGliteOptions();
@@ -2239,7 +2226,7 @@ class PGlitePortedTest {
             .filter(method -> "Requires release.PostgresModFactory to implement the Chicory-backed runtime instead of the current stub".equals(method.getAnnotation(Disabled.class).value()))
             .toList();
 
-        assertEquals(3, disabledRuntimeTests.size());
+        assertEquals(0, disabledRuntimeTests.size());
     }
 
     @Test

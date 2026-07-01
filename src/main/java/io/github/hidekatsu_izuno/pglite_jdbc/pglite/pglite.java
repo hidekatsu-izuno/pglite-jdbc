@@ -2,6 +2,7 @@ package io.github.hidekatsu_izuno.pglite_jdbc.pglite;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages;
 import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.parser;
+import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.serializer;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.base.Filesystem;
@@ -167,6 +168,9 @@ public class pglite extends base implements interface_.PGliteInterface {
             ? options.initialMemory
             : 64 * 1024 * 1024;
         overrides.noExitRuntime = true;
+        overrides.ENV = new java.util.HashMap<>();
+        overrides.ENV.put("PGUSER", options.username != null ? options.username : "postgres");
+        overrides.ENV.put("PGDATABASE", options.database != null ? options.database : "postgres");
         overrides.printErr = printArgs -> {
             var text = printArgs.length > 0 ? String.valueOf(printArgs[0]) : "";
             appendWasmStderr(text);
@@ -309,10 +313,19 @@ public class pglite extends base implements interface_.PGliteInterface {
             return null;
         });
         traceInit("init:backend-done");
+        processStartupPacketSync(
+            serializer.serialize.startup(Map.of(
+                "user", options.username != null ? options.username : "postgres",
+                "database", options.database != null ? options.database : "postgres"
+            )).toByteArray()
+        );
         this.ready = true;
 
         this.execSync("SET search_path TO public;", null);
         traceInit("init:set-search-path-done");
+        if (options.username != null) {
+            this.execSync("SET ROLE " + options.username + ";", null);
+        }
         refreshArrayTypesSync();
         runExtensionInitializersSync();
 
@@ -370,7 +383,7 @@ public class pglite extends base implements interface_.PGliteInterface {
         }
         args.add("-D");
         args.add(io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.base.PGDATA);
-        args.add(options.database != null ? options.database : "template1");
+        args.add(options.database != null ? options.database : "postgres");
         var result = this.mod.callMain(args.toArray(String[]::new));
         if (result != 99) {
             throw new IllegalStateException("PGlite failed to initialize properly: status=" + result);
@@ -379,7 +392,7 @@ public class pglite extends base implements interface_.PGliteInterface {
 
     private String[] buildModuleArguments(PGliteOptions options, List<String> sharedPreloadLibraries) {
         var pgUser = options.username != null ? options.username : "postgres";
-        var pgDatabase = options.database != null ? options.database : "template1";
+        var pgDatabase = options.database != null ? options.database : "postgres";
         var args = new ArrayList<String>();
         args.add("./this.program");
         args.add("PGDATA=" + io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.base.PGDATA);
