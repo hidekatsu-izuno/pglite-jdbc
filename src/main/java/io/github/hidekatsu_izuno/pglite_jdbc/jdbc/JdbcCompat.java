@@ -3,6 +3,7 @@ package io.github.hidekatsu_izuno.pglite_jdbc.jdbc;
 import io.github.hidekatsu_izuno.pglite_jdbc.core.v3.QueryExecutorImpl;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_;
 import java.math.BigDecimal;
+import java.lang.reflect.Array;
 import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
@@ -303,6 +304,73 @@ final class JdbcCompat {
             return Arrays.copyOf(bytes, bytes.length);
         }
         return String.valueOf(value).getBytes(StandardCharsets.UTF_8);
+    }
+
+    static Object[] toObjectArray(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Object[] objects) {
+            return Arrays.copyOf(objects, objects.length);
+        }
+        var valueClass = value.getClass();
+        if (!valueClass.isArray()) {
+            return parsePgArray(String.valueOf(value));
+        }
+        var length = Array.getLength(value);
+        var out = new Object[length];
+        for (var i = 0; i < length; i++) {
+            out[i] = Array.get(value, i);
+        }
+        return out;
+    }
+
+    static Object[] parsePgArray(String text) {
+        if (text == null) {
+            return null;
+        }
+        var value = text.trim();
+        if (value.length() < 2 || value.charAt(0) != '{' || value.charAt(value.length() - 1) != '}') {
+            return new Object[] { text };
+        }
+        var out = new ArrayList<Object>();
+        var current = new StringBuilder();
+        var quoted = false;
+        var escaped = false;
+        var wasQuoted = false;
+        for (var i = 1; i < value.length() - 1; i++) {
+            var ch = value.charAt(i);
+            if (escaped) {
+                current.append(ch);
+                escaped = false;
+                continue;
+            }
+            if (quoted && ch == '\\') {
+                escaped = true;
+                continue;
+            }
+            if (ch == '"') {
+                quoted = !quoted;
+                wasQuoted = true;
+                continue;
+            }
+            if (!quoted && ch == ',') {
+                out.add(pgArrayItem(current.toString(), wasQuoted));
+                current.setLength(0);
+                wasQuoted = false;
+                continue;
+            }
+            current.append(ch);
+        }
+        out.add(pgArrayItem(current.toString(), wasQuoted));
+        return out.toArray();
+    }
+
+    private static Object pgArrayItem(String value, boolean quoted) {
+        if (!quoted && "NULL".equals(value)) {
+            return null;
+        }
+        return value;
     }
 
     static Object coerce(Object value, Class<?> targetType) {

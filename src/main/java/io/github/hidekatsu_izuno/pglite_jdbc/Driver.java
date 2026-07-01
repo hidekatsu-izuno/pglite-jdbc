@@ -118,6 +118,10 @@ public class Driver implements java.sql.Driver {
         return PARENT_LOGGER;
     }
 
+    public static Properties parseURL(String url, Properties info) throws SQLException {
+        return mergeUrlProperties(url, info != null ? info : new Properties());
+    }
+
     static Properties mergeUrlProperties(String url, Properties info) throws SQLException {
         if (url == null || !url.startsWith(URL_PREFIX)) {
             throw new SQLException("URL is not accepted by pglite driver: " + url);

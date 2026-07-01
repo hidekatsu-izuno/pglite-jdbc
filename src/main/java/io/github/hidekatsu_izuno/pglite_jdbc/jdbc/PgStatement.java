@@ -1,9 +1,13 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.jdbc;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.Reader;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.nio.charset.StandardCharsets;
 import java.sql.ParameterMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -214,9 +218,24 @@ final class PgStatement implements InvocationHandler {
         };
     }
 
-    private Object setParameter(String methodName, Integer index, Object[] args) {
+    private Object setParameter(String methodName, Integer index, Object[] args) throws SQLException {
         var value = switch (methodName) {
             case "setNull" -> null;
+            case "setArray" -> {
+                if (args[1] == null) {
+                    yield null;
+                }
+                yield ((java.sql.Array) args[1]).getArray();
+            }
+            case "setBinaryStream" -> readBinaryStream(args);
+            case "setAsciiStream" -> {
+                var bytes = readBinaryStream(args);
+                yield bytes == null ? null : new String(bytes, StandardCharsets.US_ASCII);
+            }
+            case "setCharacterStream", "setNCharacterStream" -> readCharacterStream(args);
+            case "setBlob" -> blobParameter(args);
+            case "setClob", "setNClob" -> clobParameter(args);
+            case "setSQLXML" -> args[1] == null ? null : ((java.sql.SQLXML) args[1]).getString();
             case "setDate" -> args[1] instanceof java.sql.Date date
                 ? date.toLocalDate().toString()
                 : args[1];
@@ -230,6 +249,73 @@ final class PgStatement implements InvocationHandler {
         };
         parameters.put(index, value);
         return null;
+    }
+
+    private byte[] readBinaryStream(Object[] args) throws SQLException {
+        if (args[1] == null) {
+            return null;
+        }
+        try {
+            var input = (InputStream) args[1];
+            if (args.length >= 3 && args[2] instanceof Number length && length.longValue() >= 0) {
+                return input.readNBytes(Math.toIntExact(length.longValue()));
+            }
+            return input.readAllBytes();
+        } catch (IOException | ArithmeticException exception) {
+            throw new SQLException("Failed to read parameter stream", exception);
+        }
+    }
+
+    private Object blobParameter(Object[] args) throws SQLException {
+        if (args[1] == null) {
+            return null;
+        }
+        if (args[1] instanceof java.sql.Blob blob) {
+            return blob.getBytes(1, Math.toIntExact(blob.length()));
+        }
+        if (args[1] instanceof InputStream) {
+            return readBinaryStream(args);
+        }
+        return args[1];
+    }
+
+    private Object clobParameter(Object[] args) throws SQLException {
+        if (args[1] == null) {
+            return null;
+        }
+        if (args[1] instanceof java.sql.Clob clob) {
+            return clob.getSubString(1, Math.toIntExact(clob.length()));
+        }
+        if (args[1] instanceof Reader) {
+            return readCharacterStream(args);
+        }
+        return args[1];
+    }
+
+    private String readCharacterStream(Object[] args) throws SQLException {
+        if (args[1] == null) {
+            return null;
+        }
+        try {
+            var reader = (Reader) args[1];
+            var out = new StringBuilder();
+            var remaining = args.length >= 3 && args[2] instanceof Number length
+                ? length.longValue()
+                : Long.MAX_VALUE;
+            var buffer = new char[2048];
+            while (remaining > 0) {
+                var request = (int) Math.min(buffer.length, remaining);
+                var read = reader.read(buffer, 0, request);
+                if (read < 0) {
+                    break;
+                }
+                out.append(buffer, 0, read);
+                remaining -= read;
+            }
+            return out.toString();
+        } catch (IOException exception) {
+            throw new SQLException("Failed to read parameter reader", exception);
+        }
     }
 
     private String resolveSql(String methodName, Object[] args) throws SQLException {

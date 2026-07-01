@@ -288,7 +288,10 @@ public final class PgConnection implements InvocationHandler {
                 releaseSavepoint((Savepoint) args[0]);
                 yield null;
             }
-            case "setTypeMap", "createClob", "createBlob", "createNClob", "createSQLXML", "createStruct" ->
+            case "createBlob" -> new PgBlob(null);
+            case "createClob", "createNClob" -> new PgClob(null);
+            case "createSQLXML" -> new PgSQLXML(null);
+            case "setTypeMap", "createStruct" ->
                 throw JdbcCompat.unsupported(name);
             case "createArrayOf" -> createArrayOf((String) args[0], args[1]);
             case "getTypeMap" -> new HashMap<String, Class<?>>();

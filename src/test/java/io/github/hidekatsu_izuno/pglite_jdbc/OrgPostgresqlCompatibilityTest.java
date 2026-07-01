@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.sql.DriverManager;
@@ -108,6 +109,103 @@ class OrgPostgresqlCompatibilityTest {
                     assertTrue(resultSet.isAfterLast());
                 }
                 assertEquals(-1, statement.getUpdateCount());
+            }
+        });
+    }
+
+    @Test
+    void shouldSupportJdbcArraysAndStreams() throws Exception {
+        assertTimeout(Duration.ofSeconds(180), () -> {
+            try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
+                var array = connection.createArrayOf("int4", new Integer[] { 1, 2, 3 });
+                assertArrayEquals(new Object[] { 2, 3 }, (Object[]) array.getArray(2, 2));
+
+                try (var arrayRows = array.getResultSet()) {
+                    assertTrue(arrayRows.next());
+                    assertEquals(1, arrayRows.getInt("INDEX"));
+                    assertEquals(1, arrayRows.getInt("VALUE"));
+                }
+
+                try (var statement = connection.prepareStatement(
+                    "SELECT ?::int4[] AS ints, ?::text AS body, ?::bytea AS bytes, ?::text AS reader_body, ?::bytea AS stream_bytes"
+                )) {
+                    statement.setArray(1, array);
+                    statement.setString(2, "stream text");
+                    statement.setBytes(3, "bytes".getBytes(StandardCharsets.UTF_8));
+                    statement.setCharacterStream(4, new StringReader("reader text"));
+                    statement.setBinaryStream(5, new ByteArrayInputStream("stream-bytes".getBytes(StandardCharsets.UTF_8)));
+                    try (var resultSet = statement.executeQuery()) {
+                        assertTrue(resultSet.next());
+                        var readArray = resultSet.getArray("ints");
+                        assertEquals(java.sql.Types.INTEGER, readArray.getBaseType());
+                        assertArrayEquals(new Object[] { "1", "2", "3" }, (Object[]) readArray.getArray());
+
+                        try (var reader = resultSet.getCharacterStream("body")) {
+                            var buffer = new char[64];
+                            var length = reader.read(buffer);
+                            assertEquals("stream text", new String(buffer, 0, length));
+                        }
+                        try (var input = resultSet.getBinaryStream("bytes")) {
+                            assertArrayEquals("bytes".getBytes(StandardCharsets.UTF_8), input.readAllBytes());
+                        }
+                        assertEquals("reader text", resultSet.getString("reader_body"));
+                        assertArrayEquals(
+                            "stream-bytes".getBytes(StandardCharsets.UTF_8),
+                            resultSet.getBytes("stream_bytes")
+                        );
+                    }
+                }
+                array.free();
+            }
+        });
+    }
+
+    @Test
+    void shouldSupportJdbcBlobAndClobValues() throws Exception {
+        assertTimeout(Duration.ofSeconds(180), () -> {
+            try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
+                var blob = connection.createBlob();
+                blob.setBytes(1, "blob-bytes".getBytes(StandardCharsets.UTF_8));
+                var clob = connection.createClob();
+                clob.setString(1, "clob text");
+
+                try (var statement = connection.prepareStatement(
+                    "SELECT ?::bytea AS payload, ?::text AS body"
+                )) {
+                    statement.setBlob(1, blob);
+                    statement.setClob(2, clob);
+                    try (var resultSet = statement.executeQuery()) {
+                        assertTrue(resultSet.next());
+                        var readBlob = resultSet.getBlob("payload");
+                        assertArrayEquals(
+                            "blob-bytes".getBytes(StandardCharsets.UTF_8),
+                            readBlob.getBytes(1, (int) readBlob.length())
+                        );
+                        var readClob = resultSet.getClob("body");
+                        assertEquals("clob text", readClob.getSubString(1, (int) readClob.length()));
+                    }
+                }
+                blob.free();
+                clob.free();
+            }
+        });
+    }
+
+    @Test
+    void shouldSupportJdbcSqlXmlValues() throws Exception {
+        assertTimeout(Duration.ofSeconds(180), () -> {
+            try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
+                var xml = connection.createSQLXML();
+                xml.setString("<root><value>42</value></root>");
+                try (var statement = connection.prepareStatement("SELECT ?::xml AS payload")) {
+                    statement.setSQLXML(1, xml);
+                    try (var resultSet = statement.executeQuery()) {
+                        assertTrue(resultSet.next());
+                        var readXml = resultSet.getSQLXML("payload");
+                        assertEquals("<root><value>42</value></root>", readXml.getString());
+                    }
+                }
+                xml.free();
             }
         });
     }
