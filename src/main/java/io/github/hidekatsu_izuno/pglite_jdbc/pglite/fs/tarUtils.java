@@ -171,7 +171,7 @@ public class tarUtils {
                 new TarEntry(
                     fullPath.substring(rootPath.length()),
                     stats.mode,
-                    (int) stats.size,
+                    data.length,
                     isFile ? tinytar.REGTYPE : tinytar.DIRTYPE,
                     stats.mtimeMs,
                     data

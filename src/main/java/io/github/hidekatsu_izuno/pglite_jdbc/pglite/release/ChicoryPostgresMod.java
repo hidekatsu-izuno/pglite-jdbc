@@ -363,7 +363,16 @@ public final class ChicoryPostgresMod implements initdbModFactory.InitdbMod {
 
     private Path resolveWasiPath(String path) {
         var normalized = path != null && path.startsWith("/") ? path.substring(1) : path;
-        return root.resolve(normalized == null ? "" : normalized).normalize();
+        if (normalized == null || normalized.isBlank()) {
+            return root;
+        }
+        if (normalized.equals("data")) {
+            return dataRoot;
+        }
+        if (normalized.startsWith("data/")) {
+            return dataRoot.resolve(normalized.substring("data/".length())).normalize();
+        }
+        return root.resolve(normalized).normalize();
     }
 
     private void growCallbackTables(com.dylibso.chicory.wasm.WasmModule module) {
