@@ -1,5 +1,6 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.jdbc;
 
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -24,6 +25,8 @@ final class PgStatement implements InvocationHandler {
     private boolean closed;
     private int updateCount = -1;
     private ResultSet currentResultSet;
+    private List<interface_.Results<Map<String, Object>>> currentResults = List.of();
+    private int currentResultIndex = -1;
     private java.sql.SQLWarning warnings;
     private int fetchSize;
     private int maxRows;
@@ -120,7 +123,7 @@ final class PgStatement implements InvocationHandler {
             case "execute" -> execute(resolveSql(name, args));
             case "getResultSet" -> currentResultSet;
             case "getUpdateCount" -> updateCount;
-            case "getMoreResults" -> false;
+            case "getMoreResults" -> getMoreResults(args);
             case "getConnection" -> connection.proxy();
             case "getWarnings" -> warnings;
             case "clearWarnings" -> {
@@ -254,6 +257,8 @@ final class PgStatement implements InvocationHandler {
     private ResultSet executeQuery(String sql) throws SQLException {
         var params = preparedSql != null ? buildParams() : null;
         var result = connection.query(sql, params);
+        currentResults = List.of();
+        currentResultIndex = -1;
         currentResultSet = PgResultSet.create(self, JdbcCompat.toColumns(result.fields()), trimRows(result.rows()));
         updateCount = -1;
         return currentResultSet;
@@ -262,11 +267,15 @@ final class PgStatement implements InvocationHandler {
     private int executeUpdate(String sql) throws SQLException {
         if (preparedSql != null) {
             var result = connection.query(sql, buildParams());
+            currentResults = List.of();
+            currentResultIndex = -1;
             currentResultSet = null;
             updateCount = JdbcCompat.safeAffectedRows(result);
             return updateCount;
         }
         var results = connection.exec(sql);
+        currentResults = List.of();
+        currentResultIndex = -1;
         currentResultSet = null;
         updateCount = results.isEmpty() ? 0 : JdbcCompat.safeAffectedRows(results.getLast());
         return updateCount;
@@ -275,6 +284,8 @@ final class PgStatement implements InvocationHandler {
     private boolean execute(String sql) throws SQLException {
         if (preparedSql != null) {
             var result = connection.query(sql, buildParams());
+            currentResults = List.of();
+            currentResultIndex = -1;
             if (!result.fields().isEmpty()) {
                 currentResultSet = PgResultSet.create(self, JdbcCompat.toColumns(result.fields()), trimRows(result.rows()));
                 updateCount = -1;
@@ -286,20 +297,14 @@ final class PgStatement implements InvocationHandler {
         }
 
         var results = connection.exec(sql);
+        currentResults = results;
+        currentResultIndex = -1;
         if (results.isEmpty()) {
             currentResultSet = null;
             updateCount = 0;
             return false;
         }
-        var first = results.getFirst();
-        if (!first.fields().isEmpty()) {
-            currentResultSet = PgResultSet.create(self, JdbcCompat.toColumns(first.fields()), trimRows(first.rows()));
-            updateCount = -1;
-            return true;
-        }
-        currentResultSet = null;
-        updateCount = JdbcCompat.safeAffectedRows(first);
-        return false;
+        return advanceResult();
     }
 
     private int[] executeBatch() throws SQLException {
@@ -310,6 +315,8 @@ final class PgStatement implements InvocationHandler {
                 out[i] = JdbcCompat.safeAffectedRows(result);
             }
             preparedBatch.clear();
+            currentResults = List.of();
+            currentResultIndex = -1;
             updateCount = -1;
             currentResultSet = null;
             return out;
@@ -321,9 +328,39 @@ final class PgStatement implements InvocationHandler {
             out[i] = results.isEmpty() ? 0 : JdbcCompat.safeAffectedRows(results.getLast());
         }
         sqlBatch.clear();
+        currentResults = List.of();
+        currentResultIndex = -1;
         updateCount = -1;
         currentResultSet = null;
         return out;
+    }
+
+    private boolean getMoreResults(Object[] args) throws SQLException {
+        if (args != null && args.length > 0) {
+            var behavior = (Integer) args[0];
+            if (behavior == Statement.CLOSE_CURRENT_RESULT && currentResultSet != null) {
+                currentResultSet.close();
+            }
+        }
+        return advanceResult();
+    }
+
+    private boolean advanceResult() {
+        currentResultIndex++;
+        if (currentResultIndex < 0 || currentResultIndex >= currentResults.size()) {
+            currentResultSet = null;
+            updateCount = -1;
+            return false;
+        }
+        var result = currentResults.get(currentResultIndex);
+        if (!result.fields().isEmpty()) {
+            currentResultSet = PgResultSet.create(self, JdbcCompat.toColumns(result.fields()), trimRows(result.rows()));
+            updateCount = -1;
+            return true;
+        }
+        currentResultSet = null;
+        updateCount = JdbcCompat.safeAffectedRows(result);
+        return false;
     }
 
     private List<Map<String, Object>> trimRows(List<Map<String, Object>> rows) {
@@ -342,6 +379,8 @@ final class PgStatement implements InvocationHandler {
     private void closeStatement() {
         closed = true;
         currentResultSet = null;
+        currentResults = List.of();
+        currentResultIndex = -1;
         parameters.clear();
         sqlBatch.clear();
         preparedBatch.clear();

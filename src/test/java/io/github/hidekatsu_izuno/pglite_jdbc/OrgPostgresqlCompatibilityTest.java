@@ -43,11 +43,73 @@ class OrgPostgresqlCompatibilityTest {
                 try (var resultSet = prepared.executeQuery()) {
                     assertTrue(resultSet.next());
                     assertEquals(42, resultSet.getInt(1));
-                    var metadata = resultSet.getMetaData().unwrap(PGResultSetMetaData.class);
-                    assertEquals("value", metadata.getBaseColumnName(1));
+                    var metadata = resultSet.getMetaData();
+                    assertEquals("int4", metadata.getColumnTypeName(1));
+                    assertEquals(Integer.class.getName(), metadata.getColumnClassName(1));
+                    assertEquals("value", metadata.unwrap(PGResultSetMetaData.class).getBaseColumnName(1));
                 }
             }
         }
+    }
+
+    @Test
+    void shouldSupportJdbcSavepoints() throws Exception {
+        assertTimeout(Duration.ofSeconds(180), () -> {
+            try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
+                try (var statement = connection.createStatement()) {
+                    statement.execute("CREATE TABLE savepoint_test(id int)");
+                }
+                connection.setAutoCommit(false);
+                try (var statement = connection.createStatement()) {
+                    statement.executeUpdate("INSERT INTO savepoint_test VALUES (1)");
+                    var savepoint = connection.setSavepoint("after_one");
+                    statement.executeUpdate("INSERT INTO savepoint_test VALUES (2)");
+                    connection.rollback(savepoint);
+                    statement.executeUpdate("INSERT INTO savepoint_test VALUES (3)");
+                    connection.releaseSavepoint(savepoint);
+                    connection.commit();
+                }
+                try (var statement = connection.createStatement();
+                     var resultSet = statement.executeQuery(
+                         "SELECT array_agg(id ORDER BY id)::text AS ids FROM savepoint_test"
+                     )) {
+                    assertTrue(resultSet.next());
+                    assertEquals("{1,3}", resultSet.getString(1));
+                }
+            }
+        });
+    }
+
+    @Test
+    void shouldExposeStatementMultipleResultsAndCursorState() throws Exception {
+        assertTimeout(Duration.ofSeconds(180), () -> {
+            try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000");
+                 var statement = connection.createStatement()) {
+                var hasResult = statement.execute("""
+                    CREATE TABLE multi_result_test(id int);
+                    INSERT INTO multi_result_test VALUES (1), (2);
+                    SELECT id FROM multi_result_test ORDER BY id
+                    """);
+                while (!hasResult && statement.getUpdateCount() != -1) {
+                    hasResult = statement.getMoreResults();
+                }
+                assertTrue(hasResult);
+
+                try (var resultSet = statement.getResultSet()) {
+                    assertTrue(resultSet.isBeforeFirst());
+                    assertTrue(resultSet.first());
+                    assertEquals(1, resultSet.getInt(1));
+                    assertTrue(resultSet.relative(1));
+                    assertTrue(resultSet.isLast());
+                    assertEquals(2, resultSet.getInt(1));
+                    assertTrue(resultSet.previous());
+                    assertEquals(1, resultSet.getInt(1));
+                    resultSet.afterLast();
+                    assertTrue(resultSet.isAfterLast());
+                }
+                assertEquals(-1, statement.getUpdateCount());
+            }
+        });
     }
 
     @Test

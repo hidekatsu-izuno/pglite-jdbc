@@ -373,4 +373,54 @@ final class JdbcCompat {
             default -> Types.OTHER;
         };
     }
+
+    static String oidToPgType(int oid) {
+        return switch (oid) {
+            case 16 -> "bool";
+            case 17 -> "bytea";
+            case 20 -> "int8";
+            case 21 -> "int2";
+            case 23 -> "int4";
+            case 25 -> "text";
+            case 26 -> "oid";
+            case 114 -> "json";
+            case 650 -> "cidr";
+            case 700 -> "float4";
+            case 701 -> "float8";
+            case 774 -> "macaddr8";
+            case 829 -> "macaddr";
+            case 869 -> "inet";
+            case 1042 -> "bpchar";
+            case 1043 -> "varchar";
+            case 1082 -> "date";
+            case 1083 -> "time";
+            case 1114 -> "timestamp";
+            case 1184 -> "timestamptz";
+            case 1266 -> "timetz";
+            case 1700 -> "numeric";
+            case 2950 -> "uuid";
+            case 3802 -> "jsonb";
+            case 1000 -> "_bool";
+            case 1001 -> "_bytea";
+            case 1005 -> "_int2";
+            case 1007 -> "_int4";
+            case 1009 -> "_text";
+            case 1014 -> "_bpchar";
+            case 1015 -> "_varchar";
+            case 1016 -> "_int8";
+            case 1021 -> "_float4";
+            case 1022 -> "_float8";
+            case 1028 -> "_oid";
+            case 1115 -> "_timestamp";
+            case 1182 -> "_date";
+            case 1183 -> "_time";
+            case 1185 -> "_timestamptz";
+            case 1231 -> "_numeric";
+            case 1270 -> "_timetz";
+            case 199 -> "_json";
+            case 2951 -> "_uuid";
+            case 3807 -> "_jsonb";
+            default -> "oid:" + oid;
+        };
+    }
 }

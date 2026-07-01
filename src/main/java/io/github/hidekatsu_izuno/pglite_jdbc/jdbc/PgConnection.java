@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.SQLFeatureNotSupportedException;
 import java.sql.ResultSet;
+import java.sql.Savepoint;
 import java.sql.SQLException;
 import java.sql.Types;
 import java.util.HashMap;
@@ -55,6 +56,7 @@ public final class PgConnection implements InvocationHandler {
     private AutoSave autosave = AutoSave.NEVER;
     private PreferQueryMode preferQueryMode = PreferQueryMode.EXTENDED;
     private String currentSchema;
+    private int nextSavepointId = 1;
     private org.postgresql.copy.CopyManager copyApi;
     private org.postgresql.fastpath.Fastpath fastpathApi;
     private org.postgresql.largeobject.LargeObjectManager largeObjectApi;
@@ -249,7 +251,11 @@ public final class PgConnection implements InvocationHandler {
                 yield null;
             }
             case "rollback" -> {
-                rollbackTransaction();
+                if (args == null || args.length == 0) {
+                    rollbackTransaction();
+                } else {
+                    rollbackToSavepoint((Savepoint) args[0]);
+                }
                 yield null;
             }
             case "getMetaData" -> PgDatabaseMetaData.create(this);
@@ -275,8 +281,15 @@ public final class PgConnection implements InvocationHandler {
             }
             case "setHoldability" -> null;
             case "getHoldability" -> ResultSet.CLOSE_CURSORS_AT_COMMIT;
-            case "setSavepoint", "releaseSavepoint", "setTypeMap", "createClob", "createBlob",
-                "createNClob", "createSQLXML", "createStruct" -> throw JdbcCompat.unsupported(name);
+            case "setSavepoint" -> args == null || args.length == 0
+                ? setSavepoint()
+                : setSavepoint((String) args[0]);
+            case "releaseSavepoint" -> {
+                releaseSavepoint((Savepoint) args[0]);
+                yield null;
+            }
+            case "setTypeMap", "createClob", "createBlob", "createNClob", "createSQLXML", "createStruct" ->
+                throw JdbcCompat.unsupported(name);
             case "createArrayOf" -> createArrayOf((String) args[0], args[1]);
             case "getTypeMap" -> new HashMap<String, Class<?>>();
             case "isValid" -> !closed;
@@ -494,6 +507,63 @@ public final class PgConnection implements InvocationHandler {
         }
     }
 
+    private Savepoint setSavepoint() throws SQLException {
+        var savepoint = PgSavepoint.unnamed(nextSavepointId++);
+        createSavepoint(savepoint);
+        return savepoint;
+    }
+
+    private Savepoint setSavepoint(String name) throws SQLException {
+        if (name == null || name.isBlank()) {
+            throw new PSQLException("Savepoint name must not be empty", PSQLState.INVALID_PARAMETER_VALUE);
+        }
+        var savepoint = PgSavepoint.named(nextSavepointId++, name);
+        createSavepoint(savepoint);
+        return savepoint;
+    }
+
+    private void createSavepoint(PgSavepoint savepoint) throws SQLException {
+        ensureOpen();
+        if (autoCommit) {
+            throw new SQLException("Cannot establish a savepoint when autoCommit is true");
+        }
+        ensureTransactionIfNeeded();
+        execControl("SAVEPOINT " + savepointIdentifier(savepoint));
+    }
+
+    private void rollbackToSavepoint(Savepoint savepoint) throws SQLException {
+        var pgSavepoint = asPgSavepoint(savepoint);
+        pgSavepoint.ensureActive();
+        ensureOpen();
+        if (autoCommit) {
+            throw new SQLException("Cannot rollback to a savepoint when autoCommit is true");
+        }
+        execControl("ROLLBACK TO SAVEPOINT " + savepointIdentifier(pgSavepoint));
+        txOpen = true;
+    }
+
+    private void releaseSavepoint(Savepoint savepoint) throws SQLException {
+        var pgSavepoint = asPgSavepoint(savepoint);
+        pgSavepoint.ensureActive();
+        ensureOpen();
+        if (autoCommit) {
+            throw new SQLException("Cannot release a savepoint when autoCommit is true");
+        }
+        execControl("RELEASE SAVEPOINT " + savepointIdentifier(pgSavepoint));
+        pgSavepoint.markReleased();
+    }
+
+    private PgSavepoint asPgSavepoint(Savepoint savepoint) throws SQLException {
+        if (savepoint instanceof PgSavepoint pgSavepoint) {
+            return pgSavepoint;
+        }
+        throw new SQLException("Savepoint was not created by this connection");
+    }
+
+    private String savepointIdentifier(PgSavepoint savepoint) {
+        return '"' + savepoint.sqlIdentifier().replace("\"", "\"\"") + '"';
+    }
+
     private void closeConnection() throws SQLException {
         if (closed) {
             return;
@@ -625,11 +695,12 @@ public final class PgConnection implements InvocationHandler {
                         }
                         yield pgTypeToSqlType((String) args[0]);
                     }
-                    case "getPGType" -> {
+            case "getPGType" -> {
                         if (args[0] instanceof String typeName) {
                             yield pgTypeToOid(typeName);
                         }
-                        yield oidToPgType((Integer) args[0]);
+                        var type = JdbcCompat.oidToPgType((Integer) args[0]);
+                        yield type.startsWith("oid:") ? null : type;
                     }
                     case "getPGArrayElement" -> arrayOidToElementOid((Integer) args[0]);
                     case "getPGArrayType" -> elementOidToArrayOid(pgTypeToOid((String) args[0]));
@@ -742,46 +813,6 @@ public final class PgConnection implements InvocationHandler {
             case "json[]", "_json" -> 199;
             case "jsonb[]", "_jsonb" -> 3807;
             default -> 0;
-        };
-    }
-
-    private String oidToPgType(int oid) {
-        return switch (oid) {
-            case 16 -> "bool";
-            case 21 -> "int2";
-            case 23 -> "int4";
-            case 20 -> "int8";
-            case 26 -> "oid";
-            case 25 -> "text";
-            case 700 -> "float4";
-            case 701 -> "float8";
-            case 1082 -> "date";
-            case 1083 -> "time";
-            case 1266 -> "timetz";
-            case 1114 -> "timestamp";
-            case 1184 -> "timestamptz";
-            case 1700 -> "numeric";
-            case 1043 -> "varchar";
-            case 1042 -> "bpchar";
-            case 17 -> "bytea";
-            case 2950 -> "uuid";
-            case 114 -> "json";
-            case 3802 -> "jsonb";
-            case 869 -> "inet";
-            case 650 -> "cidr";
-            case 829 -> "macaddr";
-            case 774 -> "macaddr8";
-            case 1000 -> "_bool";
-            case 1005 -> "_int2";
-            case 1007 -> "_int4";
-            case 1016 -> "_int8";
-            case 1009 -> "_text";
-            case 1015 -> "_varchar";
-            case 1001 -> "_bytea";
-            case 2951 -> "_uuid";
-            case 199 -> "_json";
-            case 3807 -> "_jsonb";
-            default -> null;
         };
     }
 

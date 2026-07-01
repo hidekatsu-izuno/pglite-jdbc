@@ -40,7 +40,7 @@ final class PgResultSetMetaData implements InvocationHandler {
             case "getColumnCount" -> columns.size();
             case "getColumnLabel", "getColumnName" -> columns.get(((Integer) args[0]) - 1).label();
             case "getColumnType" -> JdbcCompat.oidToJdbcType(columns.get(((Integer) args[0]) - 1).oid());
-            case "getColumnTypeName" -> "oid:" + columns.get(((Integer) args[0]) - 1).oid();
+            case "getColumnTypeName" -> JdbcCompat.oidToPgType(columns.get(((Integer) args[0]) - 1).oid());
             case "isNullable" -> ResultSetMetaData.columnNullableUnknown;
             case "isAutoIncrement" -> false;
             case "isCaseSensitive" -> true;
@@ -51,7 +51,7 @@ final class PgResultSetMetaData implements InvocationHandler {
             case "getSchemaName", "getTableName", "getCatalogName" -> "";
             case "isReadOnly" -> true;
             case "isWritable", "isDefinitelyWritable" -> false;
-            case "getColumnClassName" -> Object.class.getName();
+            case "getColumnClassName" -> columnClassName(columns.get(((Integer) args[0]) - 1).oid());
             case "getBaseColumnName" -> columns.get(((Integer) args[0]) - 1).label();
             case "getBaseTableName", "getBaseSchemaName" -> "";
             case "getFormat" -> 0;
@@ -64,6 +64,26 @@ final class PgResultSetMetaData implements InvocationHandler {
             }
             case "isWrapperFor" -> ((Class<?>) args[0]).isInstance(proxy);
             default -> JdbcCompat.defaultReturn(method.getReturnType());
+        };
+    }
+
+    private String columnClassName(int oid) {
+        return switch (JdbcCompat.oidToJdbcType(oid)) {
+            case java.sql.Types.BOOLEAN -> Boolean.class.getName();
+            case java.sql.Types.SMALLINT -> Short.class.getName();
+            case java.sql.Types.INTEGER -> Integer.class.getName();
+            case java.sql.Types.BIGINT -> Long.class.getName();
+            case java.sql.Types.REAL -> Float.class.getName();
+            case java.sql.Types.DOUBLE, java.sql.Types.FLOAT -> Double.class.getName();
+            case java.sql.Types.NUMERIC, java.sql.Types.DECIMAL -> java.math.BigDecimal.class.getName();
+            case java.sql.Types.BINARY, java.sql.Types.VARBINARY, java.sql.Types.LONGVARBINARY ->
+                byte[].class.getName();
+            case java.sql.Types.DATE -> java.sql.Date.class.getName();
+            case java.sql.Types.TIME, java.sql.Types.TIME_WITH_TIMEZONE -> java.sql.Time.class.getName();
+            case java.sql.Types.TIMESTAMP, java.sql.Types.TIMESTAMP_WITH_TIMEZONE ->
+                java.sql.Timestamp.class.getName();
+            case java.sql.Types.ARRAY -> java.sql.Array.class.getName();
+            default -> String.class.getName();
         };
     }
 }

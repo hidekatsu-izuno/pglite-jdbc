@@ -84,6 +84,32 @@ final class PgResultSet implements InvocationHandler {
                 cursor = -1;
                 yield null;
             }
+            case "afterLast" -> {
+                ensureNotClosed();
+                cursor = rows.size();
+                yield null;
+            }
+            case "first" -> moveToRow(rows.isEmpty() ? rows.size() : 0);
+            case "last" -> moveToRow(rows.isEmpty() ? rows.size() : rows.size() - 1);
+            case "absolute" -> absolute((Integer) args[0]);
+            case "relative" -> moveToRow(cursor + (Integer) args[0]);
+            case "previous" -> moveToRow(cursor - 1);
+            case "isBeforeFirst" -> {
+                ensureNotClosed();
+                yield cursor < 0 && !rows.isEmpty();
+            }
+            case "isAfterLast" -> {
+                ensureNotClosed();
+                yield cursor >= rows.size() && !rows.isEmpty();
+            }
+            case "isFirst" -> {
+                ensureNotClosed();
+                yield cursor == 0 && !rows.isEmpty();
+            }
+            case "isLast" -> {
+                ensureNotClosed();
+                yield cursor == rows.size() - 1 && !rows.isEmpty();
+            }
             case "getMetaData" -> PgResultSetMetaData.create(columns);
             case "getStatement" -> statement;
             case "findColumn" -> findColumn((String) args[0]);
@@ -198,5 +224,35 @@ final class PgResultSet implements InvocationHandler {
             }
         }
         return null;
+    }
+
+    private boolean absolute(int row) throws SQLException {
+        if (row > 0) {
+            return moveToRow(row - 1);
+        }
+        if (row < 0) {
+            return moveToRow(rows.size() + row);
+        }
+        beforeFirst();
+        return false;
+    }
+
+    private boolean moveToRow(int nextCursor) throws SQLException {
+        ensureNotClosed();
+        if (nextCursor < 0) {
+            cursor = -1;
+            return false;
+        }
+        if (nextCursor >= rows.size()) {
+            cursor = rows.size();
+            return false;
+        }
+        cursor = nextCursor;
+        return true;
+    }
+
+    private void beforeFirst() throws SQLException {
+        ensureNotClosed();
+        cursor = -1;
     }
 }
