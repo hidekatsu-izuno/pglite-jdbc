@@ -56,6 +56,7 @@ public final class PgConnection implements InvocationHandler {
     private PreferQueryMode preferQueryMode = PreferQueryMode.EXTENDED;
     private String currentSchema;
     private org.postgresql.copy.CopyManager copyApi;
+    private org.postgresql.fastpath.Fastpath fastpathApi;
     private org.postgresql.largeobject.LargeObjectManager largeObjectApi;
     private final org.postgresql.core.TypeInfo typeInfo = createTypeInfo();
     private final LruCache<org.postgresql.jdbc.FieldMetadata.Key, org.postgresql.jdbc.FieldMetadata>
@@ -109,6 +110,10 @@ public final class PgConnection implements InvocationHandler {
 
     String user() {
         return user;
+    }
+
+    String database() {
+        return database;
     }
 
     boolean readOnly() {
@@ -311,7 +316,7 @@ public final class PgConnection implements InvocationHandler {
             case "escapeIdentifier" -> '"' + String.valueOf(args[0]).replace("\"", "\"\"") + '"';
             case "escapeLiteral" -> '\'' + String.valueOf(args[0]).replace("'", "''") + '\'';
             case "getCopyAPI" -> getCopyAPI();
-            case "getFastpathAPI" -> unsupportedCore("getFastpathAPI");
+            case "getFastpathAPI" -> getFastpathAPI();
             case "getLargeObjectAPI" -> getLargeObjectAPI();
             case "execSQLQuery" -> unsupportedCore("execSQLQuery");
             case "execSQLUpdate" -> {
@@ -530,6 +535,14 @@ public final class PgConnection implements InvocationHandler {
         return copyApi;
     }
 
+    private org.postgresql.fastpath.Fastpath getFastpathAPI() throws SQLException {
+        ensureOpen();
+        if (fastpathApi == null) {
+            fastpathApi = new PgFastpathAdapter(this);
+        }
+        return fastpathApi;
+    }
+
     private org.postgresql.largeobject.LargeObjectManager getLargeObjectAPI() throws SQLException {
         ensureOpen();
         if (largeObjectApi == null) {
@@ -622,7 +635,7 @@ public final class PgConnection implements InvocationHandler {
                     case "getPGArrayType" -> elementOidToArrayOid(pgTypeToOid((String) args[0]));
                     case "getArrayDelimiter" -> ',';
                     case "getTypeForAlias" -> args[0];
-                    case "getJavaClass" -> "java.lang.Object";
+                    case "getJavaClass" -> javaClassForOid((Integer) args[0]);
                     case "requiresQuoting" -> requiresQuotingOid((Integer) args[0]);
                     case "requiresQuotingSqlType" -> requiresQuotingSqlType((Integer) args[0]);
                     case "longOidToInt" -> (int) (long) (Long) args[0];
@@ -670,14 +683,21 @@ public final class PgConnection implements InvocationHandler {
             case "int2", "smallint" -> Types.SMALLINT;
             case "int4", "integer", "int" -> Types.INTEGER;
             case "int8", "bigint" -> Types.BIGINT;
+            case "oid" -> Types.BIGINT;
             case "float4", "real" -> Types.REAL;
             case "float8", "double", "double precision" -> Types.DOUBLE;
             case "numeric", "decimal" -> Types.NUMERIC;
-            case "text", "varchar", "character varying", "char", "character" -> Types.VARCHAR;
+            case "text", "varchar", "character varying", "bpchar", "char", "character" -> Types.VARCHAR;
             case "bytea" -> Types.BINARY;
             case "date" -> Types.DATE;
             case "time" -> Types.TIME;
-            case "timestamp", "timestamptz" -> Types.TIMESTAMP;
+            case "timetz", "time with time zone" -> Types.TIME_WITH_TIMEZONE;
+            case "timestamp" -> Types.TIMESTAMP;
+            case "timestamptz", "timestamp with time zone" -> Types.TIMESTAMP_WITH_TIMEZONE;
+            case "uuid", "json", "jsonb", "inet", "cidr", "macaddr", "macaddr8" -> Types.OTHER;
+            case "bool[]", "_bool", "int2[]", "_int2", "int4[]", "_int4", "int8[]", "_int8",
+                "text[]", "_text", "varchar[]", "_varchar", "bytea[]", "_bytea", "uuid[]", "_uuid",
+                "json[]", "_json", "jsonb[]", "_jsonb" -> Types.ARRAY;
             default -> Types.OTHER;
         };
     }
@@ -691,16 +711,36 @@ public final class PgConnection implements InvocationHandler {
             case "int2", "smallint" -> 21;
             case "int4", "integer", "int" -> 23;
             case "int8", "bigint" -> 20;
+            case "oid" -> 26;
             case "text" -> 25;
             case "float4", "real" -> 700;
             case "float8", "double", "double precision" -> 701;
             case "date" -> 1082;
             case "time" -> 1083;
+            case "timetz", "time with time zone" -> 1266;
             case "timestamp" -> 1114;
-            case "timestamptz" -> 1184;
+            case "timestamptz", "timestamp with time zone" -> 1184;
             case "numeric", "decimal" -> 1700;
             case "varchar", "character varying" -> 1043;
+            case "bpchar", "char", "character" -> 1042;
             case "bytea" -> 17;
+            case "uuid" -> 2950;
+            case "json" -> 114;
+            case "jsonb" -> 3802;
+            case "inet" -> 869;
+            case "cidr" -> 650;
+            case "macaddr" -> 829;
+            case "macaddr8" -> 774;
+            case "bool[]", "_bool" -> 1000;
+            case "int2[]", "_int2" -> 1005;
+            case "int4[]", "_int4" -> 1007;
+            case "int8[]", "_int8" -> 1016;
+            case "text[]", "_text" -> 1009;
+            case "varchar[]", "_varchar" -> 1015;
+            case "bytea[]", "_bytea" -> 1001;
+            case "uuid[]", "_uuid" -> 2951;
+            case "json[]", "_json" -> 199;
+            case "jsonb[]", "_jsonb" -> 3807;
             default -> 0;
         };
     }
@@ -711,16 +751,36 @@ public final class PgConnection implements InvocationHandler {
             case 21 -> "int2";
             case 23 -> "int4";
             case 20 -> "int8";
+            case 26 -> "oid";
             case 25 -> "text";
             case 700 -> "float4";
             case 701 -> "float8";
             case 1082 -> "date";
             case 1083 -> "time";
+            case 1266 -> "timetz";
             case 1114 -> "timestamp";
             case 1184 -> "timestamptz";
             case 1700 -> "numeric";
             case 1043 -> "varchar";
+            case 1042 -> "bpchar";
             case 17 -> "bytea";
+            case 2950 -> "uuid";
+            case 114 -> "json";
+            case 3802 -> "jsonb";
+            case 869 -> "inet";
+            case 650 -> "cidr";
+            case 829 -> "macaddr";
+            case 774 -> "macaddr8";
+            case 1000 -> "_bool";
+            case 1005 -> "_int2";
+            case 1007 -> "_int4";
+            case 1016 -> "_int8";
+            case 1009 -> "_text";
+            case 1015 -> "_varchar";
+            case 1001 -> "_bytea";
+            case 2951 -> "_uuid";
+            case 199 -> "_json";
+            case 3807 -> "_jsonb";
             default -> null;
         };
     }
@@ -731,16 +791,22 @@ public final class PgConnection implements InvocationHandler {
             case 21 -> 1005;
             case 23 -> 1007;
             case 20 -> 1016;
+            case 26 -> 1028;
             case 25 -> 1009;
             case 700 -> 1021;
             case 701 -> 1022;
             case 1082 -> 1182;
             case 1083 -> 1183;
+            case 1266 -> 1270;
             case 1114 -> 1115;
             case 1184 -> 1185;
             case 1700 -> 1231;
             case 1043 -> 1015;
+            case 1042 -> 1014;
             case 17 -> 1001;
+            case 2950 -> 2951;
+            case 114 -> 199;
+            case 3802 -> 3807;
             default -> 0;
         };
     }
@@ -751,17 +817,41 @@ public final class PgConnection implements InvocationHandler {
             case 1005 -> 21;
             case 1007 -> 23;
             case 1016 -> 20;
+            case 1028 -> 26;
             case 1009 -> 25;
             case 1021 -> 700;
             case 1022 -> 701;
             case 1182 -> 1082;
             case 1183 -> 1083;
+            case 1270 -> 1266;
             case 1115 -> 1114;
             case 1185 -> 1184;
             case 1231 -> 1700;
             case 1015 -> 1043;
+            case 1014 -> 1042;
             case 1001 -> 17;
+            case 2951 -> 2950;
+            case 199 -> 114;
+            case 3807 -> 3802;
             default -> 0;
+        };
+    }
+
+    private String javaClassForOid(int oid) {
+        return switch (JdbcCompat.oidToJdbcType(oid)) {
+            case Types.BOOLEAN -> Boolean.class.getName();
+            case Types.SMALLINT -> Short.class.getName();
+            case Types.INTEGER -> Integer.class.getName();
+            case Types.BIGINT -> Long.class.getName();
+            case Types.REAL -> Float.class.getName();
+            case Types.DOUBLE, Types.FLOAT -> Double.class.getName();
+            case Types.NUMERIC, Types.DECIMAL -> java.math.BigDecimal.class.getName();
+            case Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY -> byte[].class.getName();
+            case Types.DATE -> java.sql.Date.class.getName();
+            case Types.TIME, Types.TIME_WITH_TIMEZONE -> java.sql.Time.class.getName();
+            case Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE -> java.sql.Timestamp.class.getName();
+            case Types.ARRAY -> java.sql.Array.class.getName();
+            default -> String.class.getName();
         };
     }
 
