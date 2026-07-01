@@ -118,8 +118,12 @@ final class PgResultSet implements InvocationHandler {
             case "getStatement" -> statement;
             case "findColumn" -> findColumn((String) args[0]);
             case "getObject" -> {
-                var value = getValue(args[0]);
+                var column = columnIndex(args[0]);
+                var value = getValue(column);
                 if (args.length == 2 && args[1] instanceof Class<?> targetType) {
+                    if (targetType == org.postgresql.util.PGobject.class) {
+                        yield JdbcCompat.toPgObject(JdbcCompat.oidToPgType(columns.get(column - 1).oid()), value);
+                    }
                     yield JdbcCompat.coerce(value, targetType);
                 }
                 yield value;

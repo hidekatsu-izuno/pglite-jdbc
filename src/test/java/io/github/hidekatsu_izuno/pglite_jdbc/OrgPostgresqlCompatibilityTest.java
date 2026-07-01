@@ -14,12 +14,17 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.sql.DriverManager;
+import java.sql.JDBCType;
+import java.sql.Types;
+import java.time.LocalDateTime;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.postgresql.PGResultSetMetaData;
 import org.postgresql.PGStatement;
 import org.postgresql.jdbc.AutoSave;
 import org.postgresql.jdbc.PreferQueryMode;
 import org.postgresql.largeobject.LargeObjectManager;
+import org.postgresql.util.PGobject;
 
 class OrgPostgresqlCompatibilityTest {
     @Test
@@ -235,6 +240,51 @@ class OrgPostgresqlCompatibilityTest {
                     assertEquals(new URL("https://example.test/path?q=1"), resultSet.getURL("link"));
                     assertEquals("unicode label", resultSet.getNString("label"));
                     assertEquals(new BigDecimal("12.35"), resultSet.getBigDecimal("amount", 2));
+                }
+            }
+        });
+    }
+
+    @Test
+    void shouldSupportTypedSetObjectAndPgjdbcObjectValues() throws Exception {
+        assertTimeout(Duration.ofSeconds(180), () -> {
+            try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000");
+                 var statement = connection.prepareStatement(
+                     """
+                     SELECT
+                       ?::int4 AS id,
+                       ?::numeric AS amount,
+                       ?::jsonb AS payload,
+                       ?::uuid AS uid,
+                       ?::bytea AS bytes,
+                       ?::timestamp AS created_at
+                     """
+                 )) {
+                var uuid = UUID.fromString("0f3f69a2-35a0-4ff8-aac5-15d7f0a6c111");
+                var payload = new PGobject();
+                payload.setType("jsonb");
+                payload.setValue("{\"ok\":true}");
+
+                statement.setObject(1, "42", Types.INTEGER);
+                statement.setObject(2, new BigDecimal("12.345"), Types.NUMERIC, 2);
+                statement.setObject(3, payload, Types.OTHER);
+                statement.setObject(4, uuid, Types.OTHER);
+                statement.setObject(5, "bytes", JDBCType.BINARY);
+                statement.setObject(6, "2024-01-02 03:04:05", JDBCType.TIMESTAMP);
+
+                try (var resultSet = statement.executeQuery()) {
+                    assertTrue(resultSet.next());
+                    assertEquals(42, resultSet.getInt("id"));
+                    assertEquals(new BigDecimal("12.35"), resultSet.getBigDecimal("amount"));
+                    var readPayload = resultSet.getObject("payload", PGobject.class);
+                    assertEquals("jsonb", readPayload.getType());
+                    assertTrue(readPayload.getValue().contains("ok"));
+                    assertEquals(uuid, resultSet.getObject("uid", UUID.class));
+                    assertArrayEquals("bytes".getBytes(StandardCharsets.UTF_8), resultSet.getBytes("bytes"));
+                    assertEquals(
+                        LocalDateTime.of(2024, 1, 2, 3, 4, 5),
+                        resultSet.getObject("created_at", LocalDateTime.class)
+                    );
                 }
             }
         });

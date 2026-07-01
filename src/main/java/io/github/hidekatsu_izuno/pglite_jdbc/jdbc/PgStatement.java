@@ -10,9 +10,12 @@ import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.sql.ParameterMetaData;
 import java.sql.PreparedStatement;
+import java.sql.JDBCType;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.SQLType;
 import java.sql.Statement;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -251,6 +254,7 @@ final class PgStatement implements InvocationHandler {
             case "setClob", "setNClob" -> clobParameter(args);
             case "setSQLXML" -> args[1] == null ? null : ((java.sql.SQLXML) args[1]).getString();
             case "setURL" -> args[1] == null ? null : args[1].toString();
+            case "setObject" -> objectParameter(args);
             case "setDate" -> args[1] instanceof java.sql.Date date
                 ? date.toLocalDate().toString()
                 : args[1];
@@ -264,6 +268,88 @@ final class PgStatement implements InvocationHandler {
         };
         parameters.put(index, value);
         return null;
+    }
+
+    private Object objectParameter(Object[] args) throws SQLException {
+        var value = args[1];
+        if (args.length < 3 || value == null) {
+            return unwrapPgObject(value);
+        }
+        var targetType = targetSqlType(args[2]);
+        if (targetType == null) {
+            return unwrapPgObject(value);
+        }
+        var scaleOrLength = args.length >= 4 && args[3] instanceof Number number
+            ? number.intValue()
+            : null;
+        return convertObjectParameter(value, targetType, scaleOrLength);
+    }
+
+    private Integer targetSqlType(Object value) throws SQLException {
+        if (value instanceof Integer integer) {
+            return integer;
+        }
+        if (value instanceof SQLType sqlType) {
+            var vendorType = sqlType.getVendorTypeNumber();
+            if (vendorType != null) {
+                return vendorType;
+            }
+            if (sqlType instanceof JDBCType jdbcType) {
+                return jdbcType.getVendorTypeNumber();
+            }
+        }
+        throw new SQLException("Unsupported SQLType: " + value);
+    }
+
+    private Object convertObjectParameter(Object value, int targetType, Integer scaleOrLength) throws SQLException {
+        value = unwrapPgObject(value);
+        if (value == null) {
+            return null;
+        }
+        return switch (targetType) {
+            case Types.NUMERIC, Types.DECIMAL -> scaleOrLength == null
+                ? JdbcCompat.toBigDecimal(value)
+                : JdbcCompat.toBigDecimal(value, scaleOrLength);
+            case Types.TINYINT, Types.SMALLINT -> JdbcCompat.toNumber(value).shortValue();
+            case Types.INTEGER -> JdbcCompat.toNumber(value).intValue();
+            case Types.BIGINT -> JdbcCompat.toNumber(value).longValue();
+            case Types.REAL, Types.FLOAT -> JdbcCompat.toNumber(value).floatValue();
+            case Types.DOUBLE -> JdbcCompat.toNumber(value).doubleValue();
+            case Types.BIT, Types.BOOLEAN -> JdbcCompat.toBoolean(value);
+            case Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY -> JdbcCompat.toBytes(value);
+            case Types.CHAR, Types.VARCHAR, Types.LONGVARCHAR,
+                Types.NCHAR, Types.NVARCHAR, Types.LONGNVARCHAR -> JdbcCompat.stringify(value);
+            case Types.DATE -> value instanceof java.sql.Date date ? date.toLocalDate().toString() : value;
+            case Types.TIME, Types.TIME_WITH_TIMEZONE -> value instanceof java.sql.Time time
+                ? time.toLocalTime().toString()
+                : value;
+            case Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE -> value instanceof java.sql.Timestamp timestamp
+                ? timestamp.toLocalDateTime().toString()
+                : timestampParameter(value);
+            case Types.ARRAY -> arrayParameter(value);
+            case Types.SQLXML -> value instanceof java.sql.SQLXML xml ? xml.getString() : value;
+            case Types.BLOB -> blobParameter(new Object[] { null, value });
+            case Types.CLOB, Types.NCLOB -> clobParameter(new Object[] { null, value });
+            default -> value;
+        };
+    }
+
+    private Object unwrapPgObject(Object value) {
+        return value instanceof org.postgresql.util.PGobject object ? object.getValue() : value;
+    }
+
+    private Object timestampParameter(Object value) {
+        return value instanceof CharSequence text ? text.toString().replace(' ', 'T') : value;
+    }
+
+    private Object arrayParameter(Object value) throws SQLException {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof java.sql.Array array) {
+            return Arrays.asList((Object[]) array.getArray());
+        }
+        return value;
     }
 
     private byte[] readBinaryStream(Object[] args) throws SQLException {

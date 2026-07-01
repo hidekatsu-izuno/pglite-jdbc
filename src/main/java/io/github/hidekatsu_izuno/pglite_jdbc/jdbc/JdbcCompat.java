@@ -10,11 +10,15 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLFeatureNotSupportedException;
 import java.sql.SQLException;
 import java.sql.Types;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 
 final class JdbcCompat {
     private JdbcCompat() {
@@ -311,6 +315,19 @@ final class JdbcCompat {
         return String.valueOf(value).getBytes(StandardCharsets.UTF_8);
     }
 
+    static org.postgresql.util.PGobject toPgObject(String type, Object value) throws SQLException {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof org.postgresql.util.PGobject object) {
+            return object;
+        }
+        var object = new org.postgresql.util.PGobject();
+        object.setType(type);
+        object.setValue(String.valueOf(value));
+        return object;
+    }
+
     static Object[] toObjectArray(Object value) {
         if (value == null) {
             return null;
@@ -483,8 +500,31 @@ final class JdbcCompat {
         if (targetType == byte[].class) {
             return toBytes(value);
         }
+        if (targetType == UUID.class) {
+            return UUID.fromString(String.valueOf(value));
+        }
+        if (targetType == LocalDate.class) {
+            return LocalDate.parse(String.valueOf(value));
+        }
+        if (targetType == LocalTime.class) {
+            return LocalTime.parse(String.valueOf(value));
+        }
+        if (targetType == LocalDateTime.class) {
+            var text = String.valueOf(value).replace(' ', 'T');
+            if (text.endsWith("Z") || text.matches(".*[+-][0-9]{2}:[0-9]{2}$")) {
+                return OffsetDateTime.parse(text).toLocalDateTime();
+            }
+            return LocalDateTime.parse(text);
+        }
+        if (targetType == OffsetDateTime.class) {
+            var text = String.valueOf(value).replace(' ', 'T');
+            return OffsetDateTime.parse(text);
+        }
         if (targetType == java.sql.Timestamp.class) {
             var text = String.valueOf(value).replace('T', ' ');
+            if (text.endsWith("Z") || text.matches(".*[+-][0-9]{2}:[0-9]{2}$")) {
+                return java.sql.Timestamp.from(OffsetDateTime.parse(text.replace(' ', 'T')).toInstant());
+            }
             return java.sql.Timestamp.valueOf(LocalDateTime.parse(text.replace(' ', 'T')));
         }
         return value;

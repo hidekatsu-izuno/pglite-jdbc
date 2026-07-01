@@ -126,13 +126,17 @@ public class types {
         if (value == null) {
             return null;
         }
-        if (value.indexOf('T') < 0) {
-            return LocalDate.parse(value).atStartOfDay().toInstant(ZoneOffset.UTC);
+        var text = value.trim();
+        if (text.indexOf('T') < 0 && text.indexOf(' ') >= 0) {
+            text = text.replace(' ', 'T');
         }
-        if (value.endsWith("Z") || value.matches(".*[+-][0-9]{2}:[0-9]{2}$")) {
-            return Instant.parse(value);
+        if (text.indexOf('T') < 0) {
+            return LocalDate.parse(text).atStartOfDay().toInstant(ZoneOffset.UTC);
         }
-        return LocalDateTime.parse(value).toInstant(ZoneOffset.UTC);
+        if (text.endsWith("Z") || text.matches(".*[+-][0-9]{2}:[0-9]{2}$")) {
+            return Instant.parse(text);
+        }
+        return LocalDateTime.parse(text).toInstant(ZoneOffset.UTC);
     }
 
     private static String formatInstant(Instant instant) {
