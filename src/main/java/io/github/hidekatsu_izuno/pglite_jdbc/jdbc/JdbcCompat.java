@@ -316,16 +316,38 @@ final class JdbcCompat {
     }
 
     static org.postgresql.util.PGobject toPgObject(String type, Object value) throws SQLException {
+        return toPgObject(type, value, org.postgresql.util.PGobject.class);
+    }
+
+    static org.postgresql.util.PGobject toPgObject(
+        String type,
+        Object value,
+        Class<? extends org.postgresql.util.PGobject> objectClass
+    ) throws SQLException {
         if (value == null) {
             return null;
         }
-        if (value instanceof org.postgresql.util.PGobject object) {
-            return object;
+        if (objectClass.isInstance(value)) {
+            return objectClass.cast(value);
         }
-        var object = new org.postgresql.util.PGobject();
+        var object = createPgObject(objectClass);
         object.setType(type);
         object.setValue(String.valueOf(value));
         return object;
+    }
+
+    private static org.postgresql.util.PGobject createPgObject(
+        Class<? extends org.postgresql.util.PGobject> objectClass
+    ) throws SQLException {
+        try {
+            var constructor = objectClass.getDeclaredConstructor();
+            if (!constructor.canAccess(null)) {
+                constructor.setAccessible(true);
+            }
+            return constructor.newInstance();
+        } catch (ReflectiveOperationException | SecurityException exception) {
+            throw new SQLException("Cannot instantiate PGobject class: " + objectClass.getName(), exception);
+        }
     }
 
     static Object[] toObjectArray(Object value) {

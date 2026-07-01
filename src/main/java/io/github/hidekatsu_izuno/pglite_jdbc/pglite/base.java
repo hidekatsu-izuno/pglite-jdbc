@@ -239,7 +239,6 @@ public abstract class base {
         checkReadySync();
         var allMessages = new ArrayList<messages.BackendMessage>();
         Throwable errorHolder = null;
-        var errorFromSync = false;
 
         var parseOpts = new serializer.ParseOpts();
         parseOpts.text = query;
@@ -262,13 +261,14 @@ public abstract class base {
         try {
             allMessages.addAll(execProtocolNoSyncSync(serializer.serialize.sync().toByteArray(), options));
         } catch (Throwable syncError) {
-            errorHolder = unwrap(syncError);
-            errorFromSync = true;
+            if (errorHolder == null) {
+                errorHolder = unwrap(syncError);
+            }
         }
 
         if (errorHolder != null) {
             var cause = unwrap(errorHolder);
-            if (!errorFromSync && cause instanceof messages.DatabaseError dbError) {
+            if (cause instanceof messages.DatabaseError dbError) {
                 throw errors.makePGliteError(dbError, query, null, options);
             }
             throw asRuntime(cause);
@@ -287,18 +287,42 @@ public abstract class base {
         var queryParams = new ArrayList<interface_.QueryParamField>();
         if (paramDescription != null) {
             for (var typeId : paramDescription.dataTypeIDs) {
-                queryParams.add(new interface_.QueryParamField(typeId, null));
+                queryParams.add(new interface_.QueryParamField(typeId, serializerFor(typeId, options)));
             }
         }
 
         var resultFields = new ArrayList<interface_.ResultField>();
         if (rowDescription != null) {
             for (var field : rowDescription.fields) {
-                resultFields.add(new interface_.ResultField(field.name, field.dataTypeID, null));
+                resultFields.add(
+                    new interface_.ResultField(field.name, field.dataTypeID, parserFor(field.dataTypeID, options))
+                );
             }
         }
 
         return new interface_.DescribeQueryResult(queryParams, resultFields);
+    }
+
+    private interface_.Serializer serializerFor(int typeId, interface_.QueryOptions options) {
+        if (options != null && options.serializers() != null) {
+            var serializer = options.serializers().get(typeId);
+            if (serializer != null) {
+                return serializer;
+            }
+        }
+        var serializer = this.serializers.get(typeId);
+        return serializer == null ? null : serializer::serialize;
+    }
+
+    private interface_.Parser parserFor(int typeId, interface_.QueryOptions options) {
+        if (options != null && options.parsers() != null) {
+            var parser = options.parsers().get(typeId);
+            if (parser != null) {
+                return parser;
+            }
+        }
+        var parser = this.parsers.get(typeId);
+        return parser == null ? null : parser::parse;
     }
 
     public <T> Promise<T> transaction(Function<interface_.Transaction, Promise<T>> callback) {
@@ -426,7 +450,6 @@ public abstract class base {
             handleBlobSync(options != null ? options.blob() : null);
             var allMessages = new ArrayList<messages.BackendMessage>();
             Throwable errorHolder = null;
-            var errorFromSync = false;
 
             var parseOpts = new serializer.ParseOpts();
             parseOpts.text = query;
@@ -497,23 +520,24 @@ public abstract class base {
             try {
                 allMessages.addAll(execProtocolNoSyncSync(serializer.serialize.sync().toByteArray(), options));
             } catch (Throwable syncError) {
-                errorHolder = unwrap(syncError);
-                errorFromSync = true;
+                if (errorHolder == null) {
+                    errorHolder = unwrap(syncError);
+                }
             }
 
             if (errorHolder != null) {
                 var cause = unwrap(errorHolder);
-                if (!errorFromSync && cause instanceof messages.DatabaseError dbError) {
+                if (cause instanceof messages.DatabaseError dbError) {
                     throw errors.makePGliteError(dbError, query, activeParams, options);
                 }
                 throw asRuntime(cause);
             }
 
+            var blob = getWrittenBlobSync();
             cleanupBlobSync();
             if (!inTransaction) {
                 syncToFsSync();
             }
-            var blob = getWrittenBlobSync();
             traceMessages("query", allMessages);
             var parsed = parse.parseResults(allMessages, parsers, options, blob);
             if (parsed.isEmpty()) {
@@ -524,7 +548,9 @@ public abstract class base {
                     blob
                 );
             }
-            return parsed.getFirst();
+            @SuppressWarnings("unchecked")
+            var result = (interface_.Results<Map<String, Object>>) (interface_.Results<?>) parsed.getFirst();
+            return result;
         });
     }
 
@@ -536,7 +562,6 @@ public abstract class base {
             handleBlobSync(options != null ? options.blob() : null);
             var allMessages = new ArrayList<messages.BackendMessage>();
             Throwable errorHolder = null;
-            var errorFromSync = false;
 
             try {
                 allMessages.addAll(
@@ -549,25 +574,33 @@ public abstract class base {
             try {
                 allMessages.addAll(execProtocolNoSyncSync(serializer.serialize.sync().toByteArray(), options));
             } catch (Throwable syncError) {
-                errorHolder = unwrap(syncError);
-                errorFromSync = true;
+                if (errorHolder == null) {
+                    errorHolder = unwrap(syncError);
+                }
             }
 
             if (errorHolder != null) {
                 var cause = unwrap(errorHolder);
-                if (!errorFromSync && cause instanceof messages.DatabaseError dbError) {
+                if (cause instanceof messages.DatabaseError dbError) {
                     throw errors.makePGliteError(dbError, query, null, options);
                 }
                 throw asRuntime(cause);
             }
 
+            var blob = getWrittenBlobSync();
             cleanupBlobSync();
             if (!inTransaction) {
                 syncToFsSync();
             }
-            var blob = getWrittenBlobSync();
             traceMessages("exec", allMessages);
-            return parse.parseResults(allMessages, parsers, options, blob);
+            @SuppressWarnings("unchecked")
+            var results = (List<interface_.Results<Map<String, Object>>>) (List<?>) parse.parseResults(
+                allMessages,
+                parsers,
+                options,
+                blob
+            );
+            return results;
         });
     }
 

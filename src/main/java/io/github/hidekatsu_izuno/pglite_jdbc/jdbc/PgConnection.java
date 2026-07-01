@@ -67,6 +67,8 @@ public final class PgConnection implements InvocationHandler {
     private final Map<String, String> parameterStatuses = new HashMap<>();
     private Set<Integer> binaryReceiveOids = new HashSet<>();
     private Set<Integer> binarySendOids = new HashSet<>();
+    private final Map<String, Class<? extends org.postgresql.util.PGobject>> dataTypeObjects =
+        new HashMap<>();
     private final org.postgresql.core.TypeInfo typeInfo = createTypeInfo();
     private final LruCache<org.postgresql.jdbc.FieldMetadata.Key, org.postgresql.jdbc.FieldMetadata>
         fieldMetadataCache = new LruCache<>(0, 0, false);
@@ -140,6 +142,22 @@ public final class PgConnection implements InvocationHandler {
 
     int getQueryTimeoutInternal() {
         return queryTimeout;
+    }
+
+    Class<? extends org.postgresql.util.PGobject> pgObjectClass(String typeName) {
+        if (typeName == null) {
+            return null;
+        }
+        return dataTypeObjects.get(normalizeTypeName(typeName));
+    }
+
+    org.postgresql.util.PGobject createPgObject(String typeName, Object value) throws SQLException {
+        var objectClass = pgObjectClass(typeName);
+        return JdbcCompat.toPgObject(
+            typeName,
+            value,
+            objectClass != null ? objectClass : org.postgresql.util.PGobject.class
+        );
     }
 
     interface_.DescribeQueryResult describe(String sql) throws SQLException {
@@ -332,7 +350,10 @@ public final class PgConnection implements InvocationHandler {
             case "getParameterStatus" -> parameterStatuses.get((String) args[0]);
             case "getBackendPID" -> 0;
             case "cancelQuery" -> null;
-            case "addDataType" -> null;
+            case "addDataType" -> {
+                addDataType((String) args[0], args[1]);
+                yield null;
+            }
             case "setPrepareThreshold" -> {
                 prepareThreshold = (Integer) args[0];
                 yield null;
@@ -634,6 +655,10 @@ public final class PgConnection implements InvocationHandler {
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
+    private String normalizeTypeName(String typeName) {
+        return typeName.trim().toLowerCase(java.util.Locale.ROOT);
+    }
+
     private void closeConnection() throws SQLException {
         if (closed) {
             return;
@@ -659,7 +684,39 @@ public final class PgConnection implements InvocationHandler {
 
     private ResultSet execSqlQuery(String sql) throws SQLException {
         var result = queryExecutor.query(sql, null);
-        return PgResultSet.create(null, JdbcCompat.toColumns(result.fields()), result.rows());
+        return PgResultSet.create(this, null, JdbcCompat.toColumns(result.fields()), result.rows());
+    }
+
+    private void addDataType(String typeName, Object objectClass) throws SQLException {
+        if (objectClass instanceof Class<?> clazz) {
+            if (!org.postgresql.util.PGobject.class.isAssignableFrom(clazz)) {
+                throw new PSQLException(
+                    "Custom type class must extend PGobject: " + clazz.getName(),
+                    PSQLState.INVALID_PARAMETER_VALUE
+                );
+            }
+            dataTypeObjects.put(
+                normalizeTypeName(typeName),
+                clazz.asSubclass(org.postgresql.util.PGobject.class)
+            );
+            return;
+        }
+        if (objectClass instanceof String className) {
+            try {
+                addDataType(typeName, Class.forName(className));
+                return;
+            } catch (ClassNotFoundException exception) {
+                throw new PSQLException(
+                    "Custom type class not found: " + className,
+                    PSQLState.INVALID_PARAMETER_VALUE,
+                    exception
+                );
+            }
+        }
+        throw new PSQLException(
+            "Unsupported custom type class: " + objectClass,
+            PSQLState.INVALID_PARAMETER_VALUE
+        );
     }
 
     private void setQueryTimeoutSeconds(int seconds) throws SQLException {
@@ -790,9 +847,13 @@ public final class PgConnection implements InvocationHandler {
                     case "intOidToLong" -> ((Integer) args[0]) & 0xFFFFFFFFL;
                     case "getPGTypeNamesWithSQLTypes", "getPGTypeOidsWithSQLTypes" ->
                         java.util.Collections.emptyIterator();
-                    case "getPGobject" -> null;
+                    case "getPGobject" -> pgObjectClass((String) args[0]);
                     case "isCaseSensitive", "isSigned" -> true;
-                    case "addCoreType", "addDataType" -> null;
+                    case "addDataType" -> {
+                        addDataType((String) args[0], args[1]);
+                        yield null;
+                    }
+                    case "addCoreType" -> null;
                     default -> JdbcCompat.defaultReturn(method.getReturnType());
                 };
             }

@@ -86,6 +86,7 @@ public class pglite extends base implements interface_.PGliteInterface {
     protected volatile boolean keepRawResponse = true;
     protected volatile byte[] inputData = new byte[DEFAULT_RECV_BUF_SIZE];
     protected volatile int writeOffset;
+    private final StringBuilder wasmStderr = new StringBuilder();
 
     protected volatile byte[] queryReadBuffer;
     protected volatile List<byte[]> queryWriteChunks;
@@ -165,6 +166,10 @@ public class pglite extends base implements interface_.PGliteInterface {
             ? options.initialMemory
             : 64 * 1024 * 1024;
         overrides.noExitRuntime = true;
+        overrides.printErr = printArgs -> {
+            var text = printArgs.length > 0 ? String.valueOf(printArgs[0]) : "";
+            appendWasmStderr(text);
+        };
 
         var extPromises =
             new ConcurrentHashMap<String, CompletableFuture<extensionUtils.ExtensionBlob>>();
@@ -567,6 +572,7 @@ public class pglite extends base implements interface_.PGliteInterface {
         if (this.mod == null) {
             throw new IllegalStateException("Postgres module is not initialized");
         }
+        clearWasmStderr();
         var input = message != null ? message : new byte[0];
         this.readOffset = 0;
         this.writeOffset = 0;
@@ -640,6 +646,55 @@ public class pglite extends base implements interface_.PGliteInterface {
         this.currentDatabaseError = null;
     }
 
+    private void appendWasmStderr(String text) {
+        synchronized (wasmStderr) {
+            wasmStderr.append(text);
+            if (wasmStderr.length() > 16 * 1024) {
+                wasmStderr.delete(0, wasmStderr.length() - 16 * 1024);
+            }
+        }
+    }
+
+    private void clearWasmStderr() {
+        synchronized (wasmStderr) {
+            wasmStderr.setLength(0);
+        }
+    }
+
+    private String currentWasmStderr() {
+        synchronized (wasmStderr) {
+            return wasmStderr.toString();
+        }
+    }
+
+    private messages.DatabaseError databaseErrorFromWasmExit(Throwable rawError) {
+        var cause = unwrap(rawError);
+        if (!(cause instanceof com.dylibso.chicory.wasi.WasiExitException exit)
+            || exit.exitCode() != 100) {
+            return null;
+        }
+        var stderr = currentWasmStderr();
+        for (var line : stderr.split("\\R")) {
+            var trimmed = line.trim();
+            if (trimmed.startsWith("ERROR:")) {
+                var message = trimmed.substring("ERROR:".length()).trim();
+                var error = new messages.DatabaseError(message, 0, "error");
+                error.severity = "ERROR";
+                if (message.contains("does not exist")) {
+                    error.code = "42P01";
+                }
+                return error;
+            }
+            if (trimmed.startsWith("FATAL:")) {
+                var message = trimmed.substring("FATAL:".length()).trim();
+                var error = new messages.DatabaseError(message, 0, "error");
+                error.severity = "FATAL";
+                return error;
+            }
+        }
+        return null;
+    }
+
     private interface_.ExecProtocolResult execProtocolSyncInternal(
         byte[] message,
         interface_.ExecProtocolOptions options
@@ -650,7 +705,20 @@ public class pglite extends base implements interface_.PGliteInterface {
         this.currentDatabaseError = null;
 
         try {
-            var data = this.execProtocolRawResolvedSync(message, options);
+            byte[] data;
+            try {
+                data = this.execProtocolRawResolvedSync(message, options);
+            } catch (Throwable rawError) {
+                var dbError = this.currentDatabaseError;
+                if (dbError == null) {
+                    dbError = databaseErrorFromWasmExit(rawError);
+                }
+                if (options.throwOnError() && dbError != null) {
+                    this.protocolParser = new parser.Parser();
+                    throw dbError;
+                }
+                throw rawError;
+            }
             var dbError = this.currentDatabaseError;
             var result = new interface_.ExecProtocolResult(
                 List.copyOf(this.currentResults),
@@ -677,7 +745,19 @@ public class pglite extends base implements interface_.PGliteInterface {
         this.keepRawResponse = false;
 
         try {
-            this.execProtocolRawResolvedSync(message, options);
+            try {
+                this.execProtocolRawResolvedSync(message, options);
+            } catch (Throwable rawError) {
+                var dbError = this.currentDatabaseError;
+                if (dbError == null) {
+                    dbError = databaseErrorFromWasmExit(rawError);
+                }
+                if (options.throwOnError() && dbError != null) {
+                    this.protocolParser = new parser.Parser();
+                    throw dbError;
+                }
+                throw rawError;
+            }
             var dbError = this.currentDatabaseError;
             var result = List.copyOf(this.currentResults);
             if (options.throwOnError() && dbError != null) {
@@ -770,6 +850,9 @@ public class pglite extends base implements interface_.PGliteInterface {
     protected void handleBlobSync(byte[] blob) {
         this.queryReadBuffer = blob;
         this.queryWriteChunks = null;
+        if (this.mod != null && this.mod.FS().analyzePath("/dev/blob").exists()) {
+            this.mod.FS().writeFile("/dev/blob", blob != null ? blob : new byte[0]);
+        }
     }
 
     @Override
@@ -780,6 +863,10 @@ public class pglite extends base implements interface_.PGliteInterface {
     @Override
     protected byte[] getWrittenBlobSync() {
         if (this.queryWriteChunks == null || this.queryWriteChunks.isEmpty()) {
+            if (this.mod != null && this.mod.FS().analyzePath("/dev/blob").exists()) {
+                var data = this.mod.FS().readFile("/dev/blob");
+                return data.length == 0 ? null : data;
+            }
             return null;
         }
         var total = 0;
@@ -808,6 +895,9 @@ public class pglite extends base implements interface_.PGliteInterface {
     protected void cleanupBlobSync() {
         this.queryReadBuffer = null;
         this.queryWriteChunks = null;
+        if (this.mod != null && this.mod.FS().analyzePath("/dev/blob").exists()) {
+            this.mod.FS().writeFile("/dev/blob", new byte[0]);
+        }
     }
 
     @Override

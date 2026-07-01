@@ -27,6 +27,9 @@ import org.postgresql.largeobject.LargeObjectManager;
 import org.postgresql.util.PGobject;
 
 class OrgPostgresqlCompatibilityTest {
+    public static final class CompatJsonObject extends PGobject {
+    }
+
     @Test
     void shouldExposeOrgPostgresqlInterfaces() throws Exception {
         try (var connection = DriverManager.getConnection(
@@ -355,6 +358,32 @@ class OrgPostgresqlCompatibilityTest {
                 assertTrue(queryExecutor.getBinaryReceiveOids().contains(23));
                 queryExecutor.removeBinaryReceiveOid(23);
                 assertEquals(false, queryExecutor.getBinaryReceiveOids().contains(23));
+            }
+        });
+    }
+
+    @Test
+    void shouldUseRegisteredPgjdbcObjectTypes() throws Exception {
+        assertTimeout(Duration.ofSeconds(180), () -> {
+            try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
+                var pgConnection = connection.unwrap(org.postgresql.PGConnection.class);
+                pgConnection.addDataType("jsonb", CompatJsonObject.class);
+
+                var typeInfo = connection.unwrap(org.postgresql.core.BaseConnection.class).getTypeInfo();
+                assertEquals(CompatJsonObject.class, typeInfo.getPGobject("jsonb"));
+
+                try (var statement = connection.createStatement();
+                     var resultSet = statement.executeQuery("SELECT '{\"ok\":true}'::jsonb AS payload")) {
+                    assertTrue(resultSet.next());
+                    var object = resultSet.getObject("payload");
+                    assertEquals(CompatJsonObject.class, object.getClass());
+                    assertEquals("jsonb", ((PGobject) object).getType());
+                    assertTrue(((PGobject) object).getValue().contains("ok"));
+
+                    var typedObject = resultSet.getObject("payload", CompatJsonObject.class);
+                    assertEquals(CompatJsonObject.class, typedObject.getClass());
+                    assertEquals("jsonb", typedObject.getType());
+                }
             }
         });
     }

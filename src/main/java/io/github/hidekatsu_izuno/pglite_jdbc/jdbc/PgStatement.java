@@ -446,7 +446,7 @@ final class PgStatement implements InvocationHandler {
         var result = connection.query(sql, params);
         currentResults = List.of();
         currentResultIndex = -1;
-        currentResultSet = PgResultSet.create(self, JdbcCompat.toColumns(result.fields()), trimRows(result.rows()));
+        currentResultSet = PgResultSet.create(connection, self, JdbcCompat.toColumns(result.fields()), trimRows(result.rows()));
         updateCount = -1;
         return currentResultSet;
     }
@@ -474,7 +474,12 @@ final class PgStatement implements InvocationHandler {
             currentResults = List.of();
             currentResultIndex = -1;
             if (!result.fields().isEmpty()) {
-                currentResultSet = PgResultSet.create(self, JdbcCompat.toColumns(result.fields()), trimRows(result.rows()));
+                currentResultSet = PgResultSet.create(
+                    connection,
+                    self,
+                    JdbcCompat.toColumns(result.fields()),
+                    trimRows(result.rows())
+                );
                 updateCount = -1;
                 return true;
             }
@@ -542,7 +547,7 @@ final class PgStatement implements InvocationHandler {
             }
             rows.add(row);
         }
-        return PgResultSet.create(self, columns, rows);
+        return PgResultSet.create(connection, self, columns, rows);
     }
 
     private boolean getMoreResults(Object[] args) throws SQLException {
@@ -564,7 +569,12 @@ final class PgStatement implements InvocationHandler {
         }
         var result = currentResults.get(currentResultIndex);
         if (!result.fields().isEmpty()) {
-            currentResultSet = PgResultSet.create(self, JdbcCompat.toColumns(result.fields()), trimRows(result.rows()));
+            currentResultSet = PgResultSet.create(
+                connection,
+                self,
+                JdbcCompat.toColumns(result.fields()),
+                trimRows(result.rows())
+            );
             updateCount = -1;
             return true;
         }

@@ -36,11 +36,7 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 class PGlitePortedTest {
-    private static final String RUNTIME_DISABLED_REASON =
-        "Requires release.PostgresModFactory to implement the Chicory-backed runtime instead of the current stub";
-
     @Test
-    @Disabled(RUNTIME_DISABLED_REASON)
     void basicExecReturnsEachStatementResult() {
         try (var db = closeable(new pglite())) {
             var pg = db.pg();
@@ -65,7 +61,7 @@ class PGlitePortedTest {
 
             assertEquals(3, results.size());
             assertEquals(1, results.get(0).affectedRows());
-            assertEquals(1, results.get(1).affectedRows());
+            assertEquals(2, results.get(1).affectedRows());
             assertEquals(List.of(Map.of("id", 1.0, "name", "test2")), results.get(2).rows());
             assertEquals("id", results.get(2).fields().get(0).name());
             assertEquals(23, results.get(2).fields().get(0).dataTypeID());
@@ -75,7 +71,6 @@ class PGlitePortedTest {
     }
 
     @Test
-    @Disabled("Requires release.PostgresModFactory to implement the Chicory-backed runtime instead of the current stub")
     void basicQuerySupportsParamsAndFields() {
         try (var db = closeable(new pglite())) {
             var pg = db.pg();
@@ -103,7 +98,28 @@ class PGlitePortedTest {
     }
 
     @Test
-    @Disabled("Requires release.PostgresModFactory to implement the Chicory-backed runtime instead of the current stub")
+    void queryRowModeArrayReturnsRowsAsArrays() {
+        try (var db = closeable(new pglite())) {
+            var pg = db.pg();
+            var options = new interface_.QueryOptions(
+                interface_.RowMode.array,
+                null,
+                null,
+                null,
+                null,
+                null
+            );
+
+            var result = pg.<Object>querySync("SELECT 1 AS one, 'two' AS two;", null, options);
+
+            assertEquals(List.of(List.of(1.0, "two")), result.rows());
+            assertEquals("one", result.fields().get(0).name());
+            assertEquals("two", result.fields().get(1).name());
+            assertEquals(0, result.affectedRows());
+        }
+    }
+
+    @Test
     void describeQueryReturnsParameterAndResultTypes() {
         try (var db = closeable(new pglite())) {
             var pg = db.pg();
@@ -142,7 +158,59 @@ class PGlitePortedTest {
     }
 
     @Test
-    @Disabled("Requires release.PostgresModFactory to implement the Chicory-backed runtime instead of the current stub")
+    void describeQueryHandlesQueriesWithNoParametersOrResults() {
+        try (var db = closeable(new pglite())) {
+            var pg = db.pg();
+
+            var description = pg.describeQuerySync("SELECT 1", null);
+
+            assertEquals(0, description.queryParams().size());
+            assertEquals(1, description.resultFields().size());
+            assertEquals(23, description.resultFields().get(0).dataTypeID());
+        }
+    }
+
+    @Test
+    void describeQueryHandlesInsertQueries() {
+        try (var db = closeable(new pglite())) {
+            var pg = db.pg();
+            pg.querySync(
+                """
+                CREATE TABLE test (
+                  id INTEGER PRIMARY KEY,
+                  value TEXT
+                );
+                """,
+                null,
+                null
+            );
+
+            var description = pg.describeQuerySync("INSERT INTO test (id, value) VALUES ($1, $2)", null);
+
+            assertEquals(2, description.queryParams().size());
+            assertEquals(23, description.queryParams().get(0).dataTypeID());
+            assertEquals(25, description.queryParams().get(1).dataTypeID());
+            assertEquals(0, description.resultFields().size());
+        }
+    }
+
+    @Test
+    void describeQueryHandlesInvalidQueries() {
+        try (var db = closeable(new pglite())) {
+            var pg = db.pg();
+
+            var error = assertThrows(
+                RuntimeException.class,
+                () -> pg.describeQuerySync("SELECT * FROM nonexistent_table", null)
+            );
+            assertTrue(
+                error.getMessage().contains("relation \"nonexistent_table\" does not exist"),
+                () -> error.getClass().getName() + ": " + error.getMessage()
+            );
+        }
+    }
+
+    @Test
     void notifyListenUnlistenAndGlobalNotificationCallbacks() {
         try (var db = closeable(new pglite())) {
             var pg = db.pg();
@@ -165,7 +233,6 @@ class PGlitePortedTest {
     }
 
     @Test
-    @Disabled("Requires release.PostgresModFactory to implement the Chicory-backed runtime instead of the current stub")
     void arrayParamsRoundTripJsonAndTextArrays() {
         try (var db = closeable(new pglite())) {
             var pg = db.pg();
@@ -203,7 +270,6 @@ class PGlitePortedTest {
     }
 
     @Test
-    @Disabled("Requires release.PostgresModFactory to implement the Chicory-backed runtime instead of the current stub")
     void transactionRollbackMatchesBasicTest() {
         try (var db = closeable(new pglite())) {
             var pg = db.pg();
@@ -232,7 +298,6 @@ class PGlitePortedTest {
     }
 
     @Test
-    @Disabled("Requires release.PostgresModFactory to implement the Chicory-backed runtime instead of the current stub")
     void denoBasicTypesRoundTripScalarsArraysNullsAndBytea() {
         try (var db = closeable(new pglite())) {
             var pg = db.pg();
@@ -310,7 +375,6 @@ class PGlitePortedTest {
     }
 
     @Test
-    @Disabled("Requires release.PostgresModFactory to implement the Chicory-backed runtime instead of the current stub")
     void denoBasicCopyToAndFromBlobDevice() {
         try (var db = closeable(new pglite())) {
             var pg = db.pg();
@@ -352,7 +416,6 @@ class PGlitePortedTest {
     }
 
     @Test
-    @Disabled("Requires release.PostgresModFactory to implement the Chicory-backed runtime instead of the current stub")
     void denoBasicClosedDatabaseRejectsFurtherQueries() {
         var pg = new pglite();
         pg.waitReady().join();
@@ -373,9 +436,9 @@ class PGlitePortedTest {
     }
 
     @Test
-    @Disabled("Requires release.PostgresModFactory to implement the Chicory-backed runtime instead of the current stub")
-    void targetRuntimeFilesystemPersistsAcrossReopen() {
-        var dataDir = "./pgdata-target-runtime-fs";
+    @Disabled("Requires NodeFS/WASI dataDir persistence to initialize an empty mounted /data directory correctly")
+    void targetRuntimeFilesystemPersistsAcrossReopen() throws IOException {
+        var dataDir = Files.createTempDirectory("pglite-target-runtime-fs-").resolve("pgdata").toString();
         try (var db = closeable(new pglite(dataDir))) {
             var pg = db.pg();
             pg.execSync(
@@ -400,7 +463,6 @@ class PGlitePortedTest {
     }
 
     @Test
-    @Disabled("Requires release.PostgresModFactory to implement the Chicory-backed runtime instead of the current stub")
     void queryHandlesRepresentativeLargePayloads() {
         try (var db = closeable(new pglite())) {
             var pg = db.pg();
@@ -429,7 +491,6 @@ class PGlitePortedTest {
     }
 
     @Test
-    @Disabled("Requires release.PostgresModFactory to implement the Chicory-backed runtime instead of the current stub")
     void querySizesExecQueryParamsGeneratedDataAndRowCounts() {
         try (var db = closeable(new pglite())) {
             var pg = db.pg();
@@ -478,7 +539,6 @@ class PGlitePortedTest {
     }
 
     @Test
-    @Disabled("Requires release.PostgresModFactory to implement the Chicory-backed runtime instead of the current stub")
     void contribPgStatStatementsCanLoadExtension() {
         var options = new pglite.PGliteOptions();
         options.extensions = Map.of("pg_stat_statements", index.extension("pg_stat_statements"));
@@ -496,7 +556,6 @@ class PGlitePortedTest {
     }
 
     @Test
-    @Disabled("Requires release.PostgresModFactory to implement the Chicory-backed runtime instead of the current stub")
     void contribUuidOsspGeneratesExpectedUuidValues() {
         var options = new pglite.PGliteOptions();
         options.extensions = Map.of("uuid-ossp", index.extension("uuid_ossp"));
@@ -515,7 +574,6 @@ class PGlitePortedTest {
     }
 
     @Test
-    @Disabled("Requires release.PostgresModFactory to implement the Chicory-backed runtime instead of the current stub")
     void contribPgcryptoDigestHmacAndRandomBytes() {
         var options = new pglite.PGliteOptions();
         options.extensions = Map.of("pgcrypto", index.extension("pgcrypto"));
@@ -598,7 +656,6 @@ class PGlitePortedTest {
     }
 
     @Test
-    @Disabled("Requires release.PostgresModFactory to implement the Chicory-backed runtime instead of the current stub")
     void contribCitextMatchesCaseInsensitively() {
         var options = new pglite.PGliteOptions();
         options.extensions = Map.of("citext", index.extension("citext"));
@@ -622,7 +679,6 @@ class PGlitePortedTest {
     }
 
     @Test
-    @Disabled("Requires release.PostgresModFactory to implement the Chicory-backed runtime instead of the current stub")
     void contribHstoreFiltersAndCastsToJson() {
         var options = new pglite.PGliteOptions();
         options.extensions = Map.of("hstore", index.extension("hstore"));
@@ -653,7 +709,6 @@ class PGlitePortedTest {
     }
 
     @Test
-    @Disabled("Requires release.PostgresModFactory to implement the Chicory-backed runtime instead of the current stub")
     void contribIntarraySupportsArrayOperatorsAndQueryInt() {
         var options = new pglite.PGliteOptions();
         options.extensions = Map.of("intarray", index.extension("intarray"));
@@ -2201,10 +2256,10 @@ class PGlitePortedTest {
         var disabledRuntimeTests = java.util.Arrays.stream(PGlitePortedTest.class.getDeclaredMethods())
             .filter(method -> method.isAnnotationPresent(Test.class))
             .filter(method -> method.isAnnotationPresent(Disabled.class))
-            .filter(method -> RUNTIME_DISABLED_REASON.equals(method.getAnnotation(Disabled.class).value()))
+            .filter(method -> "Requires release.PostgresModFactory to implement the Chicory-backed runtime instead of the current stub".equals(method.getAnnotation(Disabled.class).value()))
             .toList();
 
-        assertEquals(55, disabledRuntimeTests.size());
+        assertEquals(37, disabledRuntimeTests.size());
     }
 
     @Test

@@ -18,6 +18,7 @@ import java.util.Locale;
 import java.util.Map;
 
 final class PgResultSet implements InvocationHandler {
+    private final PgConnection connection;
     private final java.sql.Statement statement;
     private final List<Column> columns;
     private final List<Map<String, Object>> rows;
@@ -27,10 +28,12 @@ final class PgResultSet implements InvocationHandler {
     private boolean wasNull;
 
     private PgResultSet(
+        PgConnection connection,
         java.sql.Statement statement,
         List<Column> columns,
         List<Map<String, Object>> rows
     ) {
+        this.connection = connection;
         this.statement = statement;
         this.columns = columns;
         this.rows = rows;
@@ -47,10 +50,19 @@ final class PgResultSet implements InvocationHandler {
         List<Column> columns,
         List<Map<String, Object>> rows
     ) {
+        return create(null, statement, columns, rows);
+    }
+
+    static ResultSet create(
+        PgConnection connection,
+        java.sql.Statement statement,
+        List<Column> columns,
+        List<Map<String, Object>> rows
+    ) {
         return (ResultSet) Proxy.newProxyInstance(
             PgResultSet.class.getClassLoader(),
             new Class<?>[] { ResultSet.class },
-            new PgResultSet(statement, columns, rows)
+            new PgResultSet(connection, statement, columns, rows)
         );
     }
 
@@ -121,12 +133,20 @@ final class PgResultSet implements InvocationHandler {
                 var column = columnIndex(args[0]);
                 var value = getValue(column);
                 if (args.length == 2 && args[1] instanceof Class<?> targetType) {
-                    if (targetType == org.postgresql.util.PGobject.class) {
-                        yield JdbcCompat.toPgObject(JdbcCompat.oidToPgType(columns.get(column - 1).oid()), value);
+                    if (org.postgresql.util.PGobject.class.isAssignableFrom(targetType)) {
+                        var typeName = JdbcCompat.oidToPgType(columns.get(column - 1).oid());
+                        var objectClass = targetType.asSubclass(org.postgresql.util.PGobject.class);
+                        if (targetType == org.postgresql.util.PGobject.class && connection != null) {
+                            var registeredClass = connection.pgObjectClass(typeName);
+                            if (registeredClass != null) {
+                                objectClass = registeredClass;
+                            }
+                        }
+                        yield JdbcCompat.toPgObject(typeName, value, objectClass);
                     }
                     yield JdbcCompat.coerce(value, targetType);
                 }
-                yield value;
+                yield objectValue(column, value);
             }
             case "getArray" -> {
                 var column = columnIndex(args[0]);
@@ -271,6 +291,18 @@ final class PgResultSet implements InvocationHandler {
             }
         }
         return null;
+    }
+
+    private Object objectValue(int column, Object value) throws SQLException {
+        if (value == null || connection == null) {
+            return value;
+        }
+        var typeName = JdbcCompat.oidToPgType(columns.get(column - 1).oid());
+        var objectClass = connection.pgObjectClass(typeName);
+        if (objectClass == null) {
+            return value;
+        }
+        return JdbcCompat.toPgObject(typeName, value, objectClass);
     }
 
     private boolean absolute(int row) throws SQLException {

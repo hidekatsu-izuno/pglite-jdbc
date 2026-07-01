@@ -229,24 +229,53 @@ public class types {
         }
         var current = new StringBuilder();
         var quoted = false;
+        var escaped = false;
+        var depth = 0;
         for (var i = 1; i < text.length() - 1; i++) {
             var ch = text.charAt(i);
-            if (ch == '"' && (i == 1 || text.charAt(i - 1) != '\\')) {
+            if (escaped) {
+                current.append(ch);
+                escaped = false;
+                continue;
+            }
+            if (quoted && ch == '\\') {
+                escaped = true;
+                continue;
+            }
+            if (ch == '"') {
                 quoted = !quoted;
                 continue;
             }
-            if (!quoted && ch == delimiter) {
-                var raw = current.toString();
-                out.add(parser != null ? parser.parse(raw, null) : raw);
+            if (!quoted && ch == '{') {
+                depth++;
+                current.append(ch);
+                continue;
+            }
+            if (!quoted && ch == '}') {
+                depth--;
+                current.append(ch);
+                continue;
+            }
+            if (!quoted && depth == 0 && ch == delimiter) {
+                out.add(arrayItem(current.toString(), parser, typarray));
                 current.setLength(0);
                 continue;
             }
             current.append(ch);
         }
         if (!current.isEmpty()) {
-            var raw = current.toString();
-            out.add(parser != null ? parser.parse(raw, null) : raw);
+            out.add(arrayItem(current.toString(), parser, typarray));
         }
         return out;
+    }
+
+    private static Object arrayItem(String raw, Parser parser, int typarray) {
+        if (raw.startsWith("{") && raw.endsWith("}")) {
+            return arrayParser(raw, parser, typarray);
+        }
+        if ("NULL".equals(raw)) {
+            return null;
+        }
+        return parser != null ? parser.parse(raw, null) : raw;
     }
 }

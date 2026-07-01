@@ -9,14 +9,14 @@ import java.util.Map;
 public class parse {
     private parse() {}
 
-    public static List<interface_.Results<Map<String, Object>>> parseResults(
+    public static List<interface_.Results<Object>> parseResults(
         List<messages.BackendMessage> messageList,
         Map<Integer, types.Parser> defaultParsers,
         interface_.QueryOptions options,
         byte[] blob
     ) {
-        var resultSets = new ArrayList<interface_.Results<Map<String, Object>>>();
-        var currentRows = new ArrayList<Map<String, Object>>();
+        var resultSets = new ArrayList<interface_.Results<Object>>();
+        var currentRows = new ArrayList<Object>();
         var currentFields = new ArrayList<interface_.Field>();
         var affectedRows = 0;
 
@@ -42,11 +42,11 @@ public class parse {
                 case "dataRow" -> {
                     var msg = (messages.DataRowMessage) message;
                     if (options != null && options.rowMode() == interface_.RowMode.array) {
-                        var row = new HashMap<String, Object>();
+                        var row = new ArrayList<Object>();
                         for (var i = 0; i < msg.fields.length; i++) {
                             var field = msg.fields[i];
                             var typeId = currentFields.get(i).dataTypeID();
-                            row.put(Integer.toString(i), types.parseType(field, typeId, parsers));
+                            row.add(types.parseType(field, typeId, parsers));
                         }
                         currentRows.add(row);
                     } else {

@@ -17,6 +17,9 @@ import io.github.hidekatsu_izuno.pglite_jdbc.pglite.initdbModFactory;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.postgresMod;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -57,6 +60,7 @@ public final class ChicoryPostgresMod implements initdbModFactory.InitdbMod {
     private int blobRead;
     private int blobWrite;
     private int blobLlseek;
+    private postgresMod.DeviceOps blobDevice;
     private int tempRet0;
     private Integer fdBufferMax;
     private int callbackPiRegistrations;
@@ -81,8 +85,8 @@ public final class ChicoryPostgresMod implements initdbModFactory.InitdbMod {
                 .withDirectory("/pglite", pgRoot)
                 .withDirectory("/home", homeRoot)
                 .withStdin(new ByteArrayInputStream(new byte[0]))
-                .withStdout(System.out, false)
-                .withStderr(System.err, false);
+                .withStdout(moduleOutput(System.out, this.overrides.print), false)
+                .withStderr(moduleOutput(System.err, this.overrides.printErr), false);
             if (this.overrides.__wasiDataRoot != null) {
                 wasiOptions.withDirectory("/data", dataRoot);
             }
@@ -106,6 +110,35 @@ public final class ChicoryPostgresMod implements initdbModFactory.InitdbMod {
             args.addAll(java.util.Arrays.asList(overrides.arguments));
         }
         return args;
+    }
+
+    private static OutputStream moduleOutput(
+        OutputStream delegate,
+        java.util.function.Consumer<Object[]> callback
+    ) {
+        if (callback == null) {
+            return delegate;
+        }
+        return new OutputStream() {
+            @Override
+            public void write(int b) throws IOException {
+                delegate.write(b);
+                callback.accept(new Object[] { new String(new byte[] { (byte) b }, StandardCharsets.UTF_8) });
+            }
+
+            @Override
+            public void write(byte[] b, int off, int len) throws IOException {
+                delegate.write(b, off, len);
+                if (len > 0) {
+                    callback.accept(new Object[] { new String(b, off, len, StandardCharsets.UTF_8) });
+                }
+            }
+
+            @Override
+            public void flush() throws IOException {
+                delegate.flush();
+            }
+        };
     }
 
     private static Path resolveRoot(postgresMod.PartialPostgresMod overrides) throws Exception {
@@ -437,11 +470,38 @@ public final class ChicoryPostgresMod implements initdbModFactory.InitdbMod {
             case "system" -> systemFn != 0 ? invokeCallback(systemFn, (int) args[0]) : 1L;
             case "popen" -> popenFn != 0 ? invokeCallback(popenFn, (int) args[0], (int) args[1]) : 0L;
             case "pclose" -> pcloseFn != 0 ? invokeCallback(pcloseFn, (int) args[0]) : 0L;
-            case "blob_read" -> invokeCallback(blobRead, (int) args[0], (int) args[1], (int) args[2]);
-            case "blob_write" -> invokeCallback(blobWrite, (int) args[0], (int) args[1], (int) args[2]);
-            case "blob_llseek" -> invokeCallback(blobLlseek, (int) args[0], (int) args[1]);
+            case "blob_read" -> blobRead((int) args[0], (int) args[1], (int) args[2]);
+            case "blob_write" -> blobWrite((int) args[0], (int) args[1], (int) args[2]);
+            case "blob_llseek" -> blobLlseek((int) args[0], (int) args[1]);
             default -> 0L;
         };
+    }
+
+    private long blobRead(int ptr, int length, int position) {
+        if (blobDevice == null) {
+            return 0L;
+        }
+        var buffer = new byte[length];
+        var read = blobDevice.read(buffer, 0, length, position);
+        if (read > 0) {
+            memory.write(ptr, java.util.Arrays.copyOf(buffer, read));
+        }
+        return read;
+    }
+
+    private long blobWrite(int ptr, int length, int position) {
+        if (blobDevice == null) {
+            return 0L;
+        }
+        var buffer = memory.readBytes(ptr, length);
+        return blobDevice.write(buffer, 0, length, position);
+    }
+
+    private long blobLlseek(int offset, int whence) {
+        if (blobDevice == null) {
+            return -1L;
+        }
+        return blobDevice.llseek(offset, whence, 0);
     }
 
     private long invokeCallback(int id, int... args) {
@@ -558,6 +618,11 @@ public final class ChicoryPostgresMod implements initdbModFactory.InitdbMod {
     public void _PostgresMainLoopOnce() {
         try {
             call("PostgresMainLoopOnce");
+        } catch (com.dylibso.chicory.wasi.WasiExitException exit) {
+            if (exit.exitCode() != POSTGRES_MAIN_LONGJMP) {
+                throw exit;
+            }
+            _PostgresMainLongJmp();
         } catch (ExitStatus exit) {
             if (exit.status != POSTGRES_MAIN_LONGJMP) {
                 throw exit;
@@ -856,6 +921,9 @@ public final class ChicoryPostgresMod implements initdbModFactory.InitdbMod {
         @Override
         public void registerDevice(int devId, postgresMod.DeviceOps ops) {
             fs.registerDevice(devId, ops);
+            if (devId == makedev(64, 0)) {
+                blobDevice = ops;
+            }
         }
 
         @Override
