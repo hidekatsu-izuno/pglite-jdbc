@@ -6,14 +6,14 @@ import java.io.StringReader;
 import java.io.StringWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
-import java.sql.Clob;
 import java.sql.SQLException;
 
-final class PgClob implements Clob {
+final class PgClob extends org.postgresql.jdbc.PgClob {
     private String value;
     private boolean freed;
 
-    PgClob(String value) {
+    PgClob(org.postgresql.core.BaseConnection connection, String value) throws SQLException {
+        super(connection, 0L);
         this.value = value == null ? "" : value;
     }
 
@@ -54,7 +54,7 @@ final class PgClob implements Clob {
     }
 
     @Override
-    public long position(Clob searchstr, long start) throws SQLException {
+    public long position(java.sql.Clob searchstr, long start) throws SQLException {
         return position(searchstr.getSubString(1, Math.toIntExact(searchstr.length())), start);
     }
 

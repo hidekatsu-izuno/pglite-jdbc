@@ -5,6 +5,8 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.io.ByteArrayInputStream;
 import java.io.StringReader;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;
@@ -125,21 +127,32 @@ final class PgResultSet implements InvocationHandler {
             case "getArray" -> {
                 var column = columnIndex(args[0]);
                 var value = getValue(column);
-                yield value == null ? null : new PgArray(arrayBaseTypeName(columns.get(column - 1).oid()), value);
+                yield value == null
+                    ? null
+                    : new org.postgresql.jdbc.PgArray(
+                        (org.postgresql.core.BaseConnection) statement.getConnection(),
+                        columns.get(column - 1).oid(),
+                        JdbcCompat.toArrayLiteral(value)
+                    );
             }
             case "getBlob" -> {
                 var value = getValue(args[0]);
-                yield value == null ? null : new PgBlob(JdbcCompat.toBytes(value));
+                yield value == null ? null : new PgBlob(baseConnection(), JdbcCompat.toBytes(value));
             }
             case "getClob", "getNClob" -> {
                 var value = getValue(args[0]);
-                yield value == null ? null : new PgClob(JdbcCompat.stringify(value));
+                yield value == null ? null : new PgClob(baseConnection(), JdbcCompat.stringify(value));
             }
             case "getSQLXML" -> {
                 var value = getValue(args[0]);
-                yield value == null ? null : new PgSQLXML(JdbcCompat.stringify(value));
+                yield value == null
+                    ? null
+                    : new org.postgresql.jdbc.PgSQLXML(
+                        (org.postgresql.core.BaseConnection) statement.getConnection(),
+                        JdbcCompat.stringify(value)
+                    );
             }
-            case "getString" -> JdbcCompat.stringify(getValue(args[0]));
+            case "getString", "getNString" -> JdbcCompat.stringify(getValue(args[0]));
             case "getBoolean" -> JdbcCompat.toBoolean(getValue(args[0]));
             case "getByte" -> JdbcCompat.toNumber(getValue(args[0])).byteValue();
             case "getShort" -> JdbcCompat.toNumber(getValue(args[0])).shortValue();
@@ -147,8 +160,11 @@ final class PgResultSet implements InvocationHandler {
             case "getLong" -> JdbcCompat.toNumber(getValue(args[0])).longValue();
             case "getFloat" -> JdbcCompat.toNumber(getValue(args[0])).floatValue();
             case "getDouble" -> JdbcCompat.toNumber(getValue(args[0])).doubleValue();
-            case "getBigDecimal" -> JdbcCompat.toBigDecimal(getValue(args[0]));
+            case "getBigDecimal" -> args.length >= 2 && args[1] instanceof Integer scale
+                ? JdbcCompat.toBigDecimal(getValue(args[0]), scale)
+                : JdbcCompat.toBigDecimal(getValue(args[0]));
             case "getBytes" -> JdbcCompat.toBytes(getValue(args[0]));
+            case "getURL" -> toUrl(getValue(args[0]));
             case "getBinaryStream", "getAsciiStream" -> {
                 var bytes = JdbcCompat.toBytes(getValue(args[0]));
                 yield bytes == null ? null : new ByteArrayInputStream(bytes);
@@ -283,29 +299,21 @@ final class PgResultSet implements InvocationHandler {
         cursor = -1;
     }
 
-    private String arrayBaseTypeName(int oid) {
-        return switch (oid) {
-            case 1000 -> "bool";
-            case 1001 -> "bytea";
-            case 1005 -> "int2";
-            case 1007 -> "int4";
-            case 1009 -> "text";
-            case 1014 -> "bpchar";
-            case 1015 -> "varchar";
-            case 1016 -> "int8";
-            case 1021 -> "float4";
-            case 1022 -> "float8";
-            case 1028 -> "oid";
-            case 1115 -> "timestamp";
-            case 1182 -> "date";
-            case 1183 -> "time";
-            case 1185 -> "timestamptz";
-            case 1231 -> "numeric";
-            case 1270 -> "timetz";
-            case 199 -> "json";
-            case 2951 -> "uuid";
-            case 3807 -> "jsonb";
-            default -> JdbcCompat.oidToPgType(oid);
-        };
+    private URL toUrl(Object value) throws SQLException {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return new URL(String.valueOf(value));
+        } catch (MalformedURLException exception) {
+            throw new SQLException("Invalid URL value: " + value, exception);
+        }
+    }
+
+    private org.postgresql.core.BaseConnection baseConnection() throws SQLException {
+        if (statement == null) {
+            throw new SQLException("ResultSet is not associated with a connection");
+        }
+        return (org.postgresql.core.BaseConnection) statement.getConnection();
     }
 }

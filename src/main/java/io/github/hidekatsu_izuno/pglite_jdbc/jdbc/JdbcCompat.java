@@ -296,6 +296,11 @@ final class JdbcCompat {
         }
     }
 
+    static BigDecimal toBigDecimal(Object value, int scale) {
+        var decimal = toBigDecimal(value);
+        return decimal == null ? null : decimal.setScale(scale, java.math.RoundingMode.HALF_UP);
+    }
+
     static byte[] toBytes(Object value) {
         if (value == null) {
             return null;
@@ -326,6 +331,68 @@ final class JdbcCompat {
             out[i] = Array.get(value, i);
         }
         return out;
+    }
+
+    static String toArrayLiteral(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof String text && text.startsWith("{") && text.endsWith("}")) {
+            return text;
+        }
+        var out = new StringBuilder();
+        appendArrayLiteral(out, value);
+        return out.toString();
+    }
+
+    static String arrayElementTypeName(String typeName) {
+        if (typeName == null) {
+            return null;
+        }
+        var normalized = typeName.trim();
+        if (normalized.endsWith("[]")) {
+            return normalized.substring(0, normalized.length() - 2);
+        }
+        if (normalized.startsWith("_")) {
+            return normalized.substring(1);
+        }
+        return normalized;
+    }
+
+    private static void appendArrayLiteral(StringBuilder out, Object value) {
+        out.append('{');
+        var values = toObjectArray(value);
+        if (values != null) {
+            for (var i = 0; i < values.length; i++) {
+                if (i > 0) {
+                    out.append(',');
+                }
+                appendArrayElement(out, values[i]);
+            }
+        }
+        out.append('}');
+    }
+
+    private static void appendArrayElement(StringBuilder out, Object value) {
+        if (value == null) {
+            out.append("NULL");
+            return;
+        }
+        var valueClass = value.getClass();
+        if (value instanceof List<?> || valueClass.isArray()) {
+            appendArrayLiteral(out, value);
+            return;
+        }
+        var text = String.valueOf(value);
+        out.append('"');
+        for (var i = 0; i < text.length(); i++) {
+            var ch = text.charAt(i);
+            if (ch == '"' || ch == '\\') {
+                out.append('\\');
+            }
+            out.append(ch);
+        }
+        out.append('"');
     }
 
     static Object[] parsePgArray(String text) {

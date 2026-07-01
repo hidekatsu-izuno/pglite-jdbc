@@ -46,7 +46,7 @@ final class PgParameterMetaData implements InvocationHandler {
             case "isSigned" -> true;
             case "getPrecision", "getScale" -> 0;
             case "getParameterType" -> jdbcType(index(args));
-            case "getParameterTypeName" -> "oid:" + oid(index(args));
+            case "getParameterTypeName" -> JdbcCompat.oidToPgType(oid(index(args)));
             case "getParameterClassName" -> className(index(args));
             case "getParameterMode" -> ParameterMetaData.parameterModeIn;
             case "unwrap" -> {
@@ -84,12 +84,13 @@ final class PgParameterMetaData implements InvocationHandler {
             case Types.INTEGER -> Integer.class.getName();
             case Types.BIGINT -> Long.class.getName();
             case Types.REAL -> Float.class.getName();
-            case Types.DOUBLE -> Double.class.getName();
-            case Types.NUMERIC -> java.math.BigDecimal.class.getName();
+            case Types.DOUBLE, Types.FLOAT -> Double.class.getName();
+            case Types.NUMERIC, Types.DECIMAL -> java.math.BigDecimal.class.getName();
             case Types.DATE -> java.sql.Date.class.getName();
-            case Types.TIME -> java.sql.Time.class.getName();
-            case Types.TIMESTAMP -> java.sql.Timestamp.class.getName();
-            case Types.BINARY -> byte[].class.getName();
+            case Types.TIME, Types.TIME_WITH_TIMEZONE -> java.sql.Time.class.getName();
+            case Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE -> java.sql.Timestamp.class.getName();
+            case Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY -> byte[].class.getName();
+            case Types.ARRAY -> java.sql.Array.class.getName();
             default -> String.class.getName();
         };
     }

@@ -5,7 +5,6 @@ import io.github.hidekatsu_izuno.pglite_jdbc.pglite.extensionUtils;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.GZIPInputStream;
@@ -186,10 +185,6 @@ public class tarUtils {
 
     private static byte[] toTarData(byte[] data) {
         return data != null ? data : new byte[0];
-    }
-
-    private static byte[] toTarData(String data) {
-        return data.getBytes(StandardCharsets.UTF_8);
     }
 
     private static byte[] tar(List<TarEntry> files) {

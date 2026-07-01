@@ -436,10 +436,6 @@ final class PgDatabaseMetaData implements InvocationHandler {
         return result(List.of(new Column(name, 19)), List.of(row));
     }
 
-    private ResultSet emptyResult(List<Column> columns) {
-        return result(columns, List.of());
-    }
-
     private ResultSet result(List<Column> columns, List<Map<String, Object>> rows) {
         return PgResultSet.create(null, columns, rows);
     }

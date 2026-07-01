@@ -15,6 +15,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -53,13 +54,11 @@ final class PgStatement implements InvocationHandler {
     static Statement create(PgConnection connection, String preparedSql) {
         var interfaces = preparedSql == null
             ? new Class<?>[] {
-                Statement.class,
-                org.postgresql.PGStatement.class,
+                org.postgresql.core.BaseStatement.class,
             }
             : new Class<?>[] {
                 PreparedStatement.class,
-                Statement.class,
-                org.postgresql.PGStatement.class,
+                org.postgresql.core.BaseStatement.class,
             };
         var handler = new PgStatement(connection, preparedSql);
         var proxy = (Statement) Proxy.newProxyInstance(
@@ -186,6 +185,20 @@ final class PgStatement implements InvocationHandler {
                 ParameterMetaData metadata = PgParameterMetaData.create(described.queryParams());
                 yield metadata;
             }
+            case "createDriverResultSet" -> createDriverResultSet(
+                (org.postgresql.core.Field[]) args[0],
+                (List<org.postgresql.core.Tuple>) args[1]
+            );
+            case "createResultSet" -> createDriverResultSet(
+                (org.postgresql.core.Field[]) args[1],
+                (List<org.postgresql.core.Tuple>) args[2]
+            );
+            case "executeWithFlags" -> {
+                if (args[0] instanceof String sql) {
+                    yield execute(sql);
+                }
+                yield execute(resolveSql(name, null));
+            }
             case "getLastOID" -> 0L;
             case "setPrepareThreshold" -> {
                 prepareThreshold = (Integer) args[0];
@@ -237,6 +250,7 @@ final class PgStatement implements InvocationHandler {
             case "setBlob" -> blobParameter(args);
             case "setClob", "setNClob" -> clobParameter(args);
             case "setSQLXML" -> args[1] == null ? null : ((java.sql.SQLXML) args[1]).getString();
+            case "setURL" -> args[1] == null ? null : args[1].toString();
             case "setDate" -> args[1] instanceof java.sql.Date date
                 ? date.toLocalDate().toString()
                 : args[1];
@@ -420,6 +434,29 @@ final class PgStatement implements InvocationHandler {
         updateCount = -1;
         currentResultSet = null;
         return out;
+    }
+
+    private ResultSet createDriverResultSet(
+        org.postgresql.core.Field[] fields,
+        List<org.postgresql.core.Tuple> tuples
+    ) {
+        var columns = new ArrayList<Column>(fields.length);
+        for (var field : fields) {
+            columns.add(new Column(field.getColumnLabel(), field.getOID()));
+        }
+        var rows = new ArrayList<Map<String, Object>>(tuples.size());
+        for (var tuple : tuples) {
+            var row = new LinkedHashMap<String, Object>();
+            for (var i = 0; i < fields.length; i++) {
+                var bytes = tuple.get(i);
+                row.put(
+                    fields[i].getColumnLabel(),
+                    bytes == null ? null : new String(bytes, StandardCharsets.UTF_8)
+                );
+            }
+            rows.add(row);
+        }
+        return PgResultSet.create(self, columns, rows);
     }
 
     private boolean getMoreResults(Object[] args) throws SQLException {

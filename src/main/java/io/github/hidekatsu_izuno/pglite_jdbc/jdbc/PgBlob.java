@@ -4,15 +4,15 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.sql.Blob;
 import java.sql.SQLException;
 import java.util.Arrays;
 
-final class PgBlob implements Blob {
+final class PgBlob extends org.postgresql.jdbc.PgBlob {
     private byte[] bytes;
     private boolean freed;
 
-    PgBlob(byte[] bytes) {
+    PgBlob(org.postgresql.core.BaseConnection connection, byte[] bytes) throws SQLException {
+        super(connection, 0L);
         this.bytes = bytes == null ? new byte[0] : Arrays.copyOf(bytes, bytes.length);
     }
 
@@ -61,7 +61,7 @@ final class PgBlob implements Blob {
     }
 
     @Override
-    public long position(Blob pattern, long start) throws SQLException {
+    public long position(java.sql.Blob pattern, long start) throws SQLException {
         return position(pattern.getBytes(1, Math.toIntExact(pattern.length())), start);
     }
 

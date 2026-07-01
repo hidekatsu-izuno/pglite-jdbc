@@ -12,7 +12,6 @@ import com.dylibso.chicory.wasi.WasiPreview1;
 import com.dylibso.chicory.wasm.Parser;
 import com.dylibso.chicory.wasm.types.FunctionImport;
 import com.dylibso.chicory.wasm.types.FunctionType;
-import com.dylibso.chicory.wasm.types.MemoryImport;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.extensionUtils;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.initdbModFactory;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.postgresMod;
@@ -27,10 +26,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
-public final class ChicoryPostgresMod implements postgresMod.PostgresMod, initdbModFactory.InitdbMod {
+public final class ChicoryPostgresMod implements initdbModFactory.InitdbMod {
     private static final int DEFAULT_INITIAL_PAGES = 2048;
     private static final int DEFAULT_MAX_PAGES = 32768;
-    private static final int PGLITE_EXIT_ALIVE = 99;
     private static final int POSTGRES_MAIN_LONGJMP = 100;
     private static final boolean TRACE_HOST_CALLS = Boolean.getBoolean("pglite.trace_host_calls");
     private static final boolean TRACE_WASI_CALLS = Boolean.getBoolean("pglite.trace_wasi_calls");
@@ -639,31 +637,6 @@ public final class ChicoryPostgresMod implements postgresMod.PostgresMod, initdb
         return nextTableCallbackSlot++;
     }
 
-    private int findExistingTableSlot(com.dylibso.chicory.runtime.TableInstance table, int functionIndex) {
-        for (var i = 1; i < table.size(); i++) {
-            if (table.ref(i) == functionIndex) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    private int findFreeTableSlot(com.dylibso.chicory.runtime.TableInstance table) {
-        for (var i = 1; i < table.size(); i++) {
-            if (!callbacks.containsKey(i) && table.ref(i) == 0) {
-                return i;
-            }
-        }
-        var grown = table.grow(1, 0, instance);
-        if (grown < 0) {
-            throw new IllegalStateException(
-                "No free wasm table slots for callback; size=" + table.size()
-                    + " limits=" + table.limits()
-            );
-        }
-        return grown;
-    }
-
     private String dispatcherImport(String signature) {
         return switch (signature) {
             case "ppi" -> "pglite.popen";
@@ -900,12 +873,7 @@ public final class ChicoryPostgresMod implements postgresMod.PostgresMod, initdb
     }
 
     private static final class EmscriptenLongjmp extends RuntimeException {
-        private final int env;
-        private final int value;
-
         private EmscriptenLongjmp(int env, int value) {
-            this.env = env;
-            this.value = value;
         }
     }
 
@@ -1059,7 +1027,6 @@ public final class ChicoryPostgresMod implements postgresMod.PostgresMod, initdb
         }
 
         @Override
-        @SuppressWarnings("unchecked")
         public void mount(Object type, Object opts, String mountpoint) {
             if (opts instanceof Map<?, ?> map) {
                 var rootOpt = map.get("root");
@@ -1179,11 +1146,6 @@ public final class ChicoryPostgresMod implements postgresMod.PostgresMod, initdb
         @Override
         public String __root() {
             return root.toString();
-        }
-
-        private postgresMod.DeviceOps deviceFor(String path) {
-            var dev = devicePaths.get(normalize(path));
-            return dev != null ? devices.get(dev) : null;
         }
 
         private Path resolve(String path) {

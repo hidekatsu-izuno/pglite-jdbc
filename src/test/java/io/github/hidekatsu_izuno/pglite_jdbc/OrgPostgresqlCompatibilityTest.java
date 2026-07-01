@@ -9,6 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.StringReader;
+import java.math.BigDecimal;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.sql.DriverManager;
@@ -118,6 +120,7 @@ class OrgPostgresqlCompatibilityTest {
         assertTimeout(Duration.ofSeconds(180), () -> {
             try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
                 var array = connection.createArrayOf("int4", new Integer[] { 1, 2, 3 });
+                assertEquals(org.postgresql.jdbc.PgArray.class, array.getClass());
                 assertArrayEquals(new Object[] { 2, 3 }, (Object[]) array.getArray(2, 2));
 
                 try (var arrayRows = array.getResultSet()) {
@@ -137,6 +140,7 @@ class OrgPostgresqlCompatibilityTest {
                     try (var resultSet = statement.executeQuery()) {
                         assertTrue(resultSet.next());
                         var readArray = resultSet.getArray("ints");
+                        assertEquals(org.postgresql.jdbc.PgArray.class, readArray.getClass());
                         assertEquals(java.sql.Types.INTEGER, readArray.getBaseType());
                         assertArrayEquals(new Object[] { 1, 2, 3 }, (Object[]) readArray.getArray());
 
@@ -165,8 +169,10 @@ class OrgPostgresqlCompatibilityTest {
         assertTimeout(Duration.ofSeconds(180), () -> {
             try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
                 var blob = connection.createBlob();
+                assertTrue(blob instanceof org.postgresql.jdbc.PgBlob);
                 blob.setBytes(1, "blob-bytes".getBytes(StandardCharsets.UTF_8));
                 var clob = connection.createClob();
+                assertTrue(clob instanceof org.postgresql.jdbc.PgClob);
                 clob.setString(1, "clob text");
 
                 try (var statement = connection.prepareStatement(
@@ -177,11 +183,13 @@ class OrgPostgresqlCompatibilityTest {
                     try (var resultSet = statement.executeQuery()) {
                         assertTrue(resultSet.next());
                         var readBlob = resultSet.getBlob("payload");
+                        assertTrue(readBlob instanceof org.postgresql.jdbc.PgBlob);
                         assertArrayEquals(
                             "blob-bytes".getBytes(StandardCharsets.UTF_8),
                             readBlob.getBytes(1, (int) readBlob.length())
                         );
                         var readClob = resultSet.getClob("body");
+                        assertTrue(readClob instanceof org.postgresql.jdbc.PgClob);
                         assertEquals("clob text", readClob.getSubString(1, (int) readClob.length()));
                     }
                 }
@@ -196,16 +204,107 @@ class OrgPostgresqlCompatibilityTest {
         assertTimeout(Duration.ofSeconds(180), () -> {
             try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
                 var xml = connection.createSQLXML();
+                assertEquals(org.postgresql.jdbc.PgSQLXML.class, xml.getClass());
                 xml.setString("<root><value>42</value></root>");
                 try (var statement = connection.prepareStatement("SELECT ?::xml AS payload")) {
                     statement.setSQLXML(1, xml);
                     try (var resultSet = statement.executeQuery()) {
                         assertTrue(resultSet.next());
                         var readXml = resultSet.getSQLXML("payload");
+                        assertEquals(org.postgresql.jdbc.PgSQLXML.class, readXml.getClass());
                         assertEquals("<root><value>42</value></root>", readXml.getString());
                     }
                 }
                 xml.free();
+            }
+        });
+    }
+
+    @Test
+    void shouldSupportAdditionalJdbcValueConversions() throws Exception {
+        assertTimeout(Duration.ofSeconds(180), () -> {
+            try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000");
+                 var statement = connection.prepareStatement(
+                     "SELECT ?::text AS link, ?::text AS label, ?::numeric AS amount"
+                 )) {
+                statement.setURL(1, new URL("https://example.test/path?q=1"));
+                statement.setNString(2, "unicode label");
+                statement.setBigDecimal(3, new BigDecimal("12.345"));
+                try (var resultSet = statement.executeQuery()) {
+                    assertTrue(resultSet.next());
+                    assertEquals(new URL("https://example.test/path?q=1"), resultSet.getURL("link"));
+                    assertEquals("unicode label", resultSet.getNString("label"));
+                    assertEquals(new BigDecimal("12.35"), resultSet.getBigDecimal("amount", 2));
+                }
+            }
+        });
+    }
+
+    @Test
+    void shouldSupportConnectionSchemaAndParameterTypeMetadata() throws Exception {
+        assertTimeout(Duration.ofSeconds(180), () -> {
+            try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
+                try (var statement = connection.createStatement()) {
+                    statement.execute("CREATE SCHEMA jdbc_compat_schema");
+                }
+                connection.setSchema("jdbc_compat_schema");
+                assertEquals("jdbc_compat_schema", connection.getSchema());
+
+                try (var statement = connection.createStatement();
+                     var resultSet = statement.executeQuery("SELECT current_schema()")) {
+                    assertTrue(resultSet.next());
+                    assertEquals("jdbc_compat_schema", resultSet.getString(1));
+                }
+
+                try (var prepared = connection.prepareStatement("SELECT ?::int4 AS value")) {
+                    var metadata = prepared.getParameterMetaData();
+                    assertEquals(1, metadata.getParameterCount());
+                    assertEquals(java.sql.Types.INTEGER, metadata.getParameterType(1));
+                    assertEquals("int4", metadata.getParameterTypeName(1));
+                    assertEquals(Integer.class.getName(), metadata.getParameterClassName(1));
+                }
+            }
+        });
+    }
+
+    @Test
+    void shouldExposePgjdbcPublicConnectionSurfaces() throws Exception {
+        assertTimeout(Duration.ofSeconds(180), () -> {
+            try (var connection = DriverManager.getConnection(
+                    "jdbc:pglite:?protocolTimeoutMs=5000&ApplicationName=pglite-jdbc-test"
+                )) {
+                var pgConnection = connection.unwrap(org.postgresql.PGConnection.class);
+                pgConnection.addDataType("compat_object", org.postgresql.util.PGobject.class);
+                assertEquals("18.3", pgConnection.getParameterStatus("server_version"));
+                assertEquals("pglite-jdbc-test", pgConnection.getParameterStatus("application_name"));
+                assertTrue(pgConnection.getParameterStatuses().containsKey("standard_conforming_strings"));
+                pgConnection.setAdaptiveFetch(true);
+                assertTrue(pgConnection.getAdaptiveFetch());
+
+                var baseConnection = connection.unwrap(org.postgresql.core.BaseConnection.class);
+                try (var resultSet = baseConnection.execSQLQuery("SELECT 7 AS value")) {
+                    assertTrue(resultSet.next());
+                    assertEquals(7, resultSet.getInt("value"));
+                }
+                baseConnection.execSQLUpdate("CREATE TEMP TABLE pgjdbc_public_surface(id int)");
+
+                var typeInfo = baseConnection.getTypeInfo();
+                assertEquals(23, typeInfo.getPGType("int4"));
+                assertEquals("int4", typeInfo.getPGType(23));
+                assertEquals(java.sql.Types.INTEGER, typeInfo.getJavaArrayType("int4"));
+                assertEquals(Integer.class.getName(), typeInfo.getJavaClass(23));
+                assertEquals(10, typeInfo.getMaximumPrecision(23));
+
+                var queryExecutor = baseConnection.getQueryExecutor();
+                assertEquals("18.3", queryExecutor.getServerVersion());
+                assertEquals(180003, queryExecutor.getServerVersionNum());
+                assertEquals("pglite-jdbc-test", queryExecutor.getApplicationName());
+                queryExecutor.setAdaptiveFetch(false);
+                assertEquals(false, queryExecutor.getAdaptiveFetch());
+                queryExecutor.addBinaryReceiveOid(23);
+                assertTrue(queryExecutor.getBinaryReceiveOids().contains(23));
+                queryExecutor.removeBinaryReceiveOid(23);
+                assertEquals(false, queryExecutor.getBinaryReceiveOids().contains(23));
             }
         });
     }

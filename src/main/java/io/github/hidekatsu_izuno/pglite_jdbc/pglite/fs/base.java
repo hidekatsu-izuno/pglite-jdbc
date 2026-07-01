@@ -6,7 +6,6 @@ import io.github.hidekatsu_izuno.pglite_jdbc.pglite.initdb;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.pglite;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.postgresMod;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
-import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -265,7 +264,6 @@ public class base {
 
     public record MmapResult(int ptr, boolean allocated) {}
 
-    @SuppressWarnings("unchecked")
     public static Map<String, Object> copyEmscriptenOptions(Map<String, Object> emscriptenOptions) {
         var options = new HashMap<String, Object>();
         if (emscriptenOptions != null) {

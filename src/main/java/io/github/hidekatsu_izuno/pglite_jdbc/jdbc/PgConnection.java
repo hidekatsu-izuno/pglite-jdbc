@@ -2,7 +2,6 @@ package io.github.hidekatsu_izuno.pglite_jdbc.jdbc;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.core.QueryExecutor;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_;
-import java.lang.reflect.Array;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -13,10 +12,13 @@ import java.sql.ResultSet;
 import java.sql.Savepoint;
 import java.sql.SQLException;
 import java.sql.Types;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.TimeZone;
 import java.util.Timer;
 import java.util.concurrent.CompletableFuture;
@@ -52,14 +54,19 @@ public final class PgConnection implements InvocationHandler {
     private int prepareThreshold = 5;
     private int defaultFetchSize;
     private int queryTimeout;
+    private int networkTimeout;
     private long protocolTimeoutMillis = 10_000L;
     private AutoSave autosave = AutoSave.NEVER;
     private PreferQueryMode preferQueryMode = PreferQueryMode.EXTENDED;
     private String currentSchema;
+    private boolean adaptiveFetch;
     private int nextSavepointId = 1;
     private org.postgresql.copy.CopyManager copyApi;
     private org.postgresql.fastpath.Fastpath fastpathApi;
     private org.postgresql.largeobject.LargeObjectManager largeObjectApi;
+    private final Map<String, String> parameterStatuses = new HashMap<>();
+    private Set<Integer> binaryReceiveOids = new HashSet<>();
+    private Set<Integer> binarySendOids = new HashSet<>();
     private final org.postgresql.core.TypeInfo typeInfo = createTypeInfo();
     private final LruCache<org.postgresql.jdbc.FieldMetadata.Key, org.postgresql.jdbc.FieldMetadata>
         fieldMetadataCache = new LruCache<>(0, 0, false);
@@ -78,6 +85,7 @@ public final class PgConnection implements InvocationHandler {
         this.user = user;
         this.database = database;
         initializeProperties(properties);
+        initializeParameterStatuses(properties);
     }
 
     public static Connection create(
@@ -288,9 +296,11 @@ public final class PgConnection implements InvocationHandler {
                 releaseSavepoint((Savepoint) args[0]);
                 yield null;
             }
-            case "createBlob" -> new PgBlob(null);
-            case "createClob", "createNClob" -> new PgClob(null);
-            case "createSQLXML" -> new PgSQLXML(null);
+            case "createBlob" -> new PgBlob((org.postgresql.core.BaseConnection) self, null);
+            case "createClob", "createNClob" -> new PgClob((org.postgresql.core.BaseConnection) self, null);
+            case "createSQLXML" -> new org.postgresql.jdbc.PgSQLXML(
+                (org.postgresql.core.BaseConnection) self
+            );
             case "setTypeMap", "createStruct" ->
                 throw JdbcCompat.unsupported(name);
             case "createArrayOf" -> createArrayOf((String) args[0], args[1]);
@@ -303,17 +313,26 @@ public final class PgConnection implements InvocationHandler {
                 }
                 yield null;
             }
-            case "setSchema" -> null;
-            case "getSchema" -> database;
+            case "setSchema" -> {
+                setSchema((String) args[0]);
+                yield null;
+            }
+            case "getSchema" -> getSchema();
             case "abort" -> {
                 closeConnection();
                 yield null;
             }
-            case "setNetworkTimeout" -> null;
-            case "getNetworkTimeout" -> 0;
+            case "setNetworkTimeout" -> {
+                networkTimeout = (Integer) args[1];
+                yield null;
+            }
+            case "getNetworkTimeout" -> networkTimeout;
             case "getNotifications", "getNotifications" + "\u0000" -> EMPTY_NOTIFICATIONS;
+            case "getParameterStatuses" -> Collections.unmodifiableMap(parameterStatuses);
+            case "getParameterStatus" -> parameterStatuses.get((String) args[0]);
             case "getBackendPID" -> 0;
             case "cancelQuery" -> null;
+            case "addDataType" -> null;
             case "setPrepareThreshold" -> {
                 prepareThreshold = (Integer) args[0];
                 yield null;
@@ -334,7 +353,10 @@ public final class PgConnection implements InvocationHandler {
             case "getCopyAPI" -> getCopyAPI();
             case "getFastpathAPI" -> getFastpathAPI();
             case "getLargeObjectAPI" -> getLargeObjectAPI();
-            case "execSQLQuery" -> unsupportedCore("execSQLQuery");
+            case "getReplicationAPI" -> throw new UnsupportedOperationException(
+                "Replication is not supported by PGlite"
+            );
+            case "execSQLQuery" -> execSqlQuery((String) args[0]);
             case "execSQLUpdate" -> {
                 execControl((String) args[0]);
                 yield null;
@@ -368,7 +390,7 @@ public final class PgConnection implements InvocationHandler {
             case "createQuery" -> unsupportedCore("createQuery");
             case "setFlushCacheOnDeallocate" -> null;
             case "hintReadOnly" -> readOnly;
-            case "getXmlFactoryFactory" -> unsupportedCore("getXmlFactoryFactory");
+            case "getXmlFactoryFactory" -> org.postgresql.xml.DefaultPGXmlFactoryFactory.INSTANCE;
             case "getLogServerErrorDetail" -> true;
             case "getConvertBooleanToNumeric" -> false;
             case "getPreferQueryMode" -> preferQueryMode;
@@ -377,6 +399,11 @@ public final class PgConnection implements InvocationHandler {
                 autosave = (AutoSave) args[0];
                 yield null;
             }
+            case "setAdaptiveFetch" -> {
+                adaptiveFetch = (Boolean) args[0];
+                yield null;
+            }
+            case "getAdaptiveFetch" -> adaptiveFetch;
             case "unwrap" -> {
                 var iface = (Class<?>) args[0];
                 if (iface.isInstance(proxy)) {
@@ -425,8 +452,23 @@ public final class PgConnection implements InvocationHandler {
 
     private void initializeSession() throws SQLException {
         if (currentSchema != null) {
-            execControl("SET search_path TO " + currentSchema);
+            setSearchPath(currentSchema);
         }
+    }
+
+    private void initializeParameterStatuses(Properties properties) {
+        parameterStatuses.put("server_version", "18.3");
+        parameterStatuses.put("server_encoding", "UTF8");
+        parameterStatuses.put("client_encoding", "UTF8");
+        parameterStatuses.put("DateStyle", "ISO, MDY");
+        parameterStatuses.put("TimeZone", "UTC");
+        parameterStatuses.put("integer_datetimes", "on");
+        parameterStatuses.put("standard_conforming_strings", "on");
+        var applicationName = properties == null ? null : trimToNull(properties.getProperty("ApplicationName"));
+        if (applicationName == null && properties != null) {
+            applicationName = trimToNull(properties.getProperty("applicationName"));
+        }
+        parameterStatuses.put("application_name", applicationName == null ? "" : applicationName);
     }
 
     private int parseIntProperty(Properties properties, String name, int defaultValue) {
@@ -567,6 +609,31 @@ public final class PgConnection implements InvocationHandler {
         return '"' + savepoint.sqlIdentifier().replace("\"", "\"\"") + '"';
     }
 
+    private void setSchema(String schema) throws SQLException {
+        ensureOpen();
+        var schemaName = trimToNull(schema);
+        if (schemaName == null) {
+            currentSchema = null;
+            execControl("RESET search_path");
+            return;
+        }
+        setSearchPath(schemaName);
+        currentSchema = schemaName;
+    }
+
+    private String getSchema() throws SQLException {
+        ensureOpen();
+        return currentSchema != null ? currentSchema : "public";
+    }
+
+    private void setSearchPath(String schema) throws SQLException {
+        execControl("SET search_path TO " + quoteIdentifier(schema));
+    }
+
+    private String quoteIdentifier(String identifier) {
+        return '"' + identifier.replace("\"", "\"\"") + '"';
+    }
+
     private void closeConnection() throws SQLException {
         if (closed) {
             return;
@@ -588,6 +655,11 @@ public final class PgConnection implements InvocationHandler {
 
     private void execControl(String sql) throws SQLException {
         queryExecutor.exec(sql);
+    }
+
+    private ResultSet execSqlQuery(String sql) throws SQLException {
+        var result = queryExecutor.query(sql, null);
+        return PgResultSet.create(null, JdbcCompat.toColumns(result.fields()), result.rows());
     }
 
     private void setQueryTimeoutSeconds(int seconds) throws SQLException {
@@ -625,25 +697,22 @@ public final class PgConnection implements InvocationHandler {
     }
 
     private java.sql.Array createArrayOf(String typeName, Object elements) throws SQLException {
-        if (elements == null) {
-            return new PgArray(typeName, null);
+        var oid = pgTypeToOid(typeName);
+        var arrayOid = arrayOidToElementOid(oid) != 0 ? oid : elementOidToArrayOid(oid);
+        if (arrayOid == 0) {
+            arrayOid = elementOidToArrayOid(pgTypeToOid(JdbcCompat.arrayElementTypeName(typeName)));
         }
-        if (elements instanceof Object[] objectArray) {
-            return new PgArray(typeName, objectArray);
-        }
-        var arrayClass = elements.getClass();
-        if (!arrayClass.isArray()) {
+        if (arrayOid == 0) {
             throw new PSQLException(
-                "createArrayOf expects array input",
+                "Unsupported array type: " + typeName,
                 PSQLState.INVALID_PARAMETER_VALUE
             );
         }
-        var length = Array.getLength(elements);
-        var boxed = new Object[length];
-        for (var i = 0; i < length; i++) {
-            boxed[i] = Array.get(elements, i);
-        }
-        return new PgArray(typeName, boxed);
+        return new org.postgresql.jdbc.PgArray(
+            (org.postgresql.core.BaseConnection) self,
+            arrayOid,
+            JdbcCompat.toArrayLiteral(elements)
+        );
     }
 
     private Object unsupportedCore(String method) throws SQLException {
@@ -709,7 +778,12 @@ public final class PgConnection implements InvocationHandler {
                     case "getPGArrayType" -> elementOidToArrayOid(pgTypeToOid((String) args[0]));
                     case "getArrayDelimiter" -> ',';
                     case "getTypeForAlias" -> args[0];
+                    case "getJavaArrayType" -> pgTypeToSqlType((String) args[0]);
                     case "getJavaClass" -> javaClassForOid((Integer) args[0]);
+                    case "getPrecision" -> precision((Integer) args[0], (Integer) args[1]);
+                    case "getScale" -> scale((Integer) args[0], (Integer) args[1]);
+                    case "getDisplaySize" -> displaySize((Integer) args[0], (Integer) args[1]);
+                    case "getMaximumPrecision" -> maximumPrecision((Integer) args[0]);
                     case "requiresQuoting" -> requiresQuotingOid((Integer) args[0]);
                     case "requiresQuotingSqlType" -> requiresQuotingSqlType((Integer) args[0]);
                     case "longOidToInt" -> (int) (long) (Long) args[0];
@@ -741,9 +815,97 @@ public final class PgConnection implements InvocationHandler {
                 if (method.getName().equals("getAutoSave")) {
                     return autosave;
                 }
-                throw new SQLFeatureNotSupportedException(
-                    "Core QueryExecutor method is not supported: " + method.getName()
-                );
+                return switch (method.getName()) {
+                    case "getProtocolVersion" -> org.postgresql.core.ProtocolVersion.v3_0;
+                    case "isReWriteBatchedInsertsEnabled" -> false;
+                    case "processNotifies", "sendQueryCancel", "setPreferQueryMode", "setAutoSave",
+                        "setFlushCacheOnDeallocate", "setNetworkTimeout", "addQueryToAdaptiveFetchCache",
+                        "removeQueryFromAdaptiveFetchCache", "releaseQuery" -> {
+                        if ("setPreferQueryMode".equals(method.getName())) {
+                            preferQueryMode = (PreferQueryMode) args[0];
+                        } else if ("setAutoSave".equals(method.getName())) {
+                            autosave = (AutoSave) args[0];
+                        } else if ("setNetworkTimeout".equals(method.getName())) {
+                            networkTimeout = (Integer) args[0];
+                        }
+                        yield null;
+                    }
+                    case "getIntegerDateTimes", "getStandardConformingStrings",
+                        "getQuoteReturningIdentifiers" -> true;
+                    case "getHostSpec", "getCloseAction" -> null;
+                    case "getUser" -> user;
+                    case "getDatabase" -> database;
+                    case "getBackendPID" -> 0;
+                    case "abort", "close" -> {
+                        closeConnection();
+                        yield null;
+                    }
+                    case "isClosed" -> closed;
+                    case "getServerVersion" -> parameterStatuses.get("server_version");
+                    case "getServerVersionNum" -> 180003;
+                    case "getNotifications" -> EMPTY_NOTIFICATIONS;
+                    case "getWarnings" -> warnings;
+                    case "getTransactionState" -> txOpen
+                        ? org.postgresql.core.TransactionState.OPEN
+                        : org.postgresql.core.TransactionState.IDLE;
+                    case "getTimeZone" -> TimeZone.getTimeZone(parameterStatuses.get("TimeZone"));
+                    case "getEncoding" -> org.postgresql.core.Encoding.getJVMEncoding("UTF-8");
+                    case "getApplicationName" -> parameterStatuses.get("application_name");
+                    case "isColumnSanitiserDisabled" -> false;
+                    case "getEscapeSyntaxCallMode" -> org.postgresql.jdbc.EscapeSyntaxCallMode.SELECT;
+                    case "getPreferQueryMode" -> preferQueryMode;
+                    case "willHealOnRetry" -> false;
+                    case "getNetworkTimeout" -> networkTimeout;
+                    case "getParameterStatuses" -> Collections.unmodifiableMap(parameterStatuses);
+                    case "getParameterStatus" -> parameterStatuses.get((String) args[0]);
+                    case "getAdaptiveFetchSize" -> 0;
+                    case "getAdaptiveFetch" -> adaptiveFetch;
+                    case "setAdaptiveFetch" -> {
+                        adaptiveFetch = (Boolean) args[0];
+                        yield null;
+                    }
+                    case "addBinaryReceiveOid" -> {
+                        binaryReceiveOids.add((Integer) args[0]);
+                        yield null;
+                    }
+                    case "removeBinaryReceiveOid" -> {
+                        binaryReceiveOids.remove((Integer) args[0]);
+                        yield null;
+                    }
+                    case "getBinaryReceiveOids" -> Collections.unmodifiableSet(binaryReceiveOids);
+                    case "setBinaryReceiveOids" -> {
+                        Object arg = args[0];
+                        binaryReceiveOids = new HashSet<>();
+                        if (arg instanceof Set<?> set) {
+                            for (Object item : set) {
+                                binaryReceiveOids.add((Integer) item);
+                            }
+                        }
+                        yield null;
+                    }
+                    case "addBinarySendOid" -> {
+                        binarySendOids.add((Integer) args[0]);
+                        yield null;
+                    }
+                    case "removeBinarySendOid" -> {
+                        binarySendOids.remove((Integer) args[0]);
+                        yield null;
+                    }
+                    case "getBinarySendOids" -> Collections.unmodifiableSet(binarySendOids);
+                    case "setBinarySendOids" -> {
+                        Object arg = args[0];
+                        binarySendOids = new HashSet<>();
+                        if (arg instanceof Set<?> set) {
+                            for (Object item : set) {
+                                binarySendOids.add((Integer) item);
+                            }
+                        }
+                        yield null;
+                    }
+                    default -> throw new SQLFeatureNotSupportedException(
+                        "Core QueryExecutor method is not supported: " + method.getName()
+                    );
+                };
             }
         );
     }
@@ -898,6 +1060,45 @@ public final class PgConnection implements InvocationHandler {
             case Types.INTEGER, Types.SMALLINT, Types.BIGINT, Types.DECIMAL, Types.NUMERIC,
                 Types.REAL, Types.DOUBLE, Types.FLOAT, Types.BOOLEAN -> false;
             default -> true;
+        };
+    }
+
+    private int precision(int oid, int typmod) {
+        return switch (JdbcCompat.oidToJdbcType(oid)) {
+            case Types.SMALLINT -> 5;
+            case Types.INTEGER -> 10;
+            case Types.BIGINT -> 19;
+            case Types.REAL -> 8;
+            case Types.DOUBLE, Types.FLOAT -> 17;
+            case Types.NUMERIC, Types.DECIMAL -> typmod >= 4 ? ((typmod - 4) >> 16) & 0xffff : 0;
+            case Types.DATE -> 13;
+            case Types.TIME, Types.TIME_WITH_TIMEZONE -> 15;
+            case Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE -> 29;
+            default -> 0;
+        };
+    }
+
+    private int scale(int oid, int typmod) {
+        return switch (JdbcCompat.oidToJdbcType(oid)) {
+            case Types.NUMERIC, Types.DECIMAL -> typmod >= 4 ? (typmod - 4) & 0xffff : 0;
+            default -> 0;
+        };
+    }
+
+    private int displaySize(int oid, int typmod) {
+        var precision = precision(oid, typmod);
+        return precision > 0 ? precision : 0;
+    }
+
+    private int maximumPrecision(int oid) {
+        return switch (JdbcCompat.oidToJdbcType(oid)) {
+            case Types.SMALLINT -> 5;
+            case Types.INTEGER -> 10;
+            case Types.BIGINT -> 19;
+            case Types.REAL -> 8;
+            case Types.DOUBLE, Types.FLOAT -> 17;
+            case Types.NUMERIC, Types.DECIMAL -> 1000;
+            default -> 0;
         };
     }
 }
