@@ -138,7 +138,7 @@ class OrgPostgresqlCompatibilityTest {
                         assertTrue(resultSet.next());
                         var readArray = resultSet.getArray("ints");
                         assertEquals(java.sql.Types.INTEGER, readArray.getBaseType());
-                        assertArrayEquals(new Object[] { "1", "2", "3" }, (Object[]) readArray.getArray());
+                        assertArrayEquals(new Object[] { 1, 2, 3 }, (Object[]) readArray.getArray());
 
                         try (var reader = resultSet.getCharacterStream("body")) {
                             var buffer = new char[64];

@@ -16,7 +16,7 @@ final class PgArray implements Array {
 
     PgArray(String baseTypeName, Object array) {
         this.baseTypeName = baseTypeName;
-        this.array = JdbcCompat.toObjectArray(array);
+        this.array = normalize(JdbcCompat.toObjectArray(array));
     }
 
     @Override
@@ -151,5 +151,30 @@ final class PgArray implements Array {
         if (freed) {
             throw new SQLException("Array has been freed");
         }
+    }
+
+    private Object[] normalize(Object[] values) {
+        if (values == null) {
+            return null;
+        }
+        var out = new Object[values.length];
+        for (var i = 0; i < values.length; i++) {
+            out[i] = normalizeElement(values[i]);
+        }
+        return out;
+    }
+
+    private Object normalizeElement(Object value) {
+        if (value == null) {
+            return null;
+        }
+        return switch (getBaseType()) {
+            case Types.SMALLINT -> value instanceof Number number ? number.shortValue() : Short.valueOf(String.valueOf(value));
+            case Types.INTEGER -> value instanceof Number number ? number.intValue() : Integer.valueOf(String.valueOf(value));
+            case Types.BIGINT -> value instanceof Number number ? number.longValue() : Long.valueOf(String.valueOf(value));
+            case Types.REAL -> value instanceof Number number ? number.floatValue() : Float.valueOf(String.valueOf(value));
+            case Types.DOUBLE, Types.FLOAT -> value instanceof Number number ? number.doubleValue() : Double.valueOf(String.valueOf(value));
+            default -> value;
+        };
     }
 }

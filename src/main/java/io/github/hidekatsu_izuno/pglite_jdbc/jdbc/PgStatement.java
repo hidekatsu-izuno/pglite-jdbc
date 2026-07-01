@@ -14,6 +14,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -225,7 +226,7 @@ final class PgStatement implements InvocationHandler {
                 if (args[1] == null) {
                     yield null;
                 }
-                yield ((java.sql.Array) args[1]).getArray();
+                yield Arrays.asList((Object[]) ((java.sql.Array) args[1]).getArray());
             }
             case "setBinaryStream" -> readBinaryStream(args);
             case "setAsciiStream" -> {

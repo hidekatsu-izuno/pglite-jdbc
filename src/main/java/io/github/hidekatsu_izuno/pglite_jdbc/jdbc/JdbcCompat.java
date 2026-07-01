@@ -313,6 +313,9 @@ final class JdbcCompat {
         if (value instanceof Object[] objects) {
             return Arrays.copyOf(objects, objects.length);
         }
+        if (value instanceof List<?> list) {
+            return list.toArray();
+        }
         var valueClass = value.getClass();
         if (!valueClass.isArray()) {
             return parsePgArray(String.valueOf(value));

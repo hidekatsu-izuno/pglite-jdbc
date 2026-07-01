@@ -41,9 +41,7 @@ public final class JSON {
         }
         if (node.isObject()) {
             var map = new LinkedHashMap<String, Object>(node.size());
-            var fields = node.fields();
-            while (fields.hasNext()) {
-                var entry = fields.next();
+            for (var entry : node.properties()) {
                 map.put(entry.getKey(), toJavaObject(entry.getValue()));
             }
             return map;

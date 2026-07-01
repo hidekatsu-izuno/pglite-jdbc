@@ -2352,8 +2352,8 @@ class PGlitePortedTest {
                 Promise.executor().submit(() -> {
                     try {
                         Thread.sleep(10);
-                        results.add(args[0]);
-                        resolve.run(args[0]);
+                        results.add(args.get(0));
+                        resolve.run(args.get(0));
                     } catch (Throwable e) {
                         reject.run(e);
                     }
@@ -2361,9 +2361,9 @@ class PGlitePortedTest {
             )
         );
 
-        var call1 = debounced.call(1);
-        var call2 = debounced.call(2);
-        var call3 = debounced.call(3);
+        var call1 = debounced.call(List.of(1));
+        var call2 = debounced.call(List.of(2));
+        var call3 = debounced.call(List.of(3));
 
         assertEquals(1, call1.join());
         assertEquals(null, call2.join());
@@ -2378,8 +2378,8 @@ class PGlitePortedTest {
             new Promise<>((resolve, reject) ->
                 Promise.executor().submit(() -> {
                     try {
-                        var value = args[0];
-                        var delayMs = args[1];
+                        var value = args.get(0);
+                        var delayMs = args.get(1);
                         Thread.sleep(delayMs);
                         results.add(value);
                         resolve.run(value);
@@ -2390,9 +2390,9 @@ class PGlitePortedTest {
             )
         );
 
-        var call1 = debounced.call(1, 50);
-        var call2 = debounced.call(2, 10);
-        var call3 = debounced.call(3, 10);
+        var call1 = debounced.call(List.of(1, 50));
+        var call2 = debounced.call(List.of(2, 10));
+        var call3 = debounced.call(List.of(3, 10));
 
         assertEquals(1, call1.join());
         assertEquals(null, call2.join());
@@ -2400,7 +2400,7 @@ class PGlitePortedTest {
         assertEquals(List.of(1, 3), results);
 
         var failing = utils.<Integer, Integer>debounceMutex(args -> Promise.reject(new IllegalStateException("Test error")));
-        var error = assertThrows(java.util.concurrent.CompletionException.class, () -> failing.call(1).join());
+        var error = assertThrows(java.util.concurrent.CompletionException.class, () -> failing.call(List.of(1)).join());
         assertTrue(error.getCause() instanceof IllegalStateException);
         assertEquals("Test error", error.getCause().getMessage());
     }

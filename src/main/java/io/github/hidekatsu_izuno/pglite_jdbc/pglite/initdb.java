@@ -413,7 +413,6 @@ public class initdb {
         });
     }
 
-    @SuppressWarnings("unchecked")
     private static Map<String, String> modEnv(postgresMod.PostgresMod mod) {
         if (mod instanceof initdbModFactory.InitdbMod initdbMod) {
             return initdbMod.ENV();
@@ -435,7 +434,7 @@ public class initdb {
         return args;
     }
 
-    public static Promise<ExecResult> initdb(InitdbOptions options) {
+    public static Promise<ExecResult> getInitdb(InitdbOptions options) {
         var resolved = options != null ? options : new InitdbOptions(null, null, null, null);
         var extraArgs = resolved.args() != null ? resolved.args() : new String[0];
         var args = new ArrayList<String>();

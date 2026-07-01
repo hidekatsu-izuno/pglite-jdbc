@@ -1,6 +1,8 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pglite;
 
 import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -90,8 +92,8 @@ public class extensionCatalog {
             return resource;
         }
         try {
-            return new URL("file://" + bundleFilename);
-        } catch (MalformedURLException e) {
+            return new URI("file://" + bundleFilename).toURL();
+        } catch (URISyntaxException | MalformedURLException e) {
             throw new IllegalArgumentException("Invalid extension bundle path: " + bundleFilename, e);
         }
     }

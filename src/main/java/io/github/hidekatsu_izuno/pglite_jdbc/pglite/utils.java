@@ -6,6 +6,7 @@ import java.io.InputStream;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
@@ -138,7 +139,7 @@ public class utils {
 
     @FunctionalInterface
     public interface DebouncedPromiseFn<A, R> {
-        Promise<R> call(A... args);
+        Promise<R> call(List<A> args);
     }
 
     public static <A, R> DebouncedPromiseFn<A, R> debounceMutex(
@@ -190,7 +191,7 @@ public class utils {
     }
 
     private record PendingCall<A, R>(
-        A[] args,
+        List<A> args,
         Promise.Resolve<R> resolve,
         Promise.Reject reject
     ) {}

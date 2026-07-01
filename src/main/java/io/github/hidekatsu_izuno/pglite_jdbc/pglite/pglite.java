@@ -263,7 +263,7 @@ public class pglite extends base implements interface_.PGliteInterface {
         initdbOverrides.print = overrides.print;
         initdbOverrides.printErr = overrides.printErr;
         var initdbMod = (initdbModFactory.InitdbMod) PostgresModFactory.create(initdbOverrides);
-        var initdbResult = await(initdb.initdb(
+        var initdbResult = await(initdb.getInitdb(
             new initdb.InitdbOptions(
                 new InitdbAdapter(initdbMod),
                 TRACE_INIT && this.debug == 0 ? 1 : this.debug,
