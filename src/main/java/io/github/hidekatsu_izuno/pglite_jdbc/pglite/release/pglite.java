@@ -10,7 +10,7 @@ public final class pglite {
 
     public static class PostgresModFactory {
         public static PostgresMod create(PartialPostgresMod moduleOverrides) {
-            return new ChicoryPostgresMod(moduleOverrides, PGLITE_WASM_URL);
+            return new EndivePostgresMod(moduleOverrides, PGLITE_WASM_URL);
         }
     }
 

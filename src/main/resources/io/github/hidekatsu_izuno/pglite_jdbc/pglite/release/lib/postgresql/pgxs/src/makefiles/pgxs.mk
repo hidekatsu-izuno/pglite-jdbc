@@ -221,6 +221,14 @@ all: $(PROGRAM) $(DATA_built) $(HEADER_allbuilt) $(SCRIPTS_built) $(addsuffix $(
 empty :=
 space := $(empty) $(empty)
 pglite_wasm_modules_import_name = $(subst $(space),_,$(strip $(MODULES)))
+pglite_wasi_extension_symbol_prefix = pglite_wasi_ext_$(subst -,_,$(if $(MODULE_big),$(MODULE_big),$(pglite_wasm_modules_import_name)))
+
+ifeq ($(PORTNAME),wasi)
+override CPPFLAGS += -D__PGLITE_WASI_EXTENSION__
+override CPPFLAGS += -D_PG_init=$(pglite_wasi_extension_symbol_prefix)_PG_init
+override CPPFLAGS += -D_PG_fini=$(pglite_wasi_extension_symbol_prefix)_PG_fini
+override CPPFLAGS += -DPG_MAGIC_FUNCTION_NAME=$(pglite_wasi_extension_symbol_prefix)_Pg_magic_func
+endif
 
 ifeq ($(with_llvm), yes)
 all: $(addsuffix .bc, $(MODULES)) $(patsubst %.o,%.bc, $(OBJS))
@@ -254,10 +262,19 @@ ifeq ($(with_llvm), yes)
 	$(foreach mod, $(MODULES), $(call install_llvm_module,$(mod),$(mod).bc))
 endif # with_llvm
 ifneq (,$(filter emscripten wasi,$(PORTNAME)))
-	find . -name "*.o" -exec $(LLVM_NM) --undefined-only {} \; | awk '{print $$2}' | sed '/^$$/d' | sort -u > '$(MODULES).undef.txt'
-	find . -type f \( -name "*.o" -o -name "*.so" \) -exec $(LLVM_NM) --defined-only {} \;   | awk '$$2 ~ /^[TDB]$$/ {print $$3}' | sed '/^$$/d' | sort -u > '$(MODULES).defs.txt'
+	find . -name "*.o" -exec $(if $(LLVM_NM),$(LLVM_NM),$(if $(NM),$(NM),llvm-nm)) --undefined-only {} \; | awk '{print $$2}' | sed '/^$$/d' | sort -u > '$(MODULES).undef.txt'
+	find . -type f \( -name "*.o" -o -name "*.so" \) -exec $(if $(LLVM_NM),$(LLVM_NM),$(if $(NM),$(NM),llvm-nm)) --defined-only {} \;   | awk '$$2 ~ /^[TDB]$$/ {print $$3}' | sed '/^$$/d' | sort -u > '$(MODULES).defs.txt'
 	comm -23 '$(MODULES).undef.txt' '$(MODULES).defs.txt' > '$(DESTDIR)$(pglite_wasm_extension_imports_dir)/$(pglite_wasm_modules_import_name).imports'
 endif # PORTNAME=emscripten/wasi
+ifeq ($(PORTNAME),wasi)
+	for mod in $(MODULES); do \
+	  nmdefs=`$(if $(LLVM_NM),$(LLVM_NM),$(if $(NM),$(NM),llvm-nm)) --defined-only "$$mod.o"`; \
+	  funcs=`printf '%s\n' "$$nmdefs" | awk '$$2 ~ /^[TDB]$$/ && $$3 ~ /^pg_finfo_/ {sub(/^pg_finfo_/, "", $$3); print $$3}' | sort -u | tr '\n' ' '`; \
+	  init=`printf '%s\n' "$$nmdefs" | awk '$$2 ~ /^[TDB]$$/ && $$3 == "$(pglite_wasi_extension_symbol_prefix)_PG_init" {print "_PG_init=" $$3; found=1} END {if (!found) print "-"}'`; \
+	  printf '%s.so %s %s\n' "$$mod" "$$init" "$$funcs" > '$(DESTDIR)$(pglite_wasm_extension_symbols_dir)'/"$$mod.symbols"; \
+	  printf '%s/%s.o\n' "$$(pwd)" "$$mod" > '$(DESTDIR)$(pglite_wasm_extension_objects_dir)'/"$$mod.objects"; \
+	done
+endif # PORTNAME=wasi
 endif # MODULES
 ifdef DOCS
 ifdef docdir
@@ -281,10 +298,22 @@ ifeq ($(with_llvm), yes)
 	$(call install_llvm_module,$(MODULE_big),$(OBJS))
 endif # with_llvm
 ifneq (,$(filter emscripten wasi,$(PORTNAME)))
-	find . -name "*.o" -exec $(LLVM_NM) --undefined-only {} \; | awk '{print $$2}' | sed '/^$$/d' | sort -u > '$(MODULE_big).undef.txt'
-	find . -type f \( -name "*.o" -o -name "*.so" \) -exec $(LLVM_NM) --defined-only   {} \; | awk '$$2 ~ /^[TDB]$$/ {print $$3}' | sed '/^$$/d' | sort -u > '$(MODULE_big).defs.txt'
-	comm -23 '$(MODULE_big).undef.txt' '$(MODULE_big).defs.txt' > '$(DESTDIR)$(pglite_wasm_extension_imports_dir)/$(MODULE_big).imports'
+	find . -name "*.o" -exec $(if $(LLVM_NM),$(LLVM_NM),$(if $(NM),$(NM),llvm-nm)) --undefined-only {} \; | awk '{print $$2}' | sed '/^$$/d' | sort -u > '$(MODULE_big).undef.txt'
+	find . -type f \( -name "*.o" -o -name "*.so" \) -exec $(if $(LLVM_NM),$(LLVM_NM),$(if $(NM),$(NM),llvm-nm)) --defined-only   {} \; | awk '$$2 ~ /^[TDB]$$/ {print $$3}' | sed '/^$$/d' | sort -u > '$(MODULE_big).defs.txt'
+	{ comm -23 '$(MODULE_big).undef.txt' '$(MODULE_big).defs.txt'; \
+	  if [ -n "$(WASM_OBJDUMP)" ] && [ -f '$(MODULE_big)$(DLSUFFIX)' ]; then \
+	    "$(WASM_OBJDUMP)" -x '$(MODULE_big)$(DLSUFFIX)' | \
+	      awk '/ <- / { symbol = $$0; sub(/^.* <- /, "", symbol); sub(/^env\./, "", symbol); sub(/^GOT\.(mem|func)\./, "", symbol); print symbol }'; \
+	  fi; } | \
+	sort -u > '$(DESTDIR)$(pglite_wasm_extension_imports_dir)/$(MODULE_big).imports'
 endif # PORTNAME=emscripten/wasi
+ifeq ($(PORTNAME),wasi)
+	nmdefs=`$(if $(LLVM_NM),$(LLVM_NM),$(if $(NM),$(NM),llvm-nm)) --defined-only $(OBJS)`; \
+	funcs=`printf '%s\n' "$$nmdefs" | awk '$$2 ~ /^[TDB]$$/ && $$3 ~ /^pg_finfo_/ {sub(/^pg_finfo_/, "", $$3); print $$3}' | sort -u | tr '\n' ' '`; \
+	init=`printf '%s\n' "$$nmdefs" | awk '$$2 ~ /^[TDB]$$/ && $$3 == "$(pglite_wasi_extension_symbol_prefix)_PG_init" {print "_PG_init=" $$3; found=1} END {if (!found) print "-"}'`; \
+	printf '%s.so %s %s\n' '$(MODULE_big)' "$$init" "$$funcs" > '$(DESTDIR)$(pglite_wasm_extension_symbols_dir)/$(MODULE_big).symbols'; \
+	for obj in $(OBJS); do printf '%s/%s\n' "$$(pwd)" "$$obj"; done > '$(DESTDIR)$(pglite_wasm_extension_objects_dir)/$(MODULE_big).objects'
+endif # PORTNAME=wasi
 
 install: install-lib
 endif # MODULE_big
@@ -313,6 +342,10 @@ ifneq (,$(PROGRAM)$(SCRIPTS)$(SCRIPTS_built))
 endif
 ifneq (,$(filter emscripten wasi,$(PORTNAME)))
 	$(MKDIR_P) '$(DESTDIR)$(pglite_wasm_extension_imports_dir)'
+endif
+ifeq ($(PORTNAME),wasi)
+	$(MKDIR_P) '$(DESTDIR)$(pglite_wasm_extension_symbols_dir)'
+	$(MKDIR_P) '$(DESTDIR)$(pglite_wasm_extension_objects_dir)'
 endif
 
 ifdef MODULE_big

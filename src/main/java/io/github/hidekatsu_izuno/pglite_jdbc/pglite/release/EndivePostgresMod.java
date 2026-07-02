@@ -1,17 +1,20 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pglite.release;
 
-import com.dylibso.chicory.runtime.ByteArrayMemory;
-import com.dylibso.chicory.runtime.HostFunction;
-import com.dylibso.chicory.runtime.ImportFunction;
-import com.dylibso.chicory.runtime.ImportMemory;
-import com.dylibso.chicory.runtime.ImportValues;
-import com.dylibso.chicory.runtime.Instance;
-import com.dylibso.chicory.runtime.Memory;
-import com.dylibso.chicory.wasi.WasiOptions;
-import com.dylibso.chicory.wasi.WasiPreview1;
-import com.dylibso.chicory.wasm.Parser;
-import com.dylibso.chicory.wasm.types.FunctionImport;
-import com.dylibso.chicory.wasm.types.FunctionType;
+import run.endive.runtime.ByteArrayMemory;
+import run.endive.runtime.HostFunction;
+import run.endive.runtime.ImportFunction;
+import run.endive.runtime.ImportMemory;
+import run.endive.runtime.ImportTag;
+import run.endive.runtime.ImportValues;
+import run.endive.runtime.Instance;
+import run.endive.runtime.Memory;
+import run.endive.runtime.TagInstance;
+import run.endive.wasi.WasiOptions;
+import run.endive.wasi.WasiPreview1;
+import run.endive.wasm.Parser;
+import run.endive.wasm.types.FunctionImport;
+import run.endive.wasm.types.FunctionType;
+import run.endive.wasm.types.TagImport;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.extensionUtils;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.initdbModFactory;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.postgresMod;
@@ -29,7 +32,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
-public final class ChicoryPostgresMod implements initdbModFactory.InitdbMod {
+public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
     private static final int DEFAULT_INITIAL_PAGES = 2048;
     private static final int DEFAULT_MAX_PAGES = 32768;
     private static final int POSTGRES_MAIN_LONGJMP = 100;
@@ -67,7 +70,7 @@ public final class ChicoryPostgresMod implements initdbModFactory.InitdbMod {
     private int callbackIiiRegistrations;
     private int nextTableCallbackSlot = -1;
 
-    public ChicoryPostgresMod(postgresMod.PartialPostgresMod overrides, URL moduleUrl) {
+    public EndivePostgresMod(postgresMod.PartialPostgresMod overrides, URL moduleUrl) {
         this.overrides = overrides != null ? overrides : new postgresMod.PartialPostgresMod();
         this.moduleUrl = moduleUrl;
         try {
@@ -155,7 +158,7 @@ public final class ChicoryPostgresMod implements initdbModFactory.InitdbMod {
         var initialPages = initialMemory != null
             ? Math.max(1, (initialMemory + Memory.PAGE_SIZE - 1) / Memory.PAGE_SIZE)
             : DEFAULT_INITIAL_PAGES;
-        return new ByteArrayMemory(new com.dylibso.chicory.wasm.types.MemoryLimits(initialPages, DEFAULT_MAX_PAGES));
+        return new ByteArrayMemory(new run.endive.wasm.types.MemoryLimits(initialPages, DEFAULT_MAX_PAGES));
     }
 
     private Map<String, String> mergedEnv() {
@@ -249,6 +252,7 @@ public final class ChicoryPostgresMod implements initdbModFactory.InitdbMod {
             wasiFunctions.put(fn.module() + "." + fn.name(), fn);
         }
         var functionIndex = 0;
+        var tags = new ArrayList<ImportTag>();
         for (var imp : module.importSection().stream().toList()) {
             if (imp instanceof FunctionImport fn) {
                 var type = module.typeSection().getType(fn.typeIndex());
@@ -278,11 +282,16 @@ public final class ChicoryPostgresMod implements initdbModFactory.InitdbMod {
                     continue;
                 }
                 functions.add(new HostFunction(imp.module(), imp.name(), type, (inst, args) -> hostCall(imp.module(), imp.name(), type, args)));
+            } else if (imp instanceof TagImport tag) {
+                var tagType = tag.tagType();
+                var type = module.typeSection().getType(tagType.typeIdx());
+                tags.add(new ImportTag(imp.module(), imp.name(), new TagInstance(tagType, type)));
             }
         }
         var imports = ImportValues.builder()
             .withFunctions(functions)
             .addMemory(new ImportMemory("env", "memory", memory))
+            .withTags(tags)
             .build();
         var builder = Instance.builder(module)
             .withImportValues(imports)
@@ -292,8 +301,8 @@ public final class ChicoryPostgresMod implements initdbModFactory.InitdbMod {
             var counter = new java.util.concurrent.atomic.AtomicLong();
             builder.withUnsafeExecutionListener((instruction, stack) -> {
                 var value = counter.incrementAndGet();
-                if (instruction.opcode() == com.dylibso.chicory.wasm.types.OpCode.CALL_INDIRECT) {
-                    var tableIndex = instruction.opcode() == com.dylibso.chicory.wasm.types.OpCode.CALL_INDIRECT && stack.size() > 0
+                if (instruction.opcode() == run.endive.wasm.types.OpCode.CALL_INDIRECT) {
+                    var tableIndex = instruction.opcode() == run.endive.wasm.types.OpCode.CALL_INDIRECT && stack.size() > 0
                         ? (int) stack.peek()
                         : -1;
                     var tableRef = tableIndex >= 0 && instance != null && tableIndex < instance.table(0).size()
@@ -403,7 +412,7 @@ public final class ChicoryPostgresMod implements initdbModFactory.InitdbMod {
             || path.startsWith("pg_xact/");
     }
 
-    private void growCallbackTables(com.dylibso.chicory.wasm.WasmModule module) {
+    private void growCallbackTables(run.endive.wasm.WasmModule module) {
         if (module.tableSection() == null) {
             return;
         }
@@ -459,7 +468,7 @@ public final class ChicoryPostgresMod implements initdbModFactory.InitdbMod {
             } catch (EmscriptenLongjmp e) {
                 tempRet0 = 0;
                 return 0L;
-            } catch (com.dylibso.chicory.wasm.ChicoryException e) {
+            } catch (run.endive.wasm.WasmEngineException e) {
                 if (e.getCause() instanceof EmscriptenLongjmp) {
                     tempRet0 = 0;
                     return 0L;
@@ -655,7 +664,7 @@ public final class ChicoryPostgresMod implements initdbModFactory.InitdbMod {
     public void _PostgresMainLoopOnce() {
         try {
             call("PostgresMainLoopOnce");
-        } catch (com.dylibso.chicory.wasi.WasiExitException exit) {
+        } catch (run.endive.wasi.WasiExitException exit) {
             if (exit.exitCode() != POSTGRES_MAIN_LONGJMP) {
                 throw exit;
             }
@@ -707,7 +716,7 @@ public final class ChicoryPostgresMod implements initdbModFactory.InitdbMod {
     public void _set_read_write_cbs(int read_cb, int write_cb) {
         this.socketRead = read_cb;
         this.socketWrite = write_cb;
-        call("pgl_set_rw_cbs", read_cb, write_cb);
+        callIfExists("pgl_set_rw_cbs", read_cb, write_cb);
     }
 
     @Override
@@ -726,7 +735,7 @@ public final class ChicoryPostgresMod implements initdbModFactory.InitdbMod {
         return id;
     }
 
-    private int allocateTableCallbackSlot(com.dylibso.chicory.runtime.TableInstance table) {
+    private int allocateTableCallbackSlot(run.endive.runtime.TableInstance table) {
         if (nextTableCallbackSlot < 0) {
             nextTableCallbackSlot = Math.max(1, table.size() - 16);
         }
@@ -779,15 +788,6 @@ public final class ChicoryPostgresMod implements initdbModFactory.InitdbMod {
 
     @Override
     public int callMain(String[] args) {
-        if (usesInitialWasiArguments(args)) {
-            try {
-                return (int) call("__main_void");
-            } catch (com.dylibso.chicory.wasi.WasiExitException exit) {
-                return exit.exitCode();
-            } catch (ExitStatus exit) {
-                return exit.status;
-            }
-        }
         var argvWithProgram = new ArrayList<String>();
         argvWithProgram.add(overrides.thisProgram != null ? overrides.thisProgram : "/pglite/bin/postgres");
         if (args != null) {
@@ -796,18 +796,19 @@ public final class ChicoryPostgresMod implements initdbModFactory.InitdbMod {
         var malloc = instance.export("malloc");
         var free = instance.export("free");
         var ptrs = new ArrayList<Integer>();
+        var argv = 0;
         try {
             for (var arg : argvWithProgram) {
                 ptrs.add(writeCString(malloc, arg));
             }
-            var argv = (int) malloc.apply((ptrs.size() + 1) * 4)[0];
+            argv = (int) malloc.apply((ptrs.size() + 1) * 4)[0];
             for (var i = 0; i < ptrs.size(); i++) {
                 memory.writeI32(argv + i * 4, ptrs.get(i));
             }
             memory.writeI32(argv + ptrs.size() * 4, 0);
             try {
                 return (int) call("__main_argc_argv", argvWithProgram.size(), argv);
-            } catch (com.dylibso.chicory.wasi.WasiExitException exit) {
+            } catch (run.endive.wasi.WasiExitException exit) {
                 return exit.exitCode();
             } catch (ExitStatus exit) {
                 return exit.status;
@@ -816,17 +817,13 @@ public final class ChicoryPostgresMod implements initdbModFactory.InitdbMod {
             for (var ptr : ptrs) {
                 free.apply(ptr);
             }
+            if (argv != 0) {
+                free.apply(argv);
+            }
         }
     }
 
-    private boolean usesInitialWasiArguments(String[] args) {
-        return java.util.Arrays.equals(
-            args != null ? args : new String[0],
-            overrides.arguments != null ? overrides.arguments : new String[0]
-        );
-    }
-
-    private int writeCString(com.dylibso.chicory.runtime.ExportFunction malloc, String text) {
+    private int writeCString(run.endive.runtime.ExportFunction malloc, String text) {
         var bytes = (text + "\0").getBytes(java.nio.charset.StandardCharsets.UTF_8);
         var ptr = (int) malloc.apply(bytes.length)[0];
         memory.write(ptr, bytes);
@@ -856,19 +853,19 @@ public final class ChicoryPostgresMod implements initdbModFactory.InitdbMod {
     @Override
     public void _pgl_set_system_fn(int systemFn) {
         this.systemFn = systemFn;
-        call("pgl_set_system_fn", systemFn);
+        callIfExists("pgl_set_system_fn", systemFn);
     }
 
     @Override
     public void _pgl_set_popen_fn(int popenFn) {
         this.popenFn = popenFn;
-        call("pgl_set_popen_fn", popenFn);
+        callIfExists("pgl_set_popen_fn", popenFn);
     }
 
     @Override
     public void _pgl_set_pclose_fn(int pcloseFn) {
         this.pcloseFn = pcloseFn;
-        call("pgl_set_pclose_fn", pcloseFn);
+        callIfExists("pgl_set_pclose_fn", pcloseFn);
     }
 
     @Override

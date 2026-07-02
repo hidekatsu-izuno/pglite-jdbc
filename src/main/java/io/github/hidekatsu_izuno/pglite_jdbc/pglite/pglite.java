@@ -6,7 +6,7 @@ import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.serializer;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.base.Filesystem;
-import io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.ChicoryPostgresMod;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.EndivePostgresMod;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.pglite.PostgresModFactory;
 
 import java.nio.file.Files;
@@ -452,12 +452,12 @@ public class pglite extends base implements interface_.PGliteInterface {
 
         @Override
         public void _pgl_freopen(int path, int mode, int fd) {
-            asChicory()._pgl_freopen(path, mode, fd);
+            asEndive()._pgl_freopen(path, mode, fd);
         }
 
         @Override
         public Integer _close(int fd) {
-            return asChicory()._close(fd);
+            return asEndive()._close(fd);
         }
 
         @Override
@@ -472,7 +472,7 @@ public class pglite extends base implements interface_.PGliteInterface {
 
         @Override
         public Integer _pgl_chdir(int path) {
-            return asChicory()._pgl_chdir(path);
+            return asEndive()._pgl_chdir(path);
         }
 
         @Override
@@ -512,11 +512,11 @@ public class pglite extends base implements interface_.PGliteInterface {
             throw new UnsupportedOperationException("Postgres module does not expose initdb helpers");
         }
 
-        private ChicoryPostgresMod asChicory() {
-            if (mod instanceof ChicoryPostgresMod chicory) {
-                return chicory;
+        private EndivePostgresMod asEndive() {
+            if (mod instanceof EndivePostgresMod endive) {
+                return endive;
             }
-            throw new UnsupportedOperationException("Postgres module does not expose Chicory helpers");
+            throw new UnsupportedOperationException("Postgres module does not expose Endive helpers");
         }
     }
 
@@ -720,7 +720,7 @@ public class pglite extends base implements interface_.PGliteInterface {
 
     private messages.DatabaseError databaseErrorFromWasmExit(Throwable rawError) {
         var cause = unwrap(rawError);
-        if (!(cause instanceof com.dylibso.chicory.wasi.WasiExitException exit)
+        if (!(cause instanceof run.endive.wasi.WasiExitException exit)
             || exit.exitCode() != 100) {
             return null;
         }

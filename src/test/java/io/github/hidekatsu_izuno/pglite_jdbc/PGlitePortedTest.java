@@ -1,7 +1,7 @@
 package io.github.hidekatsu_izuno.pglite_jdbc;
 
-import com.dylibso.chicory.wasm.Parser;
-import com.dylibso.chicory.wasm.WasmModule;
+import run.endive.wasm.Parser;
+import run.endive.wasm.WasmModule;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -2223,7 +2223,7 @@ class PGlitePortedTest {
         var disabledRuntimeTests = java.util.Arrays.stream(PGlitePortedTest.class.getDeclaredMethods())
             .filter(method -> method.isAnnotationPresent(Test.class))
             .filter(method -> method.isAnnotationPresent(Disabled.class))
-            .filter(method -> "Requires release.PostgresModFactory to implement the Chicory-backed runtime instead of the current stub".equals(method.getAnnotation(Disabled.class).value()))
+            .filter(method -> "Requires release.PostgresModFactory to implement the Endive-backed runtime instead of the current stub".equals(method.getAnnotation(Disabled.class).value()))
             .toList();
 
         assertEquals(0, disabledRuntimeTests.size());
@@ -2335,8 +2335,8 @@ class PGlitePortedTest {
         var pgliteWasm = wasm("pglite.wasm");
         var initdbWasm = wasm("initdb.wasm");
 
-        assertEquals(Map.of("env", 109, "pglite", 9, "wasi_snapshot_preview1", 45), importCountsByModule(pgliteWasm));
-        assertEquals(Map.of("env", 34, "pglite", 9, "wasi_snapshot_preview1", 45), importCountsByModule(initdbWasm));
+        assertEquals(Map.of("env", 77, "pglite", 9, "wasi_snapshot_preview1", 39), importCountsByModule(pgliteWasm));
+        assertEquals(Map.of("env", 11, "pglite", 4, "wasi_snapshot_preview1", 26), importCountsByModule(initdbWasm));
 
         assertTrue(importNames(pgliteWasm, "pglite").containsAll(Set.of(
             "blob_read",
@@ -2349,7 +2349,7 @@ class PGlitePortedTest {
             "socket_read",
             "socket_write"
         )));
-        assertTrue(importNames(initdbWasm, "pglite").containsAll(importNames(pgliteWasm, "pglite")));
+        assertEquals(Set.of("blob_read", "system", "popen", "pclose"), importNames(initdbWasm, "pglite"));
 
         var pgliteExports = exportNames(pgliteWasm);
         assertTrue(pgliteExports.contains("pgl_startPGlite"));
@@ -2360,10 +2360,8 @@ class PGlitePortedTest {
 
         var initdbExports = exportNames(initdbWasm);
         assertTrue(initdbExports.contains("__main_argc_argv"));
-        assertTrue(initdbExports.contains("pgl_set_rw_cbs"));
-        assertTrue(initdbExports.contains("pgl_set_system_fn"));
-        assertTrue(initdbExports.contains("pgl_set_popen_fn"));
-        assertTrue(initdbExports.contains("pgl_set_pclose_fn"));
+        assertTrue(initdbExports.contains("pgl_chdir"));
+        assertTrue(initdbExports.contains("pgl_freopen"));
     }
 
     @Test

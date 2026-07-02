@@ -1,7 +1,7 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pglite;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
-import io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.ChicoryPostgresMod;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.EndivePostgresMod;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
 import java.net.URL;
 import java.util.Map;
@@ -98,7 +98,7 @@ public final class postgresMod {
         PartialPostgresMod moduleOverrides,
         URL moduleUrl
     ) {
-        return Promise.resolve((T) new ChicoryPostgresMod(moduleOverrides, moduleUrl));
+        return Promise.resolve((T) new EndivePostgresMod(moduleOverrides, moduleUrl));
     }
 
     private postgresMod() {

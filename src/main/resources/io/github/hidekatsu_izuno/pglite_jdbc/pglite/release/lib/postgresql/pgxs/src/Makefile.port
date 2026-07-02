@@ -17,3 +17,5 @@ pglite_wasm_base_dir := $(pglite_wasm_include_dir)/base
 pglite_wasm_imports_dir := /install/pglite/imports
 pglite_wasm_extension_dir := $(pglite_wasm_include_dir)/extension
 pglite_wasm_extension_imports_dir := $(pglite_wasm_extension_dir)/imports
+pglite_wasm_extension_symbols_dir := $(pglite_wasm_extension_dir)/symbols
+pglite_wasm_extension_objects_dir := $(pglite_wasm_extension_dir)/objects
