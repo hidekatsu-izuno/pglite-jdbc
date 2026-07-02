@@ -93,7 +93,10 @@ final class PgResultSet implements InvocationHandler {
                 yield null;
             }
             case "isClosed" -> closed;
-            case "wasNull" -> wasNull;
+            case "wasNull" -> {
+                ensureNotClosed();
+                yield wasNull;
+            }
             case "getRow" -> cursor >= 0 && cursor < rows.size() ? cursor + 1 : 0;
             case "beforeFirst" -> {
                 ensureNotClosed();
@@ -126,7 +129,10 @@ final class PgResultSet implements InvocationHandler {
                 ensureNotClosed();
                 yield cursor == rows.size() - 1 && !rows.isEmpty();
             }
-            case "getMetaData" -> PgResultSetMetaData.create(columns);
+            case "getMetaData" -> {
+                ensureNotClosed();
+                yield PgResultSetMetaData.create(columns);
+            }
             case "getStatement" -> statement;
             case "findColumn" -> findColumn((String) args[0]);
             case "getObject" -> {

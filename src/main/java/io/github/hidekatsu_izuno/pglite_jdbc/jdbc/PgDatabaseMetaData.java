@@ -137,8 +137,8 @@ final class PgDatabaseMetaData implements InvocationHandler {
                    c.relname AS table_name,
                    a.attname AS column_name,
                    a.atttypid::int AS pg_type_oid,
+                   a.atttypmod AS pg_type_mod,
                    format_type(a.atttypid, a.atttypmod) AS type_name,
-                   CASE WHEN a.atttypmod > 4 THEN a.atttypmod - 4 ELSE NULL END AS column_size,
                    CASE WHEN a.attnotnull THEN 0 ELSE 1 END AS nullable,
                    pg_get_expr(d.adbin, d.adrelid) AS column_def,
                    a.attnum AS ordinal_position,
@@ -165,7 +165,11 @@ final class PgDatabaseMetaData implements InvocationHandler {
         var rows = new ArrayList<Map<String, Object>>();
         for (var row : raw) {
             var oid = number(row.get("PG_TYPE_OID")).intValue();
+            var typmod = number(row.get("PG_TYPE_MOD")).intValue();
             var nullable = number(row.get("NULLABLE")).intValue();
+            var columnSize = columnSize(oid, typmod);
+            var decimalDigits = decimalDigits(oid, typmod);
+            var charOctetLength = charOctetLength(oid, columnSize);
             var out = new LinkedHashMap<String, Object>();
             out.put("TABLE_CAT", row.get("TABLE_CAT"));
             out.put("TABLE_SCHEM", row.get("TABLE_SCHEM"));
@@ -173,16 +177,16 @@ final class PgDatabaseMetaData implements InvocationHandler {
             out.put("COLUMN_NAME", row.get("COLUMN_NAME"));
             out.put("DATA_TYPE", JdbcCompat.oidToJdbcType(oid));
             out.put("TYPE_NAME", row.get("TYPE_NAME"));
-            out.put("COLUMN_SIZE", row.get("COLUMN_SIZE"));
+            out.put("COLUMN_SIZE", columnSize);
             out.put("BUFFER_LENGTH", null);
-            out.put("DECIMAL_DIGITS", null);
+            out.put("DECIMAL_DIGITS", decimalDigits);
             out.put("NUM_PREC_RADIX", 10);
             out.put("NULLABLE", nullable);
             out.put("REMARKS", row.get("REMARKS"));
             out.put("COLUMN_DEF", row.get("COLUMN_DEF"));
             out.put("SQL_DATA_TYPE", null);
             out.put("SQL_DATETIME_SUB", null);
-            out.put("CHAR_OCTET_LENGTH", row.get("COLUMN_SIZE"));
+            out.put("CHAR_OCTET_LENGTH", charOctetLength);
             out.put("ORDINAL_POSITION", row.get("ORDINAL_POSITION"));
             out.put("IS_NULLABLE", nullable == DatabaseMetaData.columnNullable ? "YES" : "NO");
             out.put("SCOPE_CATALOG", null);
@@ -194,6 +198,39 @@ final class PgDatabaseMetaData implements InvocationHandler {
             rows.add(out);
         }
         return result(columnColumns(), rows);
+    }
+
+    private Integer columnSize(int oid, int typmod) {
+        var jdbcType = JdbcCompat.oidToJdbcType(oid);
+        return switch (jdbcType) {
+            case Types.NUMERIC, Types.DECIMAL -> typmod >= 4 ? ((typmod - 4) >> 16) & 0xffff : null;
+            case Types.CHAR, Types.VARCHAR -> typmod >= 4 ? typmod - 4 : null;
+            case Types.INTEGER -> 10;
+            case Types.SMALLINT -> 5;
+            case Types.BIGINT -> 19;
+            case Types.REAL -> 8;
+            case Types.DOUBLE -> 17;
+            default -> null;
+        };
+    }
+
+    private Integer decimalDigits(int oid, int typmod) {
+        var jdbcType = JdbcCompat.oidToJdbcType(oid);
+        return switch (jdbcType) {
+            case Types.NUMERIC, Types.DECIMAL -> typmod >= 4 ? (typmod - 4) & 0xffff : null;
+            case Types.REAL -> 8;
+            case Types.DOUBLE -> 17;
+            default -> null;
+        };
+    }
+
+    private Integer charOctetLength(int oid, Integer columnSize) {
+        var jdbcType = JdbcCompat.oidToJdbcType(oid);
+        return switch (jdbcType) {
+            case Types.CHAR, Types.VARCHAR, Types.LONGVARCHAR, Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY ->
+                columnSize;
+            default -> null;
+        };
     }
 
     private ResultSet getPrimaryKeys(Object[] args) throws SQLException {
@@ -288,9 +325,9 @@ final class PgDatabaseMetaData implements InvocationHandler {
         return getForeignKeys(
             value(args, 1),
             value(args, 2),
-            value(args, 5),
-            value(args, 6),
-            value(args, 7)
+            value(args, 3),
+            value(args, 4),
+            value(args, 5)
         );
     }
 

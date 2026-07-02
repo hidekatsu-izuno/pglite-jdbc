@@ -76,8 +76,19 @@ final class JdbcCompat {
     }
 
     static String rewriteJdbcParameters(String sql) {
+        return rewriteJdbcParametersWithCount(sql).sql();
+    }
+
+    static int countJdbcParameters(String sql) {
+        return rewriteJdbcParametersWithCount(sql).parameterCount();
+    }
+
+    private record RewrittenSql(String sql, int parameterCount) {
+    }
+
+    private static RewrittenSql rewriteJdbcParametersWithCount(String sql) {
         if (sql == null || sql.indexOf('?') < 0) {
-            return sql;
+            return new RewrittenSql(sql, 0);
         }
         var out = new StringBuilder(sql.length() + 16);
         var placeholderIndex = 0;
@@ -211,7 +222,7 @@ final class JdbcCompat {
             out.append(ch);
         }
 
-        return out.toString();
+        return new RewrittenSql(out.toString(), placeholderIndex);
     }
 
     static int safeAffectedRows(interface_.Results<java.util.Map<String, Object>> result) {
@@ -250,7 +261,7 @@ final class JdbcCompat {
         return out;
     }
 
-    static Number toNumber(Object value) {
+    static Number toNumber(Object value) throws SQLException {
         if (value == null) {
             return 0;
         }
@@ -264,7 +275,7 @@ final class JdbcCompat {
             }
             return Long.parseLong(text);
         } catch (NumberFormatException e) {
-            return 0;
+            throw new SQLException("Bad value for numeric type: " + value, e);
         }
     }
 
@@ -272,18 +283,32 @@ final class JdbcCompat {
         return value != null ? String.valueOf(value) : null;
     }
 
-    static boolean toBoolean(Object value) {
+    static boolean toBoolean(Object value) throws SQLException {
         if (value == null) {
             return false;
         }
         if (value instanceof Boolean bool) {
             return bool;
         }
-        var text = String.valueOf(value).toLowerCase(Locale.ROOT);
-        return "true".equals(text) || "t".equals(text) || "1".equals(text);
+        if (value instanceof Number number) {
+            var numericValue = number.longValue();
+            if (numericValue == 1L) {
+                return true;
+            }
+            if (numericValue == 0L) {
+                return false;
+            }
+            throw new SQLException("Cannot cast to boolean: " + value);
+        }
+        var text = String.valueOf(value).trim().toLowerCase(Locale.ROOT);
+        return switch (text) {
+            case "true", "t", "yes", "y", "on", "1" -> true;
+            case "false", "f", "no", "n", "off", "0" -> false;
+            default -> throw new SQLException("Cannot cast to boolean: " + value);
+        };
     }
 
-    static BigDecimal toBigDecimal(Object value) {
+    static BigDecimal toBigDecimal(Object value) throws SQLException {
         if (value == null) {
             return null;
         }
@@ -296,11 +321,11 @@ final class JdbcCompat {
         try {
             return new BigDecimal(String.valueOf(value));
         } catch (NumberFormatException e) {
-            return null;
+            throw new SQLException("Bad value for numeric type: " + value, e);
         }
     }
 
-    static BigDecimal toBigDecimal(Object value, int scale) {
+    static BigDecimal toBigDecimal(Object value, int scale) throws SQLException {
         var decimal = toBigDecimal(value);
         return decimal == null ? null : decimal.setScale(scale, java.math.RoundingMode.HALF_UP);
     }
@@ -482,7 +507,7 @@ final class JdbcCompat {
         return value;
     }
 
-    static Object coerce(Object value, Class<?> targetType) {
+    static Object coerce(Object value, Class<?> targetType) throws SQLException {
         if (value == null) {
             return null;
         }

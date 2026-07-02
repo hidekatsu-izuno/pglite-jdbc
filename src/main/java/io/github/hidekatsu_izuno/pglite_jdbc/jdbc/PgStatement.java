@@ -27,6 +27,7 @@ final class PgStatement implements InvocationHandler {
     private final PgConnection connection;
     private final String preparedSql;
     private final String preparedProtocolSql;
+    private final int parameterCount;
     private final TreeMap<Integer, Object> parameters = new TreeMap<>();
     private final List<String> sqlBatch = new ArrayList<>();
     private final List<Object[]> preparedBatch = new ArrayList<>();
@@ -49,6 +50,7 @@ final class PgStatement implements InvocationHandler {
         this.preparedProtocolSql = preparedSql != null
             ? JdbcCompat.rewriteJdbcParameters(preparedSql)
             : null;
+        this.parameterCount = preparedSql != null ? JdbcCompat.countJdbcParameters(preparedSql) : 0;
         this.prepareThreshold = connection.getPrepareThresholdInternal();
         this.fetchSize = connection.getDefaultFetchSizeInternal();
         this.queryTimeout = connection.getQueryTimeoutInternal();
@@ -236,6 +238,7 @@ final class PgStatement implements InvocationHandler {
     }
 
     private Object setParameter(String methodName, Integer index, Object[] args) throws SQLException {
+        validateParameterIndex(index);
         var value = switch (methodName) {
             case "setNull" -> null;
             case "setArray" -> {
@@ -359,7 +362,14 @@ final class PgStatement implements InvocationHandler {
         try {
             var input = (InputStream) args[1];
             if (args.length >= 3 && args[2] instanceof Number length && length.longValue() >= 0) {
-                return input.readNBytes(Math.toIntExact(length.longValue()));
+                var expected = Math.toIntExact(length.longValue());
+                var bytes = input.readNBytes(expected);
+                if (bytes.length != expected) {
+                    throw new SQLException(
+                        "Premature end of stream: expected " + expected + " bytes, got " + bytes.length
+                    );
+                }
+                return bytes;
             }
             return input.readAllBytes();
         } catch (IOException | ArithmeticException exception) {
@@ -423,6 +433,9 @@ final class PgStatement implements InvocationHandler {
         if (preparedSql != null && (args == null || args.length == 0)) {
             return preparedProtocolSql;
         }
+        if (preparedSql != null) {
+            throw new SQLException(methodName + " does not accept SQL text on a PreparedStatement");
+        }
         if (args != null && args.length > 0 && args[0] instanceof String sql) {
             return sql;
         }
@@ -441,6 +454,14 @@ final class PgStatement implements InvocationHandler {
         return values;
     }
 
+    private void validateParameterIndex(int index) throws SQLException {
+        if (index < 1 || index > parameterCount) {
+            throw new SQLException(
+                "Parameter index out of range: " + index + ", parameter count: " + parameterCount
+            );
+        }
+    }
+
     private ResultSet executeQuery(String sql) throws SQLException {
         var params = preparedSql != null ? buildParams() : null;
         var result = connection.query(sql, params);
@@ -454,6 +475,9 @@ final class PgStatement implements InvocationHandler {
     private int executeUpdate(String sql) throws SQLException {
         if (preparedSql != null) {
             var result = connection.query(sql, buildParams());
+            if (!result.fields().isEmpty()) {
+                throw new SQLException("A result was returned when none was expected");
+            }
             currentResults = List.of();
             currentResultIndex = -1;
             currentResultSet = null;
@@ -461,10 +485,15 @@ final class PgStatement implements InvocationHandler {
             return updateCount;
         }
         var results = connection.exec(sql);
+        for (var result : results) {
+            if (!result.fields().isEmpty()) {
+                throw new SQLException("A result was returned when none was expected");
+            }
+        }
         currentResults = List.of();
         currentResultIndex = -1;
         currentResultSet = null;
-        updateCount = results.isEmpty() ? 0 : JdbcCompat.safeAffectedRows(results.getLast());
+        updateCount = results.isEmpty() ? -1 : JdbcCompat.safeAffectedRows(results.getLast());
         return updateCount;
     }
 
@@ -493,7 +522,7 @@ final class PgStatement implements InvocationHandler {
         currentResultIndex = -1;
         if (results.isEmpty()) {
             currentResultSet = null;
-            updateCount = 0;
+            updateCount = -1;
             return false;
         }
         return advanceResult();
@@ -596,7 +625,10 @@ final class PgStatement implements InvocationHandler {
         }
     }
 
-    private void closeStatement() {
+    private void closeStatement() throws SQLException {
+        if (currentResultSet != null) {
+            currentResultSet.close();
+        }
         closed = true;
         currentResultSet = null;
         currentResults = List.of();
