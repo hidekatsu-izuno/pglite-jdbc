@@ -10,6 +10,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Locale;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -152,6 +153,21 @@ class PgjdbcInspiredResultSetTest {
             assertThrows(SQLException.class, () -> resultSet.getInt("value"));
             assertThrows(SQLException.class, () -> resultSet.getLong("value"));
             assertThrows(SQLException.class, () -> resultSet.getBigDecimal("value"));
+        }
+    }
+
+    @Test
+    void columnLookupIsLocaleIndependentLikePgjdbcTurkishLocaleCase() throws Exception {
+        var previous = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            try (var statement = connection.createStatement();
+                 var resultSet = statement.executeQuery("SELECT 7 AS id")) {
+                assertTrue(resultSet.next());
+                assertEquals(7, resultSet.getInt("ID"));
+            }
+        } finally {
+            Locale.setDefault(previous);
         }
     }
 }

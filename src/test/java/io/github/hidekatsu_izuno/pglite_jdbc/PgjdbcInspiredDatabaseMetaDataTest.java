@@ -175,4 +175,28 @@ class PgjdbcInspiredDatabaseMetaDataTest {
             assertTrue(sawUniquePayloadIndex);
         }
     }
+
+    @Test
+    void databaseMetadataEmptyCatalogAndSchemaArgumentsReturnNoRows() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("CREATE TEMP TABLE pgjdbc_meta_empty_args(id int4 PRIMARY KEY)");
+        }
+
+        var metadata = connection.getMetaData();
+        try (var tables = metadata.getTables("", "", "pgjdbc_meta_empty_args", new String[] { "TABLE" })) {
+            assertFalse(tables.next());
+        }
+
+        try (var columns = metadata.getColumns("", "", "pgjdbc_meta_empty_args", "%")) {
+            assertFalse(columns.next());
+        }
+
+        try (var primaryKeys = metadata.getPrimaryKeys("", "", "pgjdbc_meta_empty_args")) {
+            assertFalse(primaryKeys.next());
+        }
+
+        try (var indexes = metadata.getIndexInfo("", "", "pgjdbc_meta_empty_args", false, false)) {
+            assertFalse(indexes.next());
+        }
+    }
 }

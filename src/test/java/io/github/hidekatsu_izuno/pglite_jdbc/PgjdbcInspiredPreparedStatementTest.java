@@ -163,4 +163,31 @@ class PgjdbcInspiredPreparedStatementTest {
             }
         }
     }
+
+    @Test
+    void preparedStatementQuestionMarksInsideSqlLiteralsCommentsAndIdentifiersAreNotParameters() throws Exception {
+        try (var prepared = connection.prepareStatement("""
+            SELECT
+              '?' AS single_quote,
+              '?' AS "?",
+              $$?$$ AS dollar_quote,
+              $tag$?; still literal$tag$ AS tagged_dollar_quote,
+              ?::int4 AS bound_value
+            -- ? line comment
+            /* ? block comment */
+            """)) {
+            prepared.setInt(1, 42);
+            assertThrows(SQLException.class, () -> prepared.setInt(2, 7));
+
+            try (var resultSet = prepared.executeQuery()) {
+                assertTrue(resultSet.next());
+                assertEquals("?", resultSet.getString("single_quote"));
+                assertEquals("?", resultSet.getString("?"));
+                assertEquals("?", resultSet.getString("dollar_quote"));
+                assertEquals("?; still literal", resultSet.getString("tagged_dollar_quote"));
+                assertEquals(42, resultSet.getInt("bound_value"));
+                assertFalse(resultSet.next());
+            }
+        }
+    }
 }

@@ -495,8 +495,7 @@ final class PgDatabaseMetaData implements InvocationHandler {
     }
 
     private String pattern(Object[] args, int index) {
-        var value = value(args, index);
-        return value == null || value.isBlank() ? null : value;
+        return value(args, index);
     }
 
     private String value(Object[] args, int index) {
