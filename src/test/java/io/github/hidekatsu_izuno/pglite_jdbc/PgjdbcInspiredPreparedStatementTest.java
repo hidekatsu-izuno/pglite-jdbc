@@ -343,6 +343,32 @@ class PgjdbcInspiredPreparedStatementTest {
     }
 
     @Test
+    void preparedStatementSupportsMultipleResultsWithBindsLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("CREATE TEMP TABLE pgjdbc_prepared_multi_results(value int4)");
+        }
+
+        try (var prepared = connection.prepareStatement(
+                 "INSERT INTO pgjdbc_prepared_multi_results(value) VALUES (?); SELECT (42)"
+             )) {
+            prepared.setInt(1, 100500);
+            assertFalse(prepared.execute());
+            assertNull(prepared.getResultSet());
+            assertEquals(1, prepared.getUpdateCount());
+
+            assertTrue(prepared.getMoreResults());
+            try (var resultSet = prepared.getResultSet()) {
+                assertTrue(resultSet.next());
+                assertEquals(42, resultSet.getInt(1));
+                assertFalse(resultSet.next());
+            }
+
+            assertFalse(prepared.getMoreResults());
+            assertEquals(-1, prepared.getUpdateCount());
+        }
+    }
+
+    @Test
     void preparedStatementBatchToStringRendersParameterRowsLikePgjdbc() throws Exception {
         try (var statement = connection.createStatement()) {
             statement.execute("CREATE TEMP TABLE IF NOT EXISTS pgjdbc_stream_test(payload bytea, body text)");

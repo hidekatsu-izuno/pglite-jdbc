@@ -821,6 +821,100 @@ final class PgStatement implements InvocationHandler {
         return true;
     }
 
+    private boolean hasMultipleTopLevelStatements(String sql) {
+        var foundStatementTerminator = false;
+        var inSingleQuote = false;
+        var inDoubleQuote = false;
+        var inLineComment = false;
+        var blockCommentDepth = 0;
+        String dollarQuoteTag = null;
+
+        for (var i = 0; i < sql.length(); i++) {
+            var ch = sql.charAt(i);
+            var next = i + 1 < sql.length() ? sql.charAt(i + 1) : '\0';
+
+            if (inLineComment) {
+                if (ch == '\n' || ch == '\r') {
+                    inLineComment = false;
+                }
+                continue;
+            }
+            if (blockCommentDepth > 0) {
+                if (ch == '/' && next == '*') {
+                    blockCommentDepth++;
+                    i++;
+                    continue;
+                }
+                if (ch == '*' && next == '/') {
+                    blockCommentDepth--;
+                    i++;
+                }
+                continue;
+            }
+            if (dollarQuoteTag != null) {
+                if (sql.startsWith(dollarQuoteTag, i)) {
+                    i += dollarQuoteTag.length() - 1;
+                    dollarQuoteTag = null;
+                }
+                continue;
+            }
+            if (inSingleQuote) {
+                if (ch == '\'' && next == '\'') {
+                    i++;
+                    continue;
+                }
+                if (ch == '\'') {
+                    inSingleQuote = false;
+                }
+                continue;
+            }
+            if (inDoubleQuote) {
+                if (ch == '"' && next == '"') {
+                    i++;
+                    continue;
+                }
+                if (ch == '"') {
+                    inDoubleQuote = false;
+                }
+                continue;
+            }
+
+            if (foundStatementTerminator && !Character.isWhitespace(ch)) {
+                return true;
+            }
+            if (ch == '\'') {
+                inSingleQuote = true;
+                continue;
+            }
+            if (ch == '"') {
+                inDoubleQuote = true;
+                continue;
+            }
+            if (ch == '-' && next == '-') {
+                inLineComment = true;
+                i++;
+                continue;
+            }
+            if (ch == '/' && next == '*') {
+                blockCommentDepth = 1;
+                i++;
+                continue;
+            }
+            if (ch == '$') {
+                var closing = sql.indexOf('$', i + 1);
+                if (closing > i && isDollarQuoteTag(sql, i, closing)) {
+                    dollarQuoteTag = sql.substring(i, closing + 1);
+                    i = closing;
+                    continue;
+                }
+            }
+            if (ch == ';') {
+                foundStatementTerminator = true;
+            }
+        }
+        return false;
+    }
+
     private String renderParameter(Map<Integer, Object> values, int index) {
         if (!values.containsKey(index)) {
             return "?";
@@ -1034,6 +1128,18 @@ final class PgStatement implements InvocationHandler {
         var generatedColumns = preparedSql != null ? preparedGeneratedColumns : generatedColumns(args, 1);
         if (preparedSql != null) {
             if (generatedColumns == null) {
+                if (hasMultipleTopLevelStatements(preparedSql)) {
+                    var results = connection.execArray(renderPreparedSql(parameters), this::addWarning);
+                    generatedKeys = null;
+                    currentResults = results;
+                    currentResultIndex = -1;
+                    if (results.isEmpty()) {
+                        currentResultSet = null;
+                        updateCount = -1;
+                        return false;
+                    }
+                    return advanceResult();
+                }
                 var result = connection.queryArray(sql, buildParams(), this::addWarning);
                 currentResults = List.of();
                 currentResultIndex = -1;
