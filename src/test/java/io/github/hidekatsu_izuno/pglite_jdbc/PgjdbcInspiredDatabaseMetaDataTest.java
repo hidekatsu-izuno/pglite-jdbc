@@ -167,6 +167,45 @@ class PgjdbcInspiredDatabaseMetaDataTest {
     }
 
     @Test
+    void databaseMetadataSqlGrammarAndNamespaceFlagsMatchPgjdbc() throws Exception {
+        var metadata = connection.getMetaData();
+
+        assertTrue(metadata.supportsTableCorrelationNames());
+        assertFalse(metadata.supportsDifferentTableCorrelationNames());
+        assertTrue(metadata.supportsExpressionsInOrderBy());
+        assertTrue(metadata.supportsOrderByUnrelated());
+        assertTrue(metadata.supportsGroupBy());
+        assertTrue(metadata.supportsGroupByUnrelated());
+        assertTrue(metadata.supportsGroupByBeyondSelect());
+        assertTrue(metadata.supportsLikeEscapeClause());
+        assertTrue(metadata.supportsMultipleResultSets());
+        assertTrue(metadata.supportsMultipleTransactions());
+        assertTrue(metadata.supportsNonNullableColumns());
+        assertTrue(metadata.supportsMinimumSQLGrammar());
+        assertFalse(metadata.supportsCoreSQLGrammar());
+        assertFalse(metadata.supportsExtendedSQLGrammar());
+        assertTrue(metadata.supportsANSI92EntryLevelSQL());
+        assertFalse(metadata.supportsANSI92IntermediateSQL());
+        assertFalse(metadata.supportsANSI92FullSQL());
+        assertTrue(metadata.supportsIntegrityEnhancementFacility());
+        assertTrue(metadata.supportsOuterJoins());
+        assertTrue(metadata.supportsFullOuterJoins());
+        assertTrue(metadata.supportsLimitedOuterJoins());
+
+        assertTrue(metadata.isCatalogAtStart());
+        assertTrue(metadata.supportsSchemasInDataManipulation());
+        assertTrue(metadata.supportsSchemasInProcedureCalls());
+        assertTrue(metadata.supportsSchemasInTableDefinitions());
+        assertTrue(metadata.supportsSchemasInIndexDefinitions());
+        assertTrue(metadata.supportsSchemasInPrivilegeDefinitions());
+        assertFalse(metadata.supportsCatalogsInDataManipulation());
+        assertFalse(metadata.supportsCatalogsInProcedureCalls());
+        assertFalse(metadata.supportsCatalogsInTableDefinitions());
+        assertFalse(metadata.supportsCatalogsInIndexDefinitions());
+        assertFalse(metadata.supportsCatalogsInPrivilegeDefinitions());
+    }
+
+    @Test
     void databaseMetadataReportsDroppedColumnOrdinalsAndImplicitNumericPrecisionLikePgjdbc() throws Exception {
         try (var statement = connection.createStatement()) {
             statement.execute("""

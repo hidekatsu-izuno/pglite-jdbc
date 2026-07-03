@@ -68,8 +68,23 @@ final class PgDatabaseMetaData implements InvocationHandler {
             case "storesMixedCaseQuotedIdentifiers" -> false;
             case "supportsAlterTableWithAddColumn", "supportsAlterTableWithDropColumn",
                 "supportsColumnAliasing", "nullPlusNonNullIsNull" -> true;
+            case "supportsTableCorrelationNames", "supportsExpressionsInOrderBy",
+                "supportsOrderByUnrelated", "supportsGroupBy", "supportsGroupByUnrelated",
+                "supportsGroupByBeyondSelect", "supportsLikeEscapeClause",
+                "supportsMultipleResultSets", "supportsMultipleTransactions",
+                "supportsNonNullableColumns", "supportsMinimumSQLGrammar",
+                "supportsANSI92EntryLevelSQL", "supportsIntegrityEnhancementFacility",
+                "supportsOuterJoins", "supportsFullOuterJoins", "supportsLimitedOuterJoins" -> true;
+            case "supportsDifferentTableCorrelationNames", "supportsCoreSQLGrammar",
+                "supportsExtendedSQLGrammar", "supportsANSI92IntermediateSQL",
+                "supportsANSI92FullSQL" -> false;
+            case "isCatalogAtStart" -> true;
             case "supportsSchemasInTableDefinitions", "supportsSchemasInDataManipulation",
-                "supportsCatalogsInTableDefinitions" -> true;
+                "supportsSchemasInProcedureCalls", "supportsSchemasInIndexDefinitions",
+                "supportsSchemasInPrivilegeDefinitions" -> true;
+            case "supportsCatalogsInTableDefinitions", "supportsCatalogsInDataManipulation",
+                "supportsCatalogsInProcedureCalls", "supportsCatalogsInIndexDefinitions",
+                "supportsCatalogsInPrivilegeDefinitions" -> false;
             case "getIdentifierQuoteString" -> "\"";
             case "getExtraNameCharacters" -> "";
             case "storesLowerCaseIdentifiers" -> true;
