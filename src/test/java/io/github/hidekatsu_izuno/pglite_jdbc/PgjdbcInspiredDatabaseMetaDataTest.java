@@ -77,6 +77,10 @@ class PgjdbcInspiredDatabaseMetaDataTest {
                 var sawFloat8 = false;
                 var sawMoney = false;
                 var sawText = false;
+                var sawBool = false;
+                var sawVarbit = false;
+                var sawTimetz = false;
+                var sawTimestamptz = false;
                 var typeNames = new ArrayList<String>();
                 try (var types = metadata.getTypeInfo()) {
                     while (types.next()) {
@@ -102,6 +106,18 @@ class PgjdbcInspiredDatabaseMetaDataTest {
                             assertEquals("'", types.getString("LITERAL_SUFFIX"));
                             assertTrue(types.getBoolean("UNSIGNED_ATTRIBUTE"));
                             sawText = true;
+                        } else if ("bool".equals(typeName)) {
+                            assertEquals(Types.BIT, types.getInt("DATA_TYPE"));
+                            sawBool = true;
+                        } else if ("varbit".equals(typeName)) {
+                            assertEquals(Types.OTHER, types.getInt("DATA_TYPE"));
+                            sawVarbit = true;
+                        } else if ("timetz".equals(typeName)) {
+                            assertEquals(Types.TIME, types.getInt("DATA_TYPE"));
+                            sawTimetz = true;
+                        } else if ("timestamptz".equals(typeName)) {
+                            assertEquals(Types.TIMESTAMP, types.getInt("DATA_TYPE"));
+                            sawTimestamptz = true;
                         }
                     }
                 }
@@ -110,6 +126,10 @@ class PgjdbcInspiredDatabaseMetaDataTest {
                 assertTrue(sawFloat8);
                 assertTrue(sawMoney);
                 assertTrue(sawText);
+                assertTrue(sawBool);
+                assertTrue(sawVarbit);
+                assertTrue(sawTimetz);
+                assertTrue(sawTimestamptz);
                 assertTrue(typeNames.containsAll(List.of(
                     "bit",
                     "bool",
@@ -1244,7 +1264,7 @@ class PgjdbcInspiredDatabaseMetaDataTest {
             assertTrue(columns.next());
             assertEquals("c", columns.getString("COLUMN_NAME"));
             assertEquals(DatabaseMetaData.procedureColumnOut, columns.getInt("COLUMN_TYPE"));
-            assertEquals(Types.TIMESTAMP_WITH_TIMEZONE, columns.getInt("DATA_TYPE"));
+            assertEquals(Types.TIMESTAMP, columns.getInt("DATA_TYPE"));
             assertFalse(columns.next());
         }
 

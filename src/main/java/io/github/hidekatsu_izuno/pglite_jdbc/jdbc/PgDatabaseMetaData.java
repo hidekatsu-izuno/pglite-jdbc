@@ -324,10 +324,12 @@ final class PgDatabaseMetaData implements InvocationHandler {
     }
 
     private Integer columnSize(int oid, int typmod) {
+        if (oid == 1560 || oid == 1562) {
+            return typmod >= 0 ? typmod : null;
+        }
         var jdbcType = JdbcCompat.oidToJdbcType(oid);
         return switch (jdbcType) {
             case Types.NUMERIC, Types.DECIMAL -> typmod >= 4 ? ((typmod - 4) >> 16) & 0xffff : 0;
-            case Types.BIT -> typmod >= 0 ? typmod : null;
             case Types.CHAR, Types.VARCHAR -> typmod >= 4 ? typmod - 4 : Integer.MAX_VALUE;
             case Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY -> Integer.MAX_VALUE;
             case Types.INTEGER -> 10;
@@ -999,7 +1001,7 @@ final class PgDatabaseMetaData implements InvocationHandler {
     private ResultSet getTypeInfo() {
         var rows = new ArrayList<Map<String, Object>>();
         addType(rows, "bit", Types.BIT, 83886080, false);
-        addType(rows, "bool", Types.BOOLEAN, 1, false);
+        addType(rows, "bool", Types.BIT, 1, false);
         addType(rows, "box", Types.OTHER, 0, true);
         addType(rows, "bytea", Types.BINARY, Integer.MAX_VALUE, true);
         addType(rows, "char", Types.CHAR, 1, true);
@@ -1025,13 +1027,13 @@ final class PgDatabaseMetaData implements InvocationHandler {
         addType(rows, "text", Types.VARCHAR, Integer.MAX_VALUE, true);
         addType(rows, "time", Types.TIME, 15, true);
         addType(rows, "timestamp", Types.TIMESTAMP, 29, true);
-        addType(rows, "timestamptz", Types.TIMESTAMP_WITH_TIMEZONE, 35, true);
-        addType(rows, "timetz", Types.TIME_WITH_TIMEZONE, 21, true);
+        addType(rows, "timestamptz", Types.TIMESTAMP, 35, true);
+        addType(rows, "timetz", Types.TIME, 21, true);
         addType(rows, "tsquery", Types.OTHER, 0, true);
         addType(rows, "tsvector", Types.OTHER, 0, true);
         addType(rows, "txid_snapshot", Types.OTHER, 0, true);
         addType(rows, "uuid", Types.OTHER, 36, true);
-        addType(rows, "varbit", Types.BIT, 83886080, false);
+        addType(rows, "varbit", Types.OTHER, 83886080, false);
         addType(rows, "varchar", Types.VARCHAR, Integer.MAX_VALUE, true);
         addType(rows, "xml", Types.SQLXML, Integer.MAX_VALUE, true);
         addType(rows, "json", Types.OTHER, Integer.MAX_VALUE, true);

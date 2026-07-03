@@ -109,7 +109,7 @@ final class PgResultSetMetaData implements InvocationHandler {
     }
 
     private String columnClassName(int oid) {
-        if (oid == 1560) {
+        if (oid == 16 || oid == 1560) {
             return Boolean.class.getName();
         }
         return switch (JdbcCompat.oidToJdbcType(oid)) {
@@ -241,7 +241,7 @@ final class PgResultSetMetaData implements InvocationHandler {
 
     private int nullable(Column column) throws SQLException {
         var info = fieldInfo(column);
-        return info == null ? ResultSetMetaData.columnNullableUnknown : info.nullable();
+        return info == null ? ResultSetMetaData.columnNullable : info.nullable();
     }
 
     private boolean autoIncrement(Column column) throws SQLException {

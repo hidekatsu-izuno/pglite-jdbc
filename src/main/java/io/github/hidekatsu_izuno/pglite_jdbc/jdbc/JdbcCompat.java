@@ -694,21 +694,23 @@ final class JdbcCompat {
 
     static int oidToJdbcType(int oid) {
         return switch (oid) {
-            case 16 -> Types.BOOLEAN;
+            case 16 -> Types.BIT;
             case 18 -> Types.CHAR;
             case 19 -> Types.VARCHAR;
             case 20, 26 -> Types.BIGINT;
             case 21 -> Types.SMALLINT;
             case 23 -> Types.INTEGER;
-            case 25, 1042, 1043 -> Types.VARCHAR;
-            case 1560, 1562 -> Types.BIT;
+            case 25, 1043 -> Types.VARCHAR;
+            case 1042 -> Types.CHAR;
+            case 1560 -> Types.BIT;
+            case 1562 -> Types.OTHER;
             case 700 -> Types.REAL;
             case 701, 790 -> Types.DOUBLE;
             case 1082 -> Types.DATE;
             case 1083 -> Types.TIME;
-            case 1266 -> Types.TIME_WITH_TIMEZONE;
+            case 1266 -> Types.TIME;
             case 1114 -> Types.TIMESTAMP;
-            case 1184 -> Types.TIMESTAMP_WITH_TIMEZONE;
+            case 1184 -> Types.TIMESTAMP;
             case 1700 -> Types.NUMERIC;
             case 17 -> Types.BINARY;
             case 1000, 1001, 1002, 1003, 1005, 1007, 1009, 1014, 1015, 1016, 1021, 1022, 1028,

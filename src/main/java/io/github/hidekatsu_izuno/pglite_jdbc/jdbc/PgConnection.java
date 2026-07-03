@@ -1107,7 +1107,7 @@ public final class PgConnection implements InvocationHandler {
             return Types.OTHER;
         }
         return switch (typeName.toLowerCase()) {
-            case "bool", "boolean" -> Types.BOOLEAN;
+            case "bool", "boolean" -> Types.BIT;
             case "int2", "smallint" -> Types.SMALLINT;
             case "int4", "integer", "int" -> Types.INTEGER;
             case "int8", "bigint" -> Types.BIGINT;
@@ -1116,15 +1116,16 @@ public final class PgConnection implements InvocationHandler {
             case "float8", "double", "double precision" -> Types.DOUBLE;
             case "money" -> Types.DOUBLE;
             case "numeric", "decimal" -> Types.NUMERIC;
-            case "char" -> Types.CHAR;
-            case "name", "text", "varchar", "character varying", "bpchar", "character" -> Types.VARCHAR;
-            case "bit", "varbit" -> Types.BIT;
+            case "char", "bpchar", "character" -> Types.CHAR;
+            case "name", "text", "varchar", "character varying" -> Types.VARCHAR;
+            case "bit" -> Types.BIT;
+            case "varbit" -> Types.OTHER;
             case "bytea" -> Types.BINARY;
             case "date" -> Types.DATE;
             case "time" -> Types.TIME;
-            case "timetz", "time with time zone" -> Types.TIME_WITH_TIMEZONE;
+            case "timetz", "time with time zone" -> Types.TIME;
             case "timestamp" -> Types.TIMESTAMP;
-            case "timestamptz", "timestamp with time zone" -> Types.TIMESTAMP_WITH_TIMEZONE;
+            case "timestamptz", "timestamp with time zone" -> Types.TIMESTAMP;
             case "uuid", "json", "jsonb", "inet", "cidr", "macaddr", "macaddr8" -> Types.OTHER;
             case "bool[]", "_bool", "int2[]", "_int2", "int4[]", "_int4", "int8[]", "_int8",
                 "text[]", "_text", "varchar[]", "_varchar", "bytea[]", "_bytea", "uuid[]", "_uuid",
@@ -1246,7 +1247,7 @@ public final class PgConnection implements InvocationHandler {
     }
 
     private String javaClassForOid(int oid) {
-        if (oid == 1560) {
+        if (oid == 16 || oid == 1560) {
             return Boolean.class.getName();
         }
         return switch (JdbcCompat.oidToJdbcType(oid)) {
@@ -1273,7 +1274,7 @@ public final class PgConnection implements InvocationHandler {
     private boolean requiresQuotingSqlType(int sqlType) {
         return switch (sqlType) {
             case Types.INTEGER, Types.SMALLINT, Types.BIGINT, Types.DECIMAL, Types.NUMERIC,
-                Types.REAL, Types.DOUBLE, Types.FLOAT, Types.BOOLEAN -> false;
+                Types.REAL, Types.DOUBLE, Types.FLOAT, Types.BOOLEAN, Types.BIT -> false;
             default -> true;
         };
     }

@@ -356,12 +356,21 @@ class OrgPostgresqlCompatibilityTest {
                 assertEquals(java.sql.Types.DOUBLE, typeInfo.getSQLType(790));
                 assertEquals(791, typeInfo.getPGArrayType("money"));
                 assertEquals(790, typeInfo.getPGArrayElement(791));
+                assertEquals(16, typeInfo.getPGType("bool"));
+                assertEquals("bool", typeInfo.getPGType(16));
+                assertEquals(java.sql.Types.BIT, typeInfo.getSQLType(16));
+                assertEquals(Boolean.class.getName(), typeInfo.getJavaClass(16));
+                assertEquals(java.sql.Types.CHAR, typeInfo.getSQLType(1042));
                 assertEquals(1560, typeInfo.getPGType("bit"));
                 assertEquals("bit", typeInfo.getPGType(1560));
+                assertEquals(java.sql.Types.BIT, typeInfo.getSQLType(1560));
                 assertEquals(Boolean.class.getName(), typeInfo.getJavaClass(1560));
                 assertEquals(1562, typeInfo.getPGType("varbit"));
                 assertEquals("varbit", typeInfo.getPGType(1562));
+                assertEquals(java.sql.Types.OTHER, typeInfo.getSQLType(1562));
                 assertEquals(String.class.getName(), typeInfo.getJavaClass(1562));
+                assertEquals(java.sql.Types.TIME, typeInfo.getSQLType(1266));
+                assertEquals(java.sql.Types.TIMESTAMP, typeInfo.getSQLType(1184));
                 assertEquals(1561, typeInfo.getPGArrayType("bit"));
                 assertEquals(1563, typeInfo.getPGArrayType("varbit"));
                 assertEquals(1560, typeInfo.getPGArrayElement(1561));
@@ -547,7 +556,7 @@ class OrgPostgresqlCompatibilityTest {
                 assertEquals("jsonb", typeInfo.getPGType(3802));
                 assertEquals(2950, typeInfo.getPGArrayElement(2951));
                 assertEquals(2951, typeInfo.getPGArrayType("uuid"));
-                assertEquals(java.sql.Types.TIMESTAMP_WITH_TIMEZONE, typeInfo.getSQLType("timestamptz"));
+                assertEquals(java.sql.Types.TIMESTAMP, typeInfo.getSQLType("timestamptz"));
 
                 try (var imported = metadata.getImportedKeys(null, "public", "meta_child")) {
                     assertTrue(imported.next());

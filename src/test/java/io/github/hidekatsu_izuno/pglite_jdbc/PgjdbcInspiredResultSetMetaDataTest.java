@@ -89,7 +89,7 @@ class PgjdbcInspiredResultSetMetaDataTest {
             assertEquals(Boolean.class.getName(), metadata.getColumnClassName(8));
             assertEquals(1, metadata.getPrecision(8));
             assertEquals(1, metadata.getColumnDisplaySize(8));
-            assertEquals(Types.BIT, metadata.getColumnType(9));
+            assertEquals(Types.OTHER, metadata.getColumnType(9));
             assertEquals(String.class.getName(), metadata.getColumnClassName(9));
             assertEquals(3, metadata.getPrecision(9));
             assertEquals(3, metadata.getColumnDisplaySize(9));
@@ -122,7 +122,7 @@ class PgjdbcInspiredResultSetMetaDataTest {
                 assertEquals("", metadata.getBaseTableName(3));
                 assertEquals("", metadata.getBaseSchemaName(3));
                 assertEquals(false, resultSetMetaData.isAutoIncrement(3));
-                assertEquals(java.sql.ResultSetMetaData.columnNullableUnknown, resultSetMetaData.isNullable(3));
+                assertEquals(java.sql.ResultSetMetaData.columnNullable, resultSetMetaData.isNullable(3));
             }
         }
     }
