@@ -142,11 +142,11 @@ final class PgDatabaseMetaData implements InvocationHandler {
                    n.nspname AS table_schem,
                    c.relname AS table_name,
                    a.attname AS column_name,
-                   a.atttypid::int AS pg_type_oid,
-                   a.atttypmod AS pg_type_mod,
+                   CASE WHEN t.typtype = 'd' THEN t.typbasetype ELSE a.atttypid END::int AS pg_type_oid,
+                   CASE WHEN t.typtype = 'd' AND t.typtypmod >= 0 THEN t.typtypmod ELSE a.atttypmod END AS pg_type_mod,
                    format_type(a.atttypid, a.atttypmod) AS type_name,
                    pg_get_serial_sequence(format('%%I.%%I', n.nspname, c.relname), a.attname) AS serial_sequence,
-                   CASE WHEN a.attnotnull THEN 0 ELSE 1 END AS nullable,
+                   CASE WHEN a.attnotnull OR t.typnotnull THEN 0 ELSE 1 END AS nullable,
                    pg_get_expr(d.adbin, d.adrelid) AS column_def,
                    a.attnum AS ordinal_position,
                    a.attidentity AS identity_kind,
@@ -155,6 +155,7 @@ final class PgDatabaseMetaData implements InvocationHandler {
             FROM pg_catalog.pg_attribute a
             JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
             LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
             WHERE c.relkind IN ('r','p','v','m','f')
               AND a.attnum > 0
@@ -229,6 +230,7 @@ final class PgDatabaseMetaData implements InvocationHandler {
         var jdbcType = JdbcCompat.oidToJdbcType(oid);
         return switch (jdbcType) {
             case Types.NUMERIC, Types.DECIMAL -> typmod >= 4 ? ((typmod - 4) >> 16) & 0xffff : null;
+            case Types.BIT -> typmod >= 0 ? typmod : null;
             case Types.CHAR, Types.VARCHAR -> typmod >= 4 ? typmod - 4 : Integer.MAX_VALUE;
             case Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY -> Integer.MAX_VALUE;
             case Types.INTEGER -> 10;

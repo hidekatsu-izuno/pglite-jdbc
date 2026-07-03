@@ -599,6 +599,44 @@ class PgjdbcInspiredDatabaseMetaDataTest {
         }
     }
 
+    @Test
+    void databaseMetadataReportsDomainColumnDetailsLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("DROP TABLE IF EXISTS pgjdbc_meta_domain_table");
+            statement.execute("DROP DOMAIN IF EXISTS pgjdbc_meta_nndom");
+            statement.execute("DROP DOMAIN IF EXISTS pgjdbc_meta_varbit");
+            statement.execute("DROP DOMAIN IF EXISTS pgjdbc_meta_numeric");
+            statement.execute("CREATE DOMAIN pgjdbc_meta_nndom AS int NOT NULL");
+            statement.execute("CREATE DOMAIN pgjdbc_meta_varbit AS varbit(3)");
+            statement.execute("CREATE DOMAIN pgjdbc_meta_numeric AS numeric(8,3)");
+            statement.execute("""
+                CREATE TABLE pgjdbc_meta_domain_table(
+                  id pgjdbc_meta_nndom,
+                  v pgjdbc_meta_varbit,
+                  f pgjdbc_meta_numeric
+                )
+                """);
+        }
+
+        var metadata = connection.getMetaData();
+        try (var columns = metadata.getColumns(null, null, "pgjdbc_meta_domain_table", "%")) {
+            assertTrue(columns.next());
+            assertEquals("id", columns.getString("COLUMN_NAME"));
+            assertEquals("NO", columns.getString("IS_NULLABLE"));
+            assertEquals(10, columns.getInt("COLUMN_SIZE"));
+
+            assertTrue(columns.next());
+            assertEquals("v", columns.getString("COLUMN_NAME"));
+            assertEquals(3, columns.getInt("COLUMN_SIZE"));
+
+            assertTrue(columns.next());
+            assertEquals("f", columns.getString("COLUMN_NAME"));
+            assertEquals(8, columns.getInt("COLUMN_SIZE"));
+            assertEquals(3, columns.getInt("DECIMAL_DIGITS"));
+            assertFalse(columns.next());
+        }
+    }
+
     private String currentDatabase() throws Exception {
         try (var statement = connection.createStatement();
              var resultSet = statement.executeQuery("SELECT current_database()")) {

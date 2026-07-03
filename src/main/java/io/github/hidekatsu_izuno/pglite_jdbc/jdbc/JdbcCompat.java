@@ -655,6 +655,7 @@ final class JdbcCompat {
             case 21 -> Types.SMALLINT;
             case 23 -> Types.INTEGER;
             case 25, 1042, 1043 -> Types.VARCHAR;
+            case 1560, 1562 -> Types.BIT;
             case 700 -> Types.REAL;
             case 701 -> Types.DOUBLE;
             case 1082 -> Types.DATE;
