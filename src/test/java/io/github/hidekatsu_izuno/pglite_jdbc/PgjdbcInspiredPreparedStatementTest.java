@@ -8,11 +8,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Types;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -218,6 +220,83 @@ class PgjdbcInspiredPreparedStatementTest {
                     3
                 )
             );
+        }
+    }
+
+    @Test
+    void preparedStatementBooleanObjectTargetsNumericTypesLikePgjdbc() throws Exception {
+        try (var prepared = connection.prepareStatement("""
+            SELECT
+              ?::float8 AS true_double,
+              ?::float8 AS false_double,
+              ?::numeric AS true_numeric,
+              ?::numeric AS false_numeric,
+              ?::numeric AS true_decimal,
+              ?::numeric AS false_decimal
+            """)) {
+            prepared.setObject(1, Boolean.TRUE, Types.DOUBLE);
+            prepared.setObject(2, Boolean.FALSE, Types.DOUBLE);
+            prepared.setObject(3, Boolean.TRUE, Types.NUMERIC, 2);
+            prepared.setObject(4, Boolean.FALSE, Types.NUMERIC, 2);
+            prepared.setObject(5, Boolean.TRUE, Types.DECIMAL, 2);
+            prepared.setObject(6, Boolean.FALSE, Types.DECIMAL, 2);
+
+            try (var resultSet = prepared.executeQuery()) {
+                assertTrue(resultSet.next());
+                assertEquals(1.0d, resultSet.getDouble("true_double"));
+                assertEquals(0.0d, resultSet.getDouble("false_double"));
+                assertEquals(0, BigDecimal.ONE.compareTo(resultSet.getBigDecimal("true_numeric")));
+                assertEquals(0, BigDecimal.ZERO.compareTo(resultSet.getBigDecimal("false_numeric")));
+                assertEquals(0, BigDecimal.ONE.compareTo(resultSet.getBigDecimal("true_decimal")));
+                assertEquals(0, BigDecimal.ZERO.compareTo(resultSet.getBigDecimal("false_decimal")));
+                assertFalse(resultSet.next());
+            }
+        }
+    }
+
+    @Test
+    void preparedStatementObjectBigDecimalScaleAndNumberFallbacksLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("CREATE TEMP TABLE pgjdbc_decimal_scale(n1 numeric, n2 numeric, n3 numeric, n4 numeric)");
+        }
+
+        var value = new BigDecimal("3.141593");
+        var valueString = value.toPlainString();
+        var valueFloat = Float.valueOf(valueString);
+        var valueDouble = Double.valueOf(valueString);
+
+        try (var insert = connection.prepareStatement("INSERT INTO pgjdbc_decimal_scale VALUES (?, ?, ?, ?)");
+             var select = connection.prepareStatement("SELECT n1, n2, n3, n4 FROM pgjdbc_decimal_scale");
+             var truncate = connection.prepareStatement("TRUNCATE TABLE pgjdbc_decimal_scale")) {
+            for (var scale = 0; scale < 6; scale++) {
+                insert.setObject(1, value, Types.NUMERIC, scale);
+                insert.setObject(2, valueString, Types.NUMERIC, scale);
+                insert.setObject(3, valueFloat, Types.NUMERIC, scale);
+                insert.setObject(4, valueDouble, Types.NUMERIC, scale);
+                assertEquals(1, insert.executeUpdate());
+
+                try (var resultSet = select.executeQuery()) {
+                    assertTrue(resultSet.next());
+                    var scaled = value.setScale(scale, java.math.RoundingMode.HALF_UP);
+                    assertEquals(0, scaled.compareTo(resultSet.getBigDecimal(1)));
+                    assertEquals(0, scaled.compareTo(resultSet.getBigDecimal(2)));
+                    assertEquals(0, scaled.compareTo(resultSet.getBigDecimal(3)));
+                    assertEquals(0, scaled.compareTo(resultSet.getBigDecimal(4)));
+                    assertFalse(resultSet.next());
+                }
+                truncate.executeUpdate();
+            }
+        }
+
+        try (var prepared = connection.prepareStatement("SELECT ?::numeric AS big_integer, ?::numeric AS atomic_long")) {
+            prepared.setObject(1, new BigInteger("733"));
+            prepared.setObject(2, new AtomicLong(733));
+            try (var resultSet = prepared.executeQuery()) {
+                assertTrue(resultSet.next());
+                assertEquals(0, new BigDecimal("733").compareTo(resultSet.getBigDecimal("big_integer")));
+                assertEquals(0, new BigDecimal("733").compareTo(resultSet.getBigDecimal("atomic_long")));
+                assertFalse(resultSet.next());
+            }
         }
     }
 }

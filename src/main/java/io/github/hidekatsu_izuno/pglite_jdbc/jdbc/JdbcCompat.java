@@ -265,6 +265,9 @@ final class JdbcCompat {
         if (value == null) {
             return 0;
         }
+        if (value instanceof Boolean bool) {
+            return bool ? 1 : 0;
+        }
         if (value instanceof Number number) {
             return number;
         }
@@ -346,6 +349,9 @@ final class JdbcCompat {
         }
         if (value instanceof BigDecimal decimal) {
             return decimal;
+        }
+        if (value instanceof Boolean bool) {
+            return bool ? BigDecimal.ONE : BigDecimal.ZERO;
         }
         if (
             value instanceof Byte ||
