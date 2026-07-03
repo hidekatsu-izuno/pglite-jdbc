@@ -18,6 +18,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.sql.Types;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -94,6 +95,22 @@ class PgjdbcInspiredPreparedStatementTest {
             assertNull(resultSet.getBigDecimal("amount"));
             assertNull(resultSet.getString("body"));
             assertFalse(resultSet.next());
+        }
+    }
+
+    @Test
+    void preparedStatementSetNullWithTypeNameFollowsPgjdbcUuidCase() throws Exception {
+        try (var prepared = connection.prepareStatement("SELECT 'ok' WHERE ? = ? OR (? IS NULL)")) {
+            var uuid = UUID.randomUUID();
+            prepared.setObject(1, uuid, Types.OTHER);
+            prepared.setNull(2, Types.OTHER, "uuid");
+            prepared.setNull(3, Types.OTHER, "uuid");
+
+            try (var resultSet = prepared.executeQuery()) {
+                assertTrue(resultSet.next());
+                assertEquals("ok", resultSet.getString(1));
+                assertFalse(resultSet.next());
+            }
         }
     }
 

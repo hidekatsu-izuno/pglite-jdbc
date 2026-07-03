@@ -249,14 +249,14 @@ final class PgStatement implements InvocationHandler {
                 if (preparedSql == null) {
                     yield null;
                 }
-                var described = connection.describe(preparedProtocolSql);
+                var described = connection.describe(typedPreparedProtocolSql());
                 yield PgResultSetMetaData.create(JdbcCompat.toResultFieldColumns(described.resultFields()));
             }
             case "getParameterMetaData" -> {
                 if (preparedSql == null) {
                     throw JdbcCompat.unsupported(name);
                 }
-                var described = connection.describe(preparedProtocolSql);
+                var described = connection.describe(typedPreparedProtocolSql());
                 ParameterMetaData metadata = PgParameterMetaData.create(parameterTypes(described.queryParams()));
                 yield metadata;
             }
@@ -359,16 +359,35 @@ final class PgStatement implements InvocationHandler {
 
     private void updateParameterTypeOverride(String methodName, Integer index, Object[] args) throws SQLException {
         var oid = switch (methodName) {
-            case "setNull" -> args.length >= 2 && args[1] != null ? jdbcTypeToOid(targetSqlType(args[1])) : null;
+            case "setNull" -> nullParameterOid(args);
             case "setDate" -> 1082;
             case "setTime" -> 1083;
             case "setTimestamp" -> 1114;
-            case "setObject" -> args.length >= 3 && args[2] != null ? jdbcTypeToOid(targetSqlType(args[2])) : null;
+            case "setObject" -> objectParameterOid(args);
             default -> null;
         };
         if (oid != null) {
             parameterTypeOverrides.put(index, oid);
         }
+    }
+
+    private Integer nullParameterOid(Object[] args) throws SQLException {
+        if (args.length >= 3 && args[2] != null) {
+            var oid = connection.pgTypeToOid(String.valueOf(args[2]));
+            return oid == 0 ? null : oid;
+        }
+        return args.length >= 2 && args[1] != null ? jdbcTypeToOid(targetSqlType(args[1])) : null;
+    }
+
+    private Integer objectParameterOid(Object[] args) throws SQLException {
+        if (args.length < 3 || args[2] == null) {
+            return null;
+        }
+        var targetType = targetSqlType(args[2]);
+        if (targetType == Types.OTHER && args[1] instanceof java.util.UUID) {
+            return 2950;
+        }
+        return jdbcTypeToOid(targetType);
     }
 
     private Integer jdbcTypeToOid(int type) {
@@ -572,7 +591,7 @@ final class PgStatement implements InvocationHandler {
 
     private String resolveSql(String methodName, Object[] args) throws SQLException {
         if (preparedSql != null && (args == null || args.length == 0)) {
-            return preparedProtocolSql;
+            return typedPreparedProtocolSql();
         }
         if (preparedSql != null) {
             throw new SQLException(methodName + " does not accept SQL text on a PreparedStatement");
@@ -581,6 +600,28 @@ final class PgStatement implements InvocationHandler {
             return sql;
         }
         throw new SQLException(methodName + " requires SQL text");
+    }
+
+    private String typedPreparedProtocolSql() {
+        if (parameterTypeOverrides.isEmpty()) {
+            return preparedProtocolSql;
+        }
+        var matcher = java.util.regex.Pattern.compile("\\$([0-9]+)(?![0-9])").matcher(preparedProtocolSql);
+        var out = new StringBuffer();
+        while (matcher.find()) {
+            var index = Integer.parseInt(matcher.group(1));
+            var oid = parameterTypeOverrides.get(index);
+            var typeName = oid != null ? JdbcCompat.oidToPgType(oid) : null;
+            if (typeName == null || typeName.startsWith("oid:")) {
+                continue;
+            }
+            matcher.appendReplacement(
+                out,
+                java.util.regex.Matcher.quoteReplacement("($" + index + "::" + typeName + ")")
+            );
+        }
+        matcher.appendTail(out);
+        return out.toString();
     }
 
     private String[] generatedColumns(Object[] args, int offset) {
@@ -782,8 +823,9 @@ final class PgStatement implements InvocationHandler {
         closeCurrentResultSet();
         if (preparedSql != null) {
             var out = new int[preparedBatch.size()];
+            var sql = typedPreparedProtocolSql();
             for (var i = 0; i < preparedBatch.size(); i++) {
-                var result = connection.query(preparedProtocolSql, preparedBatch.get(i));
+                var result = connection.query(sql, preparedBatch.get(i));
                 out[i] = JdbcCompat.safeAffectedRows(result);
             }
             preparedBatch.clear();

@@ -1087,7 +1087,7 @@ public final class PgConnection implements InvocationHandler {
         };
     }
 
-    private int pgTypeToOid(String typeName) {
+    int pgTypeToOid(String typeName) {
         if (typeName == null) {
             return 0;
         }
