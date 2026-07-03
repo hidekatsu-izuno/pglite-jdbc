@@ -388,13 +388,32 @@ class PgjdbcInspiredStatementTest {
                   {d '1900-01-01'} AS d,
                   {t '00:00:00'} AS t,
                   {ts '1900-01-01 00:00:00'} AS ts,
-                  {fn log({fn log(3.0)})} AS log_value
+                  {fn log({fn log(3.0)})} AS log_value,
+                  {fn concat(')', 'a')} AS right_paren,
+                  {fn concat('{','}')} AS braces,
+                  {fn concat('''','"')} AS quotes
                 """)) {
                 assertTrue(resultSet.next());
                 assertEquals("1900-01-01", resultSet.getDate("d").toLocalDate().toString());
                 assertEquals("00:00", resultSet.getTime("t").toLocalTime().toString());
                 assertEquals(1900, resultSet.getTimestamp("ts").toLocalDateTime().getYear());
                 assertEquals(Math.log(Math.log(3.0d)), resultSet.getDouble("log_value"), 0.00001d);
+                assertEquals(")a", resultSet.getString("right_paren"));
+                assertEquals("{}", resultSet.getString("braces"));
+                assertEquals("'\"", resultSet.getString("quotes"));
+                assertFalse(resultSet.next());
+            }
+
+            var javaScriptBody = """
+                var _modules = {};
+                var _current_stack = [];
+                function init() {
+                  return { value: "{fn now()}" };
+                }
+                """;
+            try (var resultSet = statement.executeQuery("SELECT $JAVASCRIPT$" + javaScriptBody + "$JAVASCRIPT$")) {
+                assertTrue(resultSet.next());
+                assertEquals(javaScriptBody, resultSet.getString(1));
                 assertFalse(resultSet.next());
             }
 
