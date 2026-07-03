@@ -131,7 +131,10 @@ final class PgResultSet implements InvocationHandler {
     ) {
         return (ResultSet) Proxy.newProxyInstance(
             PgResultSet.class.getClassLoader(),
-            new Class<?>[] { ResultSet.class },
+            new Class<?>[] {
+                ResultSet.class,
+                org.postgresql.PGRefCursorResultSet.class,
+            },
             new PgResultSet(
                 connection,
                 statement,
@@ -298,6 +301,10 @@ final class PgResultSet implements InvocationHandler {
             case "getMetaData" -> {
                 ensureNotClosed();
                 yield PgResultSetMetaData.create(connection, columns);
+            }
+            case "getRefCursor" -> {
+                ensureNotClosed();
+                yield null;
             }
             case "getStatement" -> {
                 ensureNotClosed();

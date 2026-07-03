@@ -3,6 +3,7 @@ package io.github.hidekatsu_izuno.pglite_jdbc;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTimeout;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -53,6 +54,8 @@ class OrgPostgresqlCompatibilityTest {
                 prepared.setInt(1, 42);
                 try (var resultSet = prepared.executeQuery()) {
                     assertTrue(resultSet.next());
+                    var pgResultSet = resultSet.unwrap(org.postgresql.PGRefCursorResultSet.class);
+                    assertNull(pgResultSet.getRefCursor());
                     assertEquals(42, resultSet.getInt(1));
                     var metadata = resultSet.getMetaData();
                     assertEquals("int4", metadata.getColumnTypeName(1));
