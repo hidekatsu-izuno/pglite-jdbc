@@ -161,7 +161,7 @@ final class PgStatement implements InvocationHandler {
             args.length >= 2 &&
             args[0] instanceof Integer idx
         ) {
-            return setParameter(name, idx, args);
+            return setParameter(method, idx, args);
         }
 
         return switch (name) {
@@ -297,8 +297,9 @@ final class PgStatement implements InvocationHandler {
         };
     }
 
-    private Object setParameter(String methodName, Integer index, Object[] args) throws SQLException {
+    private Object setParameter(Method method, Integer index, Object[] args) throws SQLException {
         validateParameterIndex(index);
+        var methodName = method.getName();
         var value = switch (methodName) {
             case "setNull" -> null;
             case "setArray" -> {
@@ -307,14 +308,14 @@ final class PgStatement implements InvocationHandler {
                 }
                 yield Arrays.asList((Object[]) ((java.sql.Array) args[1]).getArray());
             }
-            case "setBinaryStream" -> readBinaryStream(args);
+            case "setBinaryStream" -> readBinaryStream(method, args);
             case "setAsciiStream" -> {
-                var bytes = readBinaryStream(args);
+                var bytes = readBinaryStream(method, args);
                 yield bytes == null ? null : new String(bytes, StandardCharsets.US_ASCII);
             }
-            case "setCharacterStream", "setNCharacterStream" -> readCharacterStream(args);
-            case "setBlob" -> blobParameter(args);
-            case "setClob", "setNClob" -> clobParameter(args);
+            case "setCharacterStream", "setNCharacterStream" -> readCharacterStream(method, args);
+            case "setBlob" -> blobParameter(method, args);
+            case "setClob", "setNClob" -> clobParameter(method, args);
             case "setSQLXML" -> args[1] == null ? null : ((java.sql.SQLXML) args[1]).getString();
             case "setURL" -> args[1] == null ? null : args[1].toString();
             case "setObject" -> objectParameter(args);
@@ -415,13 +416,14 @@ final class PgStatement implements InvocationHandler {
         return value;
     }
 
-    private byte[] readBinaryStream(Object[] args) throws SQLException {
+    private byte[] readBinaryStream(Method method, Object[] args) throws SQLException {
         if (args[1] == null) {
             return null;
         }
         try {
             var input = (InputStream) args[1];
-            if (args.length >= 3 && args[2] instanceof Number length && length.longValue() >= 0) {
+            if (hasDeclaredStreamLength(method, args)) {
+                var length = (Number) args[2];
                 var expected = Math.toIntExact(length.longValue());
                 var bytes = input.readNBytes(expected);
                 if (bytes.length != expected) {
@@ -437,7 +439,7 @@ final class PgStatement implements InvocationHandler {
         }
     }
 
-    private Object blobParameter(Object[] args) throws SQLException {
+    private Object blobParameter(Method method, Object[] args) throws SQLException {
         if (args[1] == null) {
             return null;
         }
@@ -445,12 +447,16 @@ final class PgStatement implements InvocationHandler {
             return blob.getBytes(1, Math.toIntExact(blob.length()));
         }
         if (args[1] instanceof InputStream) {
-            return readBinaryStream(args);
+            return readBinaryStream(method, args);
         }
         return args[1];
     }
 
-    private Object clobParameter(Object[] args) throws SQLException {
+    private Object blobParameter(Object[] args) throws SQLException {
+        return blobParameter(null, args);
+    }
+
+    private Object clobParameter(Method method, Object[] args) throws SQLException {
         if (args[1] == null) {
             return null;
         }
@@ -458,21 +464,24 @@ final class PgStatement implements InvocationHandler {
             return clob.getSubString(1, Math.toIntExact(clob.length()));
         }
         if (args[1] instanceof Reader) {
-            return readCharacterStream(args);
+            return readCharacterStream(method, args);
         }
         return args[1];
     }
 
-    private String readCharacterStream(Object[] args) throws SQLException {
+    private Object clobParameter(Object[] args) throws SQLException {
+        return clobParameter(null, args);
+    }
+
+    private String readCharacterStream(Method method, Object[] args) throws SQLException {
         if (args[1] == null) {
             return null;
         }
         try {
             var reader = (Reader) args[1];
             var out = new StringBuilder();
-            var remaining = args.length >= 3 && args[2] instanceof Number length
-                ? length.longValue()
-                : Long.MAX_VALUE;
+            var enforceLength = hasDeclaredStreamLength(method, args);
+            var remaining = enforceLength ? ((Number) args[2]).longValue() : Long.MAX_VALUE;
             var buffer = new char[2048];
             while (remaining > 0) {
                 var request = (int) Math.min(buffer.length, remaining);
@@ -483,10 +492,26 @@ final class PgStatement implements InvocationHandler {
                 out.append(buffer, 0, read);
                 remaining -= read;
             }
+            if (enforceLength && remaining > 0) {
+                throw new SQLException(
+                    "Premature end of reader: expected " + (out.length() + remaining)
+                        + " characters, got " + out.length()
+                );
+            }
             return out.toString();
         } catch (IOException exception) {
             throw new SQLException("Failed to read parameter reader", exception);
         }
+    }
+
+    private boolean hasDeclaredStreamLength(Method method, Object[] args) {
+        return method != null
+            && method.getParameterCount() >= 3
+            && args.length >= 3
+            && args[2] instanceof Number length
+            && length.longValue() >= 0
+            && length.longValue() != Integer.MAX_VALUE
+            && length.longValue() != Long.MAX_VALUE;
     }
 
     private String resolveSql(String methodName, Object[] args) throws SQLException {

@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.StringReader;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -258,6 +259,30 @@ class PgjdbcInspiredPreparedStatementTest {
                     3
                 )
             );
+        }
+    }
+
+    @Test
+    void preparedStatementCharacterStreamLengthMustBeSatisfiedAndConnectionRemainsUsable() throws Exception {
+        try (var prepared = connection.prepareStatement("SELECT ?::text AS body")) {
+            assertThrows(
+                SQLException.class,
+                () -> prepared.setCharacterStream(1, new StringReader("xy"), 3)
+            );
+        }
+
+        try (var prepared = connection.prepareStatement("SELECT ?::text AS body")) {
+            prepared.setCharacterStream(1, new StringReader("abc"), 3);
+            try (var resultSet = prepared.executeQuery()) {
+                assertTrue(resultSet.next());
+                assertEquals("abc", resultSet.getString("body"));
+                try (var reader = resultSet.getCharacterStream("body")) {
+                    var buffer = new char[8];
+                    var length = reader.read(buffer);
+                    assertEquals("abc", new String(buffer, 0, length));
+                }
+                assertFalse(resultSet.next());
+            }
         }
     }
 
