@@ -45,7 +45,10 @@ class PgjdbcInspiredResultSetTest {
              )) {
             assertEquals(1, resultSet.findColumn("id"));
             assertEquals(1, resultSet.findColumn("ID"));
+            assertEquals(1, resultSet.findColumn("Id"));
             assertEquals(2, resultSet.findColumn("id2"));
+            assertEquals(2, resultSet.findColumn("ID2"));
+            assertEquals(2, resultSet.findColumn("Id2"));
             assertThrows(SQLException.class, () -> resultSet.findColumn("id3"));
 
             assertFalse(resultSet.absolute(0));
@@ -190,6 +193,7 @@ class PgjdbcInspiredResultSetTest {
              var resultSet = statement.executeQuery("SELECT 1 AS a, 2 AS a")) {
             assertTrue(resultSet.next());
             assertEquals(1, resultSet.findColumn("a"));
+            assertThrows(SQLException.class, () -> resultSet.getInt(-9));
             assertThrows(SQLException.class, () -> resultSet.getInt(0));
             assertThrows(SQLException.class, () -> resultSet.getInt(3));
         }
