@@ -162,9 +162,16 @@ final class PgResultSet implements InvocationHandler {
                 ensureNotClosed();
                 yield PgResultSetMetaData.create(columns);
             }
-            case "getStatement" -> statement;
-            case "findColumn" -> findColumn((String) args[0]);
+            case "getStatement" -> {
+                ensureNotClosed();
+                yield statement;
+            }
+            case "findColumn" -> {
+                ensureNotClosed();
+                yield findColumn((String) args[0]);
+            }
             case "getObject" -> {
+                ensureNotClosed();
                 var column = columnIndex(args[0]);
                 var value = getValue(column);
                 if (args.length == 2 && args[1] instanceof Class<?> targetType) {
@@ -261,10 +268,22 @@ final class PgResultSet implements InvocationHandler {
                 throw new SQLException("Not a wrapper for " + iface.getName());
             }
             case "isWrapperFor" -> ((Class<?>) args[0]).isInstance(proxy);
-            case "getType" -> type;
-            case "getConcurrency" -> concurrency;
-            case "getFetchDirection" -> ResultSet.FETCH_FORWARD;
-            case "getHoldability" -> holdability;
+            case "getType" -> {
+                ensureNotClosed();
+                yield type;
+            }
+            case "getConcurrency" -> {
+                ensureNotClosed();
+                yield concurrency;
+            }
+            case "getFetchDirection" -> {
+                ensureNotClosed();
+                yield ResultSet.FETCH_FORWARD;
+            }
+            case "getHoldability" -> {
+                ensureNotClosed();
+                yield holdability;
+            }
             default -> {
                 if (method.getReturnType() == void.class) {
                     yield null;
