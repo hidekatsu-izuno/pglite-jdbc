@@ -123,6 +123,23 @@ class PgjdbcInspiredResultSetTest {
     }
 
     @Test
+    void forwardOnlyResultSetRejectsScrollMovementLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+             var resultSet = statement.executeQuery("SELECT 1 AS value")) {
+            assertThrows(SQLException.class, () -> resultSet.absolute(1));
+            assertThrows(SQLException.class, resultSet::afterLast);
+            assertThrows(SQLException.class, resultSet::beforeFirst);
+            assertThrows(SQLException.class, resultSet::first);
+            assertThrows(SQLException.class, resultSet::last);
+            assertThrows(SQLException.class, resultSet::previous);
+            assertThrows(SQLException.class, () -> resultSet.relative(1));
+
+            assertTrue(resultSet.next());
+            assertEquals(1, resultSet.getInt("value"));
+        }
+    }
+
+    @Test
     void duplicateColumnNameFindsFirstColumnAndIndexesAreBoundsChecked() throws Exception {
         try (var statement = connection.createStatement();
              var resultSet = statement.executeQuery("SELECT 1 AS a, 2 AS a")) {

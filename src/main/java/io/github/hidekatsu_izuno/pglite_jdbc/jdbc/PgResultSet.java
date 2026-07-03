@@ -173,11 +173,13 @@ final class PgResultSet implements InvocationHandler {
             case "getRow" -> cursor >= 0 && cursor < rows.size() ? cursor + 1 : 0;
             case "beforeFirst" -> {
                 ensureNotClosed();
+                ensureScrollable();
                 cursor = -1;
                 yield null;
             }
             case "afterLast" -> {
                 ensureNotClosed();
+                ensureScrollable();
                 cursor = rows.size();
                 yield null;
             }
@@ -392,6 +394,12 @@ final class PgResultSet implements InvocationHandler {
         }
     }
 
+    private void ensureScrollable() throws SQLException {
+        if (type == ResultSet.TYPE_FORWARD_ONLY) {
+            throw new SQLException("Operation requires a scrollable ResultSet");
+        }
+    }
+
     private Object getValue(Object columnArg) throws SQLException {
         var value = valueAt(columnIndex(columnArg));
         wasNull = value == null;
@@ -445,6 +453,7 @@ final class PgResultSet implements InvocationHandler {
     }
 
     private boolean absolute(int row) throws SQLException {
+        ensureScrollable();
         if (row > 0) {
             return moveToRow(row - 1);
         }
@@ -457,6 +466,7 @@ final class PgResultSet implements InvocationHandler {
 
     private boolean moveToRow(int nextCursor) throws SQLException {
         ensureNotClosed();
+        ensureScrollable();
         if (nextCursor < 0) {
             cursor = -1;
             return false;
@@ -471,6 +481,7 @@ final class PgResultSet implements InvocationHandler {
 
     private void beforeFirst() throws SQLException {
         ensureNotClosed();
+        ensureScrollable();
         cursor = -1;
     }
 
