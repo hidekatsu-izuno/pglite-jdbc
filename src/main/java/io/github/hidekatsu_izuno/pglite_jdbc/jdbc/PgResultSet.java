@@ -169,7 +169,11 @@ final class PgResultSet implements InvocationHandler {
                 yield false;
             }
             case "close" -> {
+                if (closed) {
+                    yield null;
+                }
                 closed = true;
+                closeStatementOnCompletion();
                 yield null;
             }
             case "isClosed" -> closed;
@@ -381,6 +385,16 @@ final class PgResultSet implements InvocationHandler {
     private void ensureNotClosed() throws SQLException {
         if (closed) {
             throw new SQLException("ResultSet is closed");
+        }
+    }
+
+    private void closeStatementOnCompletion() throws SQLException {
+        if (
+            statement != null &&
+            !statement.isClosed() &&
+            statement.isCloseOnCompletion()
+        ) {
+            statement.close();
         }
     }
 

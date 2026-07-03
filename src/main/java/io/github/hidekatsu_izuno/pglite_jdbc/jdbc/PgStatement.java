@@ -51,6 +51,7 @@ final class PgStatement implements InvocationHandler {
     private int queryTimeout;
     private int prepareThreshold;
     private boolean adaptiveFetch;
+    private boolean closeOnCompletion;
 
     private PgStatement(
         PgConnection connection,
@@ -222,7 +223,11 @@ final class PgStatement implements InvocationHandler {
             }
             case "getQueryTimeout" -> queryTimeout;
             case "cancel" -> null;
-            case "setEscapeProcessing", "setCursorName", "setPoolable", "closeOnCompletion" -> null;
+            case "setEscapeProcessing", "setCursorName", "setPoolable" -> null;
+            case "closeOnCompletion" -> {
+                closeOnCompletion = true;
+                yield null;
+            }
             case "setFetchDirection" -> {
                 fetchDirection = fetchDirection((Integer) args[0]);
                 yield null;
@@ -232,7 +237,7 @@ final class PgStatement implements InvocationHandler {
             case "getResultSetType" -> resultSetType;
             case "getResultSetHoldability" -> resultSetHoldability;
             case "isPoolable" -> false;
-            case "isCloseOnCompletion" -> false;
+            case "isCloseOnCompletion" -> closeOnCompletion;
             case "getLargeUpdateCount" -> (long) updateCount;
             case "setLargeMaxRows" -> {
                 maxRows = nonNegativeLongAsInt((Long) args[0], "large max rows");

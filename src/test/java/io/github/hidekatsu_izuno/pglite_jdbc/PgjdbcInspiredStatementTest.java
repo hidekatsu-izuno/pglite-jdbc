@@ -202,6 +202,20 @@ class PgjdbcInspiredStatementTest {
     }
 
     @Test
+    void statementCloseOnCompletionClosesAfterResultSetClose() throws Exception {
+        var statement = connection.createStatement();
+        assertFalse(statement.isCloseOnCompletion());
+        statement.closeOnCompletion();
+        assertTrue(statement.isCloseOnCompletion());
+
+        var resultSet = statement.executeQuery("SELECT 1 AS value");
+        assertFalse(statement.isClosed());
+        resultSet.close();
+        assertTrue(resultSet.isClosed());
+        assertTrue(statement.isClosed());
+    }
+
+    @Test
     void statementRetainsRequestedResultSetOptions() throws Exception {
         try (var statement = connection.createStatement(
                  ResultSet.TYPE_SCROLL_INSENSITIVE,
