@@ -180,6 +180,52 @@ class PgjdbcInspiredDatabaseMetaDataTest {
     }
 
     @Test
+    void databaseMetadataReportsPartitionedTablesLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("DROP TABLE IF EXISTS pgjdbc_meta_partitioned_measurement");
+            statement.execute("""
+                CREATE TABLE pgjdbc_meta_partitioned_measurement (
+                  logdate date NOT NULL,
+                  peaktemp int,
+                  unitsales int,
+                  PRIMARY KEY (logdate)
+                ) PARTITION BY RANGE (logdate)
+                """);
+        }
+
+        var metadata = connection.getMetaData();
+        try (var tables = metadata.getTables(
+            null,
+            null,
+            "pgjdbc_meta_partitioned_measurement",
+            new String[] { "PARTITIONED TABLE" }
+        )) {
+            assertTrue(tables.next());
+            assertEquals("pgjdbc_meta_partitioned_measurement", tables.getString("TABLE_NAME"));
+            assertEquals("PARTITIONED TABLE", tables.getString("TABLE_TYPE"));
+            assertFalse(tables.next());
+        }
+
+        try (var tables = metadata.getTables(
+            null,
+            null,
+            "pgjdbc_meta_partitioned_measurement",
+            new String[] { "TABLE" }
+        )) {
+            assertFalse(tables.next());
+        }
+
+        try (var primaryKeys = metadata.getPrimaryKeys(null, null, "pgjdbc_meta_partitioned_measurement")) {
+            assertTrue(primaryKeys.next());
+            assertEquals("pgjdbc_meta_partitioned_measurement", primaryKeys.getString("TABLE_NAME"));
+            assertEquals("logdate", primaryKeys.getString("COLUMN_NAME"));
+            assertEquals(1, primaryKeys.getInt("KEY_SEQ"));
+            assertEquals("pgjdbc_meta_partitioned_measurement_pkey", primaryKeys.getString("PK_NAME"));
+            assertFalse(primaryKeys.next());
+        }
+    }
+
+    @Test
     void databaseMetadataReportsExpressionPartialIndexesAndUniqueFkTargetsLikePgjdbc() throws Exception {
         try (var statement = connection.createStatement()) {
             statement.execute("""

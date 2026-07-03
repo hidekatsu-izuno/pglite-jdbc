@@ -104,7 +104,7 @@ final class PgDatabaseMetaData implements InvocationHandler {
                    c.relname AS table_name,
                    CASE c.relkind
                      WHEN 'r' THEN 'TABLE'
-                     WHEN 'p' THEN 'TABLE'
+                     WHEN 'p' THEN 'PARTITIONED TABLE'
                      WHEN 'v' THEN 'VIEW'
                      WHEN 'm' THEN 'MATERIALIZED VIEW'
                      WHEN 'f' THEN 'FOREIGN TABLE'
