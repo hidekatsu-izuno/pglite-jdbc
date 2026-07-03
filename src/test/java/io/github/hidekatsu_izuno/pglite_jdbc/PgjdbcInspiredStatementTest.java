@@ -403,7 +403,12 @@ class PgjdbcInspiredStatementTest {
                   {fn log({fn log(3.0)})} AS log_value,
                   {fn concat(')', 'a')} AS right_paren,
                   {fn concat('{','}')} AS braces,
-                  {fn concat('''','"')} AS quotes
+                  {fn concat('''','"')} AS quotes,
+                  {fn ifnull(null,'2')} AS ifnull_value,
+                  {fn user()} AS user_name,
+                  {fn database()} AS database_name,
+                  current_user AS expected_user,
+                  current_database() AS expected_database
                 """)) {
                 assertTrue(resultSet.next());
                 assertEquals("1900-01-01", resultSet.getDate("d").toLocalDate().toString());
@@ -413,6 +418,30 @@ class PgjdbcInspiredStatementTest {
                 assertEquals(")a", resultSet.getString("right_paren"));
                 assertEquals("{}", resultSet.getString("braces"));
                 assertEquals("'\"", resultSet.getString("quotes"));
+                assertEquals("2", resultSet.getString("ifnull_value"));
+                assertEquals(resultSet.getString("expected_user"), resultSet.getString("user_name"));
+                assertEquals(resultSet.getString("expected_database"), resultSet.getString("database_name"));
+                assertFalse(resultSet.next());
+            }
+
+            statement.execute("CREATE TEMP TABLE pgjdbc_escape_like(str1 text, str2 text)");
+            statement.execute("""
+                INSERT INTO pgjdbc_escape_like VALUES
+                  ('_abcd', '_found'),
+                  ('%abcd', '%found')
+                """);
+            try (var resultSet = statement.executeQuery(
+                     "SELECT str2 FROM pgjdbc_escape_like WHERE str1 LIKE '|_abcd' {escape '|'}"
+                 )) {
+                assertTrue(resultSet.next());
+                assertEquals("_found", resultSet.getString(1));
+                assertFalse(resultSet.next());
+            }
+            try (var resultSet = statement.executeQuery(
+                     "SELECT str2 FROM pgjdbc_escape_like WHERE str1 LIKE '|%abcd' {escape '|'}"
+                 )) {
+                assertTrue(resultSet.next());
+                assertEquals("%found", resultSet.getString(1));
                 assertFalse(resultSet.next());
             }
 
