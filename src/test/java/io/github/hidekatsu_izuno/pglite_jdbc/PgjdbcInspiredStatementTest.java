@@ -117,6 +117,18 @@ class PgjdbcInspiredStatementTest {
                 assertEquals(";", resultSet.getString("value"));
                 assertFalse(resultSet.next());
             }
+
+            try (var resultSet = statement.executeQuery("SELECT /* */$$;$$/**//*;*/ AS value")) {
+                assertTrue(resultSet.next());
+                assertEquals(";", resultSet.getString("value"));
+                assertFalse(resultSet.next());
+            }
+
+            try (var resultSet = statement.executeQuery("SELECT /* */--;\n$$a$$/**/--\n--;\n AS value")) {
+                assertTrue(resultSet.next());
+                assertEquals("a", resultSet.getString("value"));
+                assertFalse(resultSet.next());
+            }
         }
     }
 

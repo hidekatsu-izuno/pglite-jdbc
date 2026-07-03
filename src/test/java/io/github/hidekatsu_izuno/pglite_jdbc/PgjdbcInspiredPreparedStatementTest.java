@@ -2,6 +2,7 @@ package io.github.hidekatsu_izuno.pglite_jdbc;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -446,6 +447,25 @@ class PgjdbcInspiredPreparedStatementTest {
                 assertEquals("?", resultSet.getString("dollar_quote"));
                 assertEquals("?; still literal", resultSet.getString("tagged_dollar_quote"));
                 assertEquals(42, resultSet.getInt("bound_value"));
+                assertFalse(resultSet.next());
+            }
+        }
+    }
+
+    @Test
+    void preparedStatementDollarInsideCommentsDoesNotBreakJdbcEscapeParsingLikePgjdbc() throws Exception {
+        try (var prepared = connection.prepareStatement("SELECT /* $ */ {fn curdate()} AS value")) {
+            try (var resultSet = prepared.executeQuery()) {
+                assertTrue(resultSet.next());
+                assertNotNull(resultSet.getString("value"));
+                assertFalse(resultSet.next());
+            }
+        }
+
+        try (var prepared = connection.prepareStatement("SELECT /* $ *//* $ */ {fn curdate()} AS value")) {
+            try (var resultSet = prepared.executeQuery()) {
+                assertTrue(resultSet.next());
+                assertNotNull(resultSet.getString("value"));
                 assertFalse(resultSet.next());
             }
         }
