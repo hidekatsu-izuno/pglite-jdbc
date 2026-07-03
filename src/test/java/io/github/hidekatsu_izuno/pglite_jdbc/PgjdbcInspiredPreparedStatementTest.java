@@ -49,6 +49,22 @@ class PgjdbcInspiredPreparedStatementTest {
     }
 
     @Test
+    void preparedExecuteQueryRejectsUpdatesThatReturnNoRowsLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("CREATE TEMP TABLE pgjdbc_prepared_execute_query_update(i int4)");
+        }
+
+        try (var prepared = connection.prepareStatement(
+            "INSERT INTO pgjdbc_prepared_execute_query_update VALUES (?)"
+        )) {
+            prepared.setInt(1, 1);
+            assertThrows(SQLException.class, prepared::executeQuery);
+            assertNull(prepared.getResultSet());
+            assertEquals(-1, prepared.getUpdateCount());
+        }
+    }
+
+    @Test
     void preparedStatementRejectsOutOfRangeParameterIndexes() throws Exception {
         try (var noParams = connection.prepareStatement("SELECT 1")) {
             assertThrows(SQLException.class, () -> noParams.setString(1, "unused"));

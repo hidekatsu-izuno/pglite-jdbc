@@ -2,6 +2,7 @@ package io.github.hidekatsu_izuno.pglite_jdbc;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -150,6 +151,19 @@ class PgjdbcInspiredStatementTest {
         try (var statement = connection.createStatement()) {
             assertThrows(SQLException.class, () -> statement.executeUpdate("SELECT 1"));
             assertThrows(SQLException.class, () -> statement.executeUpdate("/* empty */; SELECT 1"));
+        }
+    }
+
+    @Test
+    void executeQueryRejectsUpdatesThatReturnNoRowsLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("CREATE TEMP TABLE pgjdbc_execute_query_update(i int4)");
+            assertThrows(
+                SQLException.class,
+                () -> statement.executeQuery("INSERT INTO pgjdbc_execute_query_update VALUES (1)")
+            );
+            assertNull(statement.getResultSet());
+            assertEquals(-1, statement.getUpdateCount());
         }
     }
 

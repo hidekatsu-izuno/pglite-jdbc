@@ -744,6 +744,13 @@ final class PgStatement implements InvocationHandler {
         generatedKeys = null;
         var params = preparedSql != null ? buildParams() : null;
         var result = connection.query(sql, params);
+        if (result.fields().isEmpty()) {
+            currentResults = List.of();
+            currentResultIndex = -1;
+            currentResultSet = null;
+            updateCount = -1;
+            throw new SQLException("No results were returned by the query");
+        }
         currentResults = List.of();
         currentResultIndex = -1;
         currentResultSet = createStatementResultSet(result);
