@@ -51,10 +51,10 @@ final class PgDatabaseMetaData implements InvocationHandler {
             case "getDriverMajorVersion" -> 0;
             case "getDriverMinorVersion" -> 1;
             case "supportsTransactions" -> true;
-            case "supportsResultSetType" -> (Integer) args[0] == ResultSet.TYPE_FORWARD_ONLY;
+            case "supportsResultSetType" -> (Integer) args[0] != ResultSet.TYPE_SCROLL_SENSITIVE;
             case "supportsResultSetConcurrency" ->
-                (Integer) args[0] == ResultSet.TYPE_FORWARD_ONLY &&
-                (Integer) args[1] == ResultSet.CONCUR_READ_ONLY;
+                (Integer) args[0] != ResultSet.TYPE_SCROLL_SENSITIVE;
+            case "ownUpdatesAreVisible", "ownDeletesAreVisible", "ownInsertsAreVisible" -> true;
             case "supportsSchemasInTableDefinitions", "supportsSchemasInDataManipulation",
                 "supportsCatalogsInTableDefinitions" -> true;
             case "getIdentifierQuoteString" -> "\"";

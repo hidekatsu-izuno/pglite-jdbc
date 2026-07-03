@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.DriverManager;
+import java.sql.ResultSet;
 import java.sql.Types;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -97,6 +98,43 @@ class PgjdbcInspiredDatabaseMetaDataTest {
                 assertTrue(sawText);
             }
         });
+    }
+
+    @Test
+    void databaseMetadataResultSetSupportFlagsMatchPgjdbc() throws Exception {
+        var metadata = connection.getMetaData();
+
+        assertTrue(metadata.supportsResultSetType(ResultSet.TYPE_FORWARD_ONLY));
+        assertTrue(metadata.supportsResultSetType(ResultSet.TYPE_SCROLL_INSENSITIVE));
+        assertFalse(metadata.supportsResultSetType(ResultSet.TYPE_SCROLL_SENSITIVE));
+
+        assertTrue(metadata.supportsResultSetConcurrency(
+            ResultSet.TYPE_FORWARD_ONLY,
+            ResultSet.CONCUR_READ_ONLY
+        ));
+        assertTrue(metadata.supportsResultSetConcurrency(
+            ResultSet.TYPE_FORWARD_ONLY,
+            ResultSet.CONCUR_UPDATABLE
+        ));
+        assertTrue(metadata.supportsResultSetConcurrency(
+            ResultSet.TYPE_SCROLL_INSENSITIVE,
+            ResultSet.CONCUR_READ_ONLY
+        ));
+        assertTrue(metadata.supportsResultSetConcurrency(
+            ResultSet.TYPE_SCROLL_INSENSITIVE,
+            ResultSet.CONCUR_UPDATABLE
+        ));
+        assertFalse(metadata.supportsResultSetConcurrency(
+            ResultSet.TYPE_SCROLL_SENSITIVE,
+            ResultSet.CONCUR_READ_ONLY
+        ));
+
+        assertTrue(metadata.ownUpdatesAreVisible(ResultSet.TYPE_FORWARD_ONLY));
+        assertTrue(metadata.ownDeletesAreVisible(ResultSet.TYPE_FORWARD_ONLY));
+        assertTrue(metadata.ownInsertsAreVisible(ResultSet.TYPE_FORWARD_ONLY));
+        assertFalse(metadata.othersUpdatesAreVisible(ResultSet.TYPE_FORWARD_ONLY));
+        assertFalse(metadata.othersDeletesAreVisible(ResultSet.TYPE_FORWARD_ONLY));
+        assertFalse(metadata.othersInsertsAreVisible(ResultSet.TYPE_FORWARD_ONLY));
     }
 
     @Test
