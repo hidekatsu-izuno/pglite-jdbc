@@ -45,6 +45,7 @@ final class PgStatement implements InvocationHandler {
     private int currentResultIndex = -1;
     private java.sql.SQLWarning warnings;
     private int fetchSize;
+    private int fetchDirection = ResultSet.FETCH_FORWARD;
     private int maxRows;
     private int queryTimeout;
     private int prepareThreshold;
@@ -215,8 +216,12 @@ final class PgStatement implements InvocationHandler {
             }
             case "getQueryTimeout" -> queryTimeout;
             case "cancel" -> null;
-            case "setEscapeProcessing", "setCursorName", "setFetchDirection", "setPoolable", "closeOnCompletion" -> null;
-            case "getFetchDirection" -> ResultSet.FETCH_FORWARD;
+            case "setEscapeProcessing", "setCursorName", "setPoolable", "closeOnCompletion" -> null;
+            case "setFetchDirection" -> {
+                fetchDirection = fetchDirection((Integer) args[0]);
+                yield null;
+            }
+            case "getFetchDirection" -> fetchDirection;
             case "getResultSetConcurrency" -> resultSetConcurrency;
             case "getResultSetType" -> resultSetType;
             case "getResultSetHoldability" -> resultSetHoldability;
@@ -627,7 +632,12 @@ final class PgStatement implements InvocationHandler {
             connection,
             self,
             JdbcCompat.toColumns(result.fields()),
-            trimRows(result.rows())
+            trimRows(result.rows()),
+            resultSetType,
+            resultSetConcurrency,
+            resultSetHoldability,
+            fetchSize,
+            fetchDirection
         );
     }
 
@@ -663,6 +673,17 @@ final class PgStatement implements InvocationHandler {
             throw new SQLException("Invalid " + name + ": " + value);
         }
         return (int) value;
+    }
+
+    private int fetchDirection(int value) throws SQLException {
+        if (
+            value != ResultSet.FETCH_FORWARD &&
+            value != ResultSet.FETCH_REVERSE &&
+            value != ResultSet.FETCH_UNKNOWN
+        ) {
+            throw new SQLException("Invalid fetch direction: " + value);
+        }
+        return value;
     }
 
     private ResultSet executeQuery(String sql) throws SQLException {
@@ -845,7 +866,9 @@ final class PgStatement implements InvocationHandler {
             trimRows(result.rows()),
             resultSetType,
             resultSetConcurrency,
-            resultSetHoldability
+            resultSetHoldability,
+            fetchSize,
+            fetchDirection
         );
     }
 

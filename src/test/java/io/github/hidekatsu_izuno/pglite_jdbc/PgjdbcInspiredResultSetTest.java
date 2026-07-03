@@ -95,6 +95,7 @@ class PgjdbcInspiredResultSetTest {
             assertThrows(SQLException.class, resultSet::getStatement);
             assertThrows(SQLException.class, resultSet::clearWarnings);
             assertThrows(SQLException.class, () -> resultSet.setFetchSize(1));
+            assertThrows(SQLException.class, () -> resultSet.setFetchDirection(ResultSet.FETCH_FORWARD));
         }
     }
 
@@ -105,6 +106,19 @@ class PgjdbcInspiredResultSetTest {
             assertThrows(SQLException.class, () -> resultSet.setFetchSize(-1));
             resultSet.setFetchSize(2);
             assertEquals(2, resultSet.getFetchSize());
+        }
+    }
+
+    @Test
+    void forwardOnlyResultSetRejectsNonForwardFetchDirectionLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("SELECT 1 AS value")) {
+            assertEquals(ResultSet.FETCH_FORWARD, resultSet.getFetchDirection());
+            assertThrows(SQLException.class, () -> resultSet.setFetchDirection(ResultSet.FETCH_REVERSE));
+            assertThrows(SQLException.class, () -> resultSet.setFetchDirection(ResultSet.FETCH_UNKNOWN));
+            assertThrows(SQLException.class, () -> resultSet.setFetchDirection(-1));
+            resultSet.setFetchDirection(ResultSet.FETCH_FORWARD);
+            assertEquals(ResultSet.FETCH_FORWARD, resultSet.getFetchDirection());
         }
     }
 

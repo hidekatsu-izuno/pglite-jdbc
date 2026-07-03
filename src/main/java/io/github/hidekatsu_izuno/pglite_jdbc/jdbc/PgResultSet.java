@@ -31,6 +31,7 @@ final class PgResultSet implements InvocationHandler {
     private boolean closed;
     private boolean wasNull;
     private int fetchSize;
+    private int fetchDirection;
     private SQLWarning warnings;
 
     private PgResultSet(
@@ -40,7 +41,9 @@ final class PgResultSet implements InvocationHandler {
         List<Map<String, Object>> rows,
         int type,
         int concurrency,
-        int holdability
+        int holdability,
+        int fetchSize,
+        int fetchDirection
     ) {
         this.connection = connection;
         this.statement = statement;
@@ -49,6 +52,8 @@ final class PgResultSet implements InvocationHandler {
         this.type = type;
         this.concurrency = concurrency;
         this.holdability = holdability;
+        this.fetchSize = fetchSize;
+        this.fetchDirection = fetchDirection;
         this.labelIndex = new HashMap<>();
         for (var i = 0; i < columns.size(); i++) {
             var label = columns.get(i).label();
@@ -78,7 +83,9 @@ final class PgResultSet implements InvocationHandler {
             rows,
             ResultSet.TYPE_FORWARD_ONLY,
             ResultSet.CONCUR_READ_ONLY,
-            ResultSet.CLOSE_CURSORS_AT_COMMIT
+            ResultSet.CLOSE_CURSORS_AT_COMMIT,
+            0,
+            ResultSet.FETCH_FORWARD
         );
     }
 
@@ -91,10 +98,44 @@ final class PgResultSet implements InvocationHandler {
         int concurrency,
         int holdability
     ) {
+        return create(
+            connection,
+            statement,
+            columns,
+            rows,
+            type,
+            concurrency,
+            holdability,
+            0,
+            ResultSet.FETCH_FORWARD
+        );
+    }
+
+    static ResultSet create(
+        PgConnection connection,
+        java.sql.Statement statement,
+        List<Column> columns,
+        List<Map<String, Object>> rows,
+        int type,
+        int concurrency,
+        int holdability,
+        int fetchSize,
+        int fetchDirection
+    ) {
         return (ResultSet) Proxy.newProxyInstance(
             PgResultSet.class.getClassLoader(),
             new Class<?>[] { ResultSet.class },
-            new PgResultSet(connection, statement, columns, rows, type, concurrency, holdability)
+            new PgResultSet(
+                connection,
+                statement,
+                columns,
+                rows,
+                type,
+                concurrency,
+                holdability,
+                fetchSize,
+                fetchDirection
+            )
         );
     }
 
@@ -281,7 +322,17 @@ final class PgResultSet implements InvocationHandler {
             }
             case "getFetchDirection" -> {
                 ensureNotClosed();
-                yield ResultSet.FETCH_FORWARD;
+                yield fetchDirection;
+            }
+            case "setFetchDirection" -> {
+                ensureNotClosed();
+                var value = (Integer) args[0];
+                validateFetchDirection(value);
+                if (type == ResultSet.TYPE_FORWARD_ONLY && value != ResultSet.FETCH_FORWARD) {
+                    throw new SQLException("Invalid fetch direction for forward-only result set: " + value);
+                }
+                fetchDirection = value;
+                yield null;
             }
             case "getHoldability" -> {
                 ensureNotClosed();
@@ -321,6 +372,16 @@ final class PgResultSet implements InvocationHandler {
     private void ensureNotClosed() throws SQLException {
         if (closed) {
             throw new SQLException("ResultSet is closed");
+        }
+    }
+
+    private void validateFetchDirection(int value) throws SQLException {
+        if (
+            value != ResultSet.FETCH_FORWARD &&
+            value != ResultSet.FETCH_REVERSE &&
+            value != ResultSet.FETCH_UNKNOWN
+        ) {
+            throw new SQLException("Invalid fetch direction: " + value);
         }
     }
 

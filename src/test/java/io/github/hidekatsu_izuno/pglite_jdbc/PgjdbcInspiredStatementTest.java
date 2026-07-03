@@ -226,6 +226,24 @@ class PgjdbcInspiredStatementTest {
     }
 
     @Test
+    void statementFetchDirectionAndSizeAreInheritedByResultSetLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement(
+                 ResultSet.TYPE_SCROLL_SENSITIVE,
+                 ResultSet.CONCUR_UPDATABLE
+             )) {
+            statement.setFetchSize(100);
+            statement.setFetchDirection(ResultSet.FETCH_UNKNOWN);
+
+            try (var resultSet = statement.executeQuery("SELECT 1 AS value")) {
+                assertEquals(100, statement.getFetchSize());
+                assertEquals(ResultSet.FETCH_UNKNOWN, statement.getFetchDirection());
+                assertEquals(100, resultSet.getFetchSize());
+                assertEquals(ResultSet.FETCH_UNKNOWN, resultSet.getFetchDirection());
+            }
+        }
+    }
+
+    @Test
     void statementRejectsNegativeLimitsAndTimeoutsLikePgjdbc() throws Exception {
         try (var statement = connection.createStatement()) {
             assertThrows(SQLException.class, () -> statement.setFetchSize(-1));
@@ -242,6 +260,15 @@ class PgjdbcInspiredStatementTest {
             assertEquals(4, statement.getMaxRows());
             assertEquals(4L, statement.getLargeMaxRows());
             assertEquals(5, statement.getQueryTimeout());
+        }
+    }
+
+    @Test
+    void statementRejectsInvalidFetchDirectionLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            assertThrows(SQLException.class, () -> statement.setFetchDirection(-1));
+            statement.setFetchDirection(ResultSet.FETCH_REVERSE);
+            assertEquals(ResultSet.FETCH_REVERSE, statement.getFetchDirection());
         }
     }
 }
