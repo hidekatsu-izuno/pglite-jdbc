@@ -84,6 +84,8 @@ final class PgDatabaseMetaData implements InvocationHandler {
             case "getFunctionColumns" -> getRoutineColumns(args, true);
             case "getProcedureColumns" -> getRoutineColumns(args, false);
             case "getProcedures" -> getProcedures(args);
+            case "getTablePrivileges" -> getTablePrivileges(args);
+            case "getColumnPrivileges" -> getColumnPrivileges(args);
             case "unwrap" -> {
                 var iface = (Class<?>) args[0];
                 if (iface.isInstance(proxy)) {
@@ -577,6 +579,95 @@ final class PgDatabaseMetaData implements InvocationHandler {
             rows.add(out);
         }
         return result(procedureColumns(), rows);
+    }
+
+    private ResultSet getTablePrivileges(Object[] args) throws SQLException {
+        if (!catalogMatches(value(args, 0))) {
+            return result(tablePrivilegeColumns(), List.of());
+        }
+        var schemaPattern = pattern(args, 1);
+        var tablePattern = pattern(args, 2);
+        var sql = """
+            SELECT current_database() AS table_cat,
+                   n.nspname AS table_schem,
+                   c.relname AS table_name,
+                   r.rolname AS grantor,
+                   r.rolname AS grantee
+            FROM pg_catalog.pg_class c
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_catalog.pg_roles r ON r.oid = c.relowner
+            WHERE c.relkind IN ('r','p','v','m','f')
+              AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+              %s
+              %s
+            ORDER BY table_schem, table_name
+            """.formatted(
+                likeCondition("n.nspname", schemaPattern),
+                likeCondition("c.relname", tablePattern)
+            );
+        var rows = new ArrayList<Map<String, Object>>();
+        for (var row : query(sql)) {
+            for (var privilege : List.of("SELECT", "INSERT", "UPDATE", "DELETE", "REFERENCES", "TRIGGER")) {
+                var out = new LinkedHashMap<String, Object>();
+                out.put("TABLE_CAT", row.get("TABLE_CAT"));
+                out.put("TABLE_SCHEM", row.get("TABLE_SCHEM"));
+                out.put("TABLE_NAME", row.get("TABLE_NAME"));
+                out.put("GRANTOR", row.get("GRANTOR"));
+                out.put("GRANTEE", row.get("GRANTEE"));
+                out.put("PRIVILEGE", privilege);
+                out.put("IS_GRANTABLE", "YES");
+                rows.add(out);
+            }
+        }
+        return result(tablePrivilegeColumns(), rows);
+    }
+
+    private ResultSet getColumnPrivileges(Object[] args) throws SQLException {
+        if (!catalogMatches(value(args, 0))) {
+            return result(columnPrivilegeColumns(), List.of());
+        }
+        var schemaPattern = pattern(args, 1);
+        var table = value(args, 2);
+        var columnPattern = pattern(args, 3);
+        var sql = """
+            SELECT current_database() AS table_cat,
+                   n.nspname AS table_schem,
+                   c.relname AS table_name,
+                   a.attname AS column_name,
+                   r.rolname AS grantor,
+                   r.rolname AS grantee
+            FROM pg_catalog.pg_class c
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
+            JOIN pg_catalog.pg_roles r ON r.oid = c.relowner
+            WHERE c.relkind IN ('r','p','v','m','f')
+              AND a.attnum > 0
+              AND NOT a.attisdropped
+              %s
+              %s
+              %s
+            ORDER BY table_schem, table_name, column_name
+            """.formatted(
+                likeCondition("n.nspname", schemaPattern),
+                equalsCondition("c.relname", table),
+                likeCondition("a.attname", columnPattern)
+            );
+        var rows = new ArrayList<Map<String, Object>>();
+        for (var row : query(sql)) {
+            for (var privilege : List.of("SELECT", "INSERT", "UPDATE", "REFERENCES")) {
+                var out = new LinkedHashMap<String, Object>();
+                out.put("TABLE_CAT", row.get("TABLE_CAT"));
+                out.put("TABLE_SCHEM", row.get("TABLE_SCHEM"));
+                out.put("TABLE_NAME", row.get("TABLE_NAME"));
+                out.put("COLUMN_NAME", row.get("COLUMN_NAME"));
+                out.put("GRANTOR", row.get("GRANTOR"));
+                out.put("GRANTEE", row.get("GRANTEE"));
+                out.put("PRIVILEGE", privilege);
+                out.put("IS_GRANTABLE", "YES");
+                rows.add(out);
+            }
+        }
+        return result(columnPrivilegeColumns(), rows);
     }
 
     private void addCompositeReturnColumns(
@@ -1129,6 +1220,31 @@ final class PgDatabaseMetaData implements InvocationHandler {
             new Column("REMARKS", 25),
             new Column("PROCEDURE_TYPE", 21),
             new Column("SPECIFIC_NAME", 19)
+        );
+    }
+
+    private List<Column> tablePrivilegeColumns() {
+        return List.of(
+            new Column("TABLE_CAT", 19),
+            new Column("TABLE_SCHEM", 19),
+            new Column("TABLE_NAME", 19),
+            new Column("GRANTOR", 19),
+            new Column("GRANTEE", 19),
+            new Column("PRIVILEGE", 19),
+            new Column("IS_GRANTABLE", 19)
+        );
+    }
+
+    private List<Column> columnPrivilegeColumns() {
+        return List.of(
+            new Column("TABLE_CAT", 19),
+            new Column("TABLE_SCHEM", 19),
+            new Column("TABLE_NAME", 19),
+            new Column("COLUMN_NAME", 19),
+            new Column("GRANTOR", 19),
+            new Column("GRANTEE", 19),
+            new Column("PRIVILEGE", 19),
+            new Column("IS_GRANTABLE", 19)
         );
     }
 

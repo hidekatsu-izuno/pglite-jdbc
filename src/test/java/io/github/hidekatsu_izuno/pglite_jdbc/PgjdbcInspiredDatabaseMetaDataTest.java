@@ -964,6 +964,49 @@ class PgjdbcInspiredDatabaseMetaDataTest {
         }
     }
 
+    @Test
+    void databaseMetadataReportsPrivilegesLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("CREATE TEMP TABLE pgjdbc_meta_privileges(id int4, name text)");
+        }
+
+        var metadata = connection.getMetaData();
+        try (var tablePrivileges = metadata.getTablePrivileges(null, null, "pgjdbc_meta_privileges")) {
+            var foundSelect = false;
+            while (tablePrivileges.next()) {
+                if ("SELECT".equals(tablePrivileges.getString("PRIVILEGE"))) {
+                    assertNotNull(tablePrivileges.getString("GRANTEE"));
+                    foundSelect = true;
+                }
+            }
+            assertTrue(foundSelect);
+        }
+
+        try (var tablePrivileges = metadata.getTablePrivileges("nonsensecatalog", null, "pgjdbc_meta_privileges")) {
+            assertFalse(tablePrivileges.next());
+            assertEquals(1, tablePrivileges.findColumn("table_cat"));
+            assertEquals(7, tablePrivileges.findColumn("is_grantable"));
+        }
+
+        try (var columnPrivileges = metadata.getColumnPrivileges(null, null, "pgjdbc_meta_privileges", "id")) {
+            var foundSelect = false;
+            while (columnPrivileges.next()) {
+                assertEquals("id", columnPrivileges.getString("COLUMN_NAME"));
+                if ("SELECT".equals(columnPrivileges.getString("PRIVILEGE"))) {
+                    assertNotNull(columnPrivileges.getString("GRANTEE"));
+                    foundSelect = true;
+                }
+            }
+            assertTrue(foundSelect);
+        }
+
+        try (var columnPrivileges = metadata.getColumnPrivileges("nonsensecatalog", null, "pgjdbc_meta_privileges", null)) {
+            assertFalse(columnPrivileges.next());
+            assertEquals(1, columnPrivileges.findColumn("table_cat"));
+            assertEquals(8, columnPrivileges.findColumn("is_grantable"));
+        }
+    }
+
     private String currentDatabase() throws Exception {
         try (var statement = connection.createStatement();
              var resultSet = statement.executeQuery("SELECT current_database()")) {
