@@ -78,6 +78,51 @@ class PgjdbcInspiredResultSetTest {
     }
 
     @Test
+    void relativeMovementMatchesPgjdbcBoundaries() throws Exception {
+        try (var statement = connection.createStatement(
+                 ResultSet.TYPE_SCROLL_INSENSITIVE,
+                 ResultSet.CONCUR_READ_ONLY
+             );
+             var resultSet = statement.executeQuery(
+                 "SELECT x AS id FROM generate_series(1, 6) AS t(x) ORDER BY x"
+             )) {
+            assertFalse(resultSet.relative(0));
+            assertEquals(0, resultSet.getRow());
+            assertTrue(resultSet.isBeforeFirst());
+
+            assertTrue(resultSet.relative(2));
+            assertEquals(2, resultSet.getRow());
+
+            assertTrue(resultSet.relative(1));
+            assertEquals(3, resultSet.getRow());
+
+            assertTrue(resultSet.relative(0));
+            assertEquals(3, resultSet.getRow());
+
+            assertFalse(resultSet.relative(-3));
+            assertEquals(0, resultSet.getRow());
+            assertTrue(resultSet.isBeforeFirst());
+
+            assertTrue(resultSet.relative(4));
+            assertEquals(4, resultSet.getRow());
+
+            assertTrue(resultSet.relative(-1));
+            assertEquals(3, resultSet.getRow());
+
+            assertFalse(resultSet.relative(6));
+            assertEquals(0, resultSet.getRow());
+            assertTrue(resultSet.isAfterLast());
+
+            assertTrue(resultSet.relative(-4));
+            assertEquals(3, resultSet.getRow());
+
+            assertFalse(resultSet.relative(-6));
+            assertEquals(0, resultSet.getRow());
+            assertTrue(resultSet.isBeforeFirst());
+        }
+    }
+
+    @Test
     void resultSetNullAndClosedStateFollowJdbcContract() throws Exception {
         try (var statement = connection.createStatement();
              var resultSet = statement.executeQuery("SELECT NULL::int4 AS value")) {
