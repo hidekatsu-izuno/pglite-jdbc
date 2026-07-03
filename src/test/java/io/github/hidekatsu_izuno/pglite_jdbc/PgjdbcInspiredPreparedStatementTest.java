@@ -113,16 +113,41 @@ class PgjdbcInspiredPreparedStatementTest {
             prepared.setObject(2, null, Types.NUMERIC);
             prepared.setObject(3, null);
             assertEquals(1, prepared.executeUpdate());
+
+            var nullText = new PGobject();
+            nullText.setType("text");
+            nullText.setValue(null);
+            prepared.setObject(1, null, Types.OTHER);
+            prepared.setObject(2, null, Types.OTHER);
+            prepared.setObject(3, nullText, Types.OTHER);
+            assertEquals(1, prepared.executeUpdate());
+
+            prepared.setNull(1, Types.OTHER);
+            prepared.setNull(2, Types.OTHER);
+            prepared.setNull(3, Types.OTHER);
+            assertEquals(1, prepared.executeUpdate());
         }
 
         try (var statement = connection.createStatement();
              var resultSet = statement.executeQuery(
-                 "SELECT id, amount, body FROM pgjdbc_prepared_types ORDER BY body NULLS LAST"
+                 "SELECT id, amount, body FROM pgjdbc_prepared_types ORDER BY body NULLS LAST, id NULLS LAST"
              )) {
             assertTrue(resultSet.next());
             assertEquals(42, resultSet.getInt("id"));
             assertEquals(new BigDecimal("3.14"), resultSet.getBigDecimal("amount"));
             assertEquals("z", resultSet.getString("body"));
+
+            assertTrue(resultSet.next());
+            assertEquals(0, resultSet.getInt("id"));
+            assertTrue(resultSet.wasNull());
+            assertNull(resultSet.getBigDecimal("amount"));
+            assertNull(resultSet.getString("body"));
+
+            assertTrue(resultSet.next());
+            assertEquals(0, resultSet.getInt("id"));
+            assertTrue(resultSet.wasNull());
+            assertNull(resultSet.getBigDecimal("amount"));
+            assertNull(resultSet.getString("body"));
 
             assertTrue(resultSet.next());
             assertEquals(0, resultSet.getInt("id"));
