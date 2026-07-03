@@ -77,6 +77,9 @@ final class PgDatabaseMetaData implements InvocationHandler {
             case "getSchemas" -> getSchemas();
             case "getCatalogs" -> singleColumn("TABLE_CAT", connection.database());
             case "getTypeInfo" -> getTypeInfo();
+            case "getSQLKeywords" -> "reindex";
+            case "getVersionColumns" -> result(bestRowIdentifierColumns(), List.of());
+            case "getBestRowIdentifier" -> getBestRowIdentifier(args);
             case "unwrap" -> {
                 var iface = (Class<?>) args[0];
                 if (iface.isInstance(proxy)) {
@@ -354,6 +357,52 @@ final class PgDatabaseMetaData implements InvocationHandler {
             rows.add(out);
         }
         return result(indexColumns(), rows);
+    }
+
+    private ResultSet getBestRowIdentifier(Object[] args) throws SQLException {
+        if (!catalogMatches(value(args, 0))) {
+            return result(bestRowIdentifierColumns(), List.of());
+        }
+        var schema = value(args, 1);
+        var table = value(args, 2);
+        var sql = """
+            SELECT a.attname AS column_name,
+                   CASE WHEN t.typtype = 'd' THEN t.typbasetype ELSE a.atttypid END::int AS pg_type_oid,
+                   CASE WHEN t.typtype = 'd' AND t.typtypmod >= 0 THEN t.typtypmod ELSE a.atttypmod END AS pg_type_mod,
+                   t.typname AS type_name
+            FROM pg_catalog.pg_index ix
+            JOIN pg_catalog.pg_class c ON c.oid = ix.indrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            JOIN unnest(ix.indkey) WITH ORDINALITY AS u(attnum, ord) ON true
+            JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum = u.attnum
+            JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
+            WHERE ix.indisprimary
+              AND u.ord <= ix.indnkeyatts
+              %s
+              %s
+            ORDER BY u.ord
+            """.formatted(
+                equalsCondition("n.nspname", schema),
+                equalsCondition("c.relname", table)
+            );
+        var raw = query(sql);
+        var rows = new ArrayList<Map<String, Object>>();
+        for (var row : raw) {
+            var oid = number(row.get("PG_TYPE_OID")).intValue();
+            var typmod = number(row.get("PG_TYPE_MOD")).intValue();
+            var columnSize = columnSize(oid, typmod);
+            var out = new LinkedHashMap<String, Object>();
+            out.put("SCOPE", DatabaseMetaData.bestRowSession);
+            out.put("COLUMN_NAME", row.get("COLUMN_NAME"));
+            out.put("DATA_TYPE", JdbcCompat.oidToJdbcType(oid));
+            out.put("TYPE_NAME", row.get("TYPE_NAME"));
+            out.put("COLUMN_SIZE", columnSize);
+            out.put("BUFFER_LENGTH", null);
+            out.put("DECIMAL_DIGITS", decimalDigits(oid, typmod));
+            out.put("PSEUDO_COLUMN", DatabaseMetaData.bestRowNotPseudo);
+            rows.add(out);
+        }
+        return result(bestRowIdentifierColumns(), rows);
     }
 
     private ResultSet getImportedKeys(Object[] args) throws SQLException {
@@ -703,6 +752,19 @@ final class PgDatabaseMetaData implements InvocationHandler {
             new Column("PAGES", 20),
             new Column("FILTER_CONDITION", 25),
             new Column("REMARKS", 25)
+        );
+    }
+
+    private List<Column> bestRowIdentifierColumns() {
+        return List.of(
+            new Column("SCOPE", 21),
+            new Column("COLUMN_NAME", 19),
+            new Column("DATA_TYPE", 23),
+            new Column("TYPE_NAME", 19),
+            new Column("COLUMN_SIZE", 23),
+            new Column("BUFFER_LENGTH", 23),
+            new Column("DECIMAL_DIGITS", 21),
+            new Column("PSEUDO_COLUMN", 21)
         );
     }
 

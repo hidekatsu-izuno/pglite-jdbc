@@ -725,6 +725,57 @@ class PgjdbcInspiredDatabaseMetaDataTest {
         }
     }
 
+    @Test
+    void databaseMetadataReportsBestRowAndVersionColumnsLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("CREATE TEMP TABLE pgjdbc_meta_bestrow(id int4 PRIMARY KEY, name text)");
+        }
+
+        var metadata = connection.getMetaData();
+        try (var bestRows = metadata.getBestRowIdentifier(
+            null,
+            null,
+            "pgjdbc_meta_bestrow",
+            DatabaseMetaData.bestRowSession,
+            false
+        )) {
+            assertTrue(bestRows.next());
+            assertEquals(DatabaseMetaData.bestRowSession, bestRows.getInt("SCOPE"));
+            assertEquals("id", bestRows.getString("COLUMN_NAME"));
+            assertEquals(Types.INTEGER, bestRows.getInt("DATA_TYPE"));
+            assertEquals("int4", bestRows.getString("TYPE_NAME"));
+            assertEquals(10, bestRows.getInt("COLUMN_SIZE"));
+            assertEquals(DatabaseMetaData.bestRowNotPseudo, bestRows.getInt("PSEUDO_COLUMN"));
+            assertFalse(bestRows.next());
+        }
+
+        try (var bestRows = metadata.getBestRowIdentifier(
+            "nonsensecatalog",
+            null,
+            "pgjdbc_meta_bestrow",
+            DatabaseMetaData.bestRowSession,
+            false
+        )) {
+            assertFalse(bestRows.next());
+        }
+
+        try (var versionColumns = metadata.getVersionColumns(null, null, "pg_class")) {
+            var resultSetMetaData = versionColumns.getMetaData();
+            assertEquals("SCOPE", resultSetMetaData.getColumnLabel(1));
+            assertEquals("PSEUDO_COLUMN", resultSetMetaData.getColumnLabel(8));
+            assertFalse(versionColumns.next());
+        }
+    }
+
+    @Test
+    void databaseMetadataSqlKeywordsExcludeSqlStandardAndIncludePostgresqlKeywordsLikePgjdbc() throws Exception {
+        var keywords = List.of(connection.getMetaData().getSQLKeywords().split(","));
+        assertTrue(keywords.contains("reindex"));
+        assertFalse(keywords.contains("select"));
+        assertFalse(keywords.contains("table"));
+        assertEquals(keywords.size(), new java.util.HashSet<>(keywords).size());
+    }
+
     private String currentDatabase() throws Exception {
         try (var statement = connection.createStatement();
              var resultSet = statement.executeQuery("SELECT current_database()")) {
