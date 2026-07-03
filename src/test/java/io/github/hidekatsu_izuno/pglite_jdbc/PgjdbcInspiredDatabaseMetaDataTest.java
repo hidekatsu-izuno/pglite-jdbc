@@ -776,6 +776,54 @@ class PgjdbcInspiredDatabaseMetaDataTest {
         assertEquals(keywords.size(), new java.util.HashSet<>(keywords).size());
     }
 
+    @Test
+    void databaseMetadataReportsUserDefinedTypesLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("DROP DOMAIN IF EXISTS pgjdbc_meta_testint8");
+            statement.execute("DROP TYPE IF EXISTS pgjdbc_meta_composite");
+            statement.execute("CREATE DOMAIN pgjdbc_meta_testint8 AS int8");
+            statement.execute("COMMENT ON DOMAIN pgjdbc_meta_testint8 IS 'jdbc123'");
+            statement.execute("CREATE TYPE pgjdbc_meta_composite AS (i int8)");
+        }
+
+        var metadata = connection.getMetaData();
+        try (var udts = metadata.getUDTs(null, null, "pgjdbc_meta_testint8", null)) {
+            assertTrue(udts.next());
+            assertEquals("public", udts.getString("TYPE_SCHEM"));
+            assertEquals("pgjdbc_meta_testint8", udts.getString("TYPE_NAME"));
+            assertEquals(Types.DISTINCT, udts.getInt("DATA_TYPE"));
+            assertEquals("jdbc123", udts.getString("REMARKS"));
+            assertEquals(Types.BIGINT, udts.getInt("BASE_TYPE"));
+            assertFalse(udts.next());
+        }
+
+        try (var udts = metadata.getUDTs(
+            null,
+            null,
+            "pgjdbc_meta_testint8",
+            new int[] { Types.DISTINCT, Types.STRUCT }
+        )) {
+            assertTrue(udts.next());
+            assertEquals(Types.DISTINCT, udts.getInt("DATA_TYPE"));
+            assertFalse(udts.next());
+        }
+
+        try (var udts = metadata.getUDTs(null, null, "pgjdbc_meta_composite", new int[] { Types.STRUCT })) {
+            assertTrue(udts.next());
+            assertEquals("pgjdbc_meta_composite", udts.getString("TYPE_NAME"));
+            assertEquals(Types.STRUCT, udts.getInt("DATA_TYPE"));
+            udts.getInt("BASE_TYPE");
+            assertTrue(udts.wasNull());
+            assertFalse(udts.next());
+        }
+
+        try (var udts = metadata.getUDTs("nonsensecatalog", null, "pgjdbc_meta_composite", null)) {
+            assertFalse(udts.next());
+            assertEquals(1, udts.findColumn("type_cat"));
+            assertEquals(7, udts.findColumn("base_type"));
+        }
+    }
+
     private String currentDatabase() throws Exception {
         try (var statement = connection.createStatement();
              var resultSet = statement.executeQuery("SELECT current_database()")) {

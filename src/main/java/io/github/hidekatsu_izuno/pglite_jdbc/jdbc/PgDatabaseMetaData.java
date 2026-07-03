@@ -80,6 +80,7 @@ final class PgDatabaseMetaData implements InvocationHandler {
             case "getSQLKeywords" -> "reindex";
             case "getVersionColumns" -> result(bestRowIdentifierColumns(), List.of());
             case "getBestRowIdentifier" -> getBestRowIdentifier(args);
+            case "getUDTs" -> getUDTs(args);
             case "unwrap" -> {
                 var iface = (Class<?>) args[0];
                 if (iface.isInstance(proxy)) {
@@ -403,6 +404,74 @@ final class PgDatabaseMetaData implements InvocationHandler {
             rows.add(out);
         }
         return result(bestRowIdentifierColumns(), rows);
+    }
+
+    private ResultSet getUDTs(Object[] args) throws SQLException {
+        if (!catalogMatches(value(args, 0))) {
+            return result(udtColumns(), List.of());
+        }
+        var schemaPattern = pattern(args, 1);
+        var typePattern = pattern(args, 2);
+        if (typePattern != null && typePattern.contains(".")) {
+            var parts = typePattern.split("\\.");
+            if (parts.length >= 2) {
+                schemaPattern = parts[parts.length - 2];
+                typePattern = parts[parts.length - 1];
+            }
+        }
+        var types = args != null && args.length > 3 && args[3] instanceof int[] values
+            ? java.util.Arrays.stream(values).boxed().collect(java.util.stream.Collectors.toSet())
+            : java.util.Set.<Integer>of();
+        var sql = """
+            SELECT current_database() AS type_cat,
+                   n.nspname AS type_schem,
+                   t.typname AS type_name,
+                   CASE t.typtype
+                     WHEN 'd' THEN %d
+                     WHEN 'c' THEN %d
+                     WHEN 'e' THEN %d
+                     ELSE %d
+                   END AS data_type,
+                   obj_description(t.oid, 'pg_type') AS remarks,
+                   CASE WHEN t.typtype = 'd' THEN t.typbasetype ELSE NULL END::int AS base_type_oid
+            FROM pg_catalog.pg_type t
+            JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+            WHERE t.typtype IN ('d', 'c', 'e')
+              AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+              AND n.nspname NOT LIKE 'pg_toast%%'
+              AND t.typname NOT LIKE '\\_%%'
+              %s
+              %s
+            ORDER BY data_type, type_schem, type_name
+            """.formatted(
+                Types.DISTINCT,
+                Types.STRUCT,
+                Types.DISTINCT,
+                Types.JAVA_OBJECT,
+                likeCondition("n.nspname", schemaPattern),
+                likeCondition("t.typname", typePattern)
+            );
+        var raw = query(sql);
+        var rows = new ArrayList<Map<String, Object>>();
+        for (var row : raw) {
+            var dataType = number(row.get("DATA_TYPE")).intValue();
+            if (!types.isEmpty() && !types.contains(dataType)) {
+                continue;
+            }
+            var baseType = row.get("BASE_TYPE_OID") == null
+                ? null
+                : JdbcCompat.oidToJdbcType(number(row.get("BASE_TYPE_OID")).intValue());
+            var out = new LinkedHashMap<String, Object>();
+            out.put("TYPE_CAT", row.get("TYPE_CAT"));
+            out.put("TYPE_SCHEM", row.get("TYPE_SCHEM"));
+            out.put("TYPE_NAME", row.get("TYPE_NAME"));
+            out.put("CLASS_NAME", null);
+            out.put("DATA_TYPE", dataType);
+            out.put("REMARKS", row.get("REMARKS"));
+            out.put("BASE_TYPE", baseType);
+            rows.add(out);
+        }
+        return result(udtColumns(), rows);
     }
 
     private ResultSet getImportedKeys(Object[] args) throws SQLException {
@@ -765,6 +834,18 @@ final class PgDatabaseMetaData implements InvocationHandler {
             new Column("BUFFER_LENGTH", 23),
             new Column("DECIMAL_DIGITS", 21),
             new Column("PSEUDO_COLUMN", 21)
+        );
+    }
+
+    private List<Column> udtColumns() {
+        return List.of(
+            new Column("TYPE_CAT", 19),
+            new Column("TYPE_SCHEM", 19),
+            new Column("TYPE_NAME", 19),
+            new Column("CLASS_NAME", 19),
+            new Column("DATA_TYPE", 23),
+            new Column("REMARKS", 25),
+            new Column("BASE_TYPE", 21)
         );
     }
 
