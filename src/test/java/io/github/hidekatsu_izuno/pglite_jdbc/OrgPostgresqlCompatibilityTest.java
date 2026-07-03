@@ -356,6 +356,14 @@ class OrgPostgresqlCompatibilityTest {
                 assertEquals(java.sql.Types.DOUBLE, typeInfo.getSQLType(790));
                 assertEquals(791, typeInfo.getPGArrayType("money"));
                 assertEquals(790, typeInfo.getPGArrayElement(791));
+                assertEquals(1560, typeInfo.getPGType("bit"));
+                assertEquals("bit", typeInfo.getPGType(1560));
+                assertEquals(Boolean.class.getName(), typeInfo.getJavaClass(1560));
+                assertEquals(1562, typeInfo.getPGType("varbit"));
+                assertEquals("varbit", typeInfo.getPGType(1562));
+                assertEquals(String.class.getName(), typeInfo.getJavaClass(1562));
+                assertEquals(1561, typeInfo.getPGArrayType("bit"));
+                assertEquals(1563, typeInfo.getPGArrayType("varbit"));
                 assertEquals(1560, typeInfo.getPGArrayElement(1561));
                 assertEquals(1562, typeInfo.getPGArrayElement(1563));
                 assertEquals(Integer.class.getName(), typeInfo.getJavaClass(23));

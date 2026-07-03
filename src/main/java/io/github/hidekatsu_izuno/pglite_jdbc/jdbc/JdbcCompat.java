@@ -731,6 +731,8 @@ final class JdbcCompat {
             case 1114 -> "timestamp";
             case 1184 -> "timestamptz";
             case 1266 -> "timetz";
+            case 1560 -> "bit";
+            case 1562 -> "varbit";
             case 1700 -> "numeric";
             case 2950 -> "uuid";
             case 3802 -> "jsonb";

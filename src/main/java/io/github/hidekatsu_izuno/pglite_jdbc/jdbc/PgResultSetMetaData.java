@@ -108,6 +108,9 @@ final class PgResultSetMetaData implements InvocationHandler {
     }
 
     private String columnClassName(int oid) {
+        if (oid == 1560) {
+            return Boolean.class.getName();
+        }
         return switch (JdbcCompat.oidToJdbcType(oid)) {
             case java.sql.Types.BOOLEAN -> Boolean.class.getName();
             case java.sql.Types.SMALLINT -> Short.class.getName();

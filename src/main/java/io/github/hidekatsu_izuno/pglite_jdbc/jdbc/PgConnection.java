@@ -1118,6 +1118,7 @@ public final class PgConnection implements InvocationHandler {
             case "numeric", "decimal" -> Types.NUMERIC;
             case "char" -> Types.CHAR;
             case "name", "text", "varchar", "character varying", "bpchar", "character" -> Types.VARCHAR;
+            case "bit", "varbit" -> Types.BIT;
             case "bytea" -> Types.BINARY;
             case "date" -> Types.DATE;
             case "time" -> Types.TIME;
@@ -1156,6 +1157,8 @@ public final class PgConnection implements InvocationHandler {
             case "numeric", "decimal" -> 1700;
             case "varchar", "character varying" -> 1043;
             case "bpchar", "character" -> 1042;
+            case "bit" -> 1560;
+            case "varbit" -> 1562;
             case "bytea" -> 17;
             case "uuid" -> 2950;
             case "json" -> 114;
@@ -1171,6 +1174,8 @@ public final class PgConnection implements InvocationHandler {
             case "text[]", "_text" -> 1009;
             case "varchar[]", "_varchar" -> 1015;
             case "bytea[]", "_bytea" -> 1001;
+            case "bit[]", "_bit" -> 1561;
+            case "varbit[]", "_varbit" -> 1563;
             case "uuid[]", "_uuid" -> 2951;
             case "json[]", "_json" -> 199;
             case "jsonb[]", "_jsonb" -> 3807;
@@ -1241,6 +1246,9 @@ public final class PgConnection implements InvocationHandler {
     }
 
     private String javaClassForOid(int oid) {
+        if (oid == 1560) {
+            return Boolean.class.getName();
+        }
         return switch (JdbcCompat.oidToJdbcType(oid)) {
             case Types.BOOLEAN -> Boolean.class.getName();
             case Types.SMALLINT -> Short.class.getName();
