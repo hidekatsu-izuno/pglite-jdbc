@@ -35,6 +35,10 @@ class PgjdbcInspiredParameterMetaDataTest {
             var metadata = prepared.getParameterMetaData();
 
             assertEquals(5, metadata.getParameterCount());
+            assertEquals(
+                org.postgresql.jdbc.PgParameterMetaData.class,
+                metadata.unwrap(org.postgresql.jdbc.PgParameterMetaData.class).getClass()
+            );
             assertParameter(metadata, 1, Types.INTEGER, "int4", Integer.class.getName());
             assertParameter(metadata, 2, Types.VARCHAR, "text", String.class.getName());
             assertParameter(metadata, 3, Types.NUMERIC, "numeric", java.math.BigDecimal.class.getName());

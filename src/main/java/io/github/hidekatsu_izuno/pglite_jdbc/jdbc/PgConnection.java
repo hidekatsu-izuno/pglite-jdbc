@@ -148,6 +148,10 @@ public final class PgConnection implements InvocationHandler {
         return queryTimeout;
     }
 
+    org.postgresql.core.BaseConnection baseConnection() {
+        return (org.postgresql.core.BaseConnection) self;
+    }
+
     Class<? extends org.postgresql.util.PGobject> pgObjectClass(String typeName) {
         if (typeName == null) {
             return null;

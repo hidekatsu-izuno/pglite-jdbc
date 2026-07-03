@@ -276,7 +276,10 @@ final class PgStatement implements InvocationHandler {
                     throw JdbcCompat.unsupported(name);
                 }
                 var described = connection.describe(typedPreparedProtocolSql());
-                ParameterMetaData metadata = PgParameterMetaData.create(parameterTypes(described.queryParams()));
+                ParameterMetaData metadata = PgParameterMetaData.create(
+                    connection,
+                    parameterTypes(described.queryParams())
+                );
                 yield metadata;
             }
             case "createDriverResultSet" -> createDriverResultSet(
