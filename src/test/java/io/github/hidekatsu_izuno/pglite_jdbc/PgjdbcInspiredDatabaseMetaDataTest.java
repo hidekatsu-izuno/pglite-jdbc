@@ -199,4 +199,32 @@ class PgjdbcInspiredDatabaseMetaDataTest {
             assertFalse(indexes.next());
         }
     }
+
+    @Test
+    void databaseMetadataResultSetLabelsAreUpperCaseLikePgjdbc() throws Exception {
+        var metadata = connection.getMetaData();
+
+        try (var tables = metadata.getTables(null, null, "pgjdbc_metadata_missing", new String[] { "TABLE" })) {
+            var resultSetMetaData = tables.getMetaData();
+            assertEquals("TABLE_CAT", resultSetMetaData.getColumnLabel(1));
+            assertEquals("TABLE_SCHEM", resultSetMetaData.getColumnLabel(2));
+            assertEquals("TABLE_NAME", resultSetMetaData.getColumnLabel(3));
+            assertEquals("TABLE_TYPE", resultSetMetaData.getColumnLabel(4));
+        }
+
+        try (var columns = metadata.getColumns(null, null, "pgjdbc_metadata_missing", "%")) {
+            var resultSetMetaData = columns.getMetaData();
+            assertEquals("TABLE_CAT", resultSetMetaData.getColumnLabel(1));
+            assertEquals("COLUMN_NAME", resultSetMetaData.getColumnLabel(4));
+            assertEquals("DATA_TYPE", resultSetMetaData.getColumnLabel(5));
+            assertEquals("IS_GENERATEDCOLUMN", resultSetMetaData.getColumnLabel(24));
+        }
+
+        try (var typeInfo = metadata.getTypeInfo()) {
+            var resultSetMetaData = typeInfo.getMetaData();
+            assertEquals("TYPE_NAME", resultSetMetaData.getColumnLabel(1));
+            assertEquals("DATA_TYPE", resultSetMetaData.getColumnLabel(2));
+            assertEquals("NUM_PREC_RADIX", resultSetMetaData.getColumnLabel(18));
+        }
+    }
 }

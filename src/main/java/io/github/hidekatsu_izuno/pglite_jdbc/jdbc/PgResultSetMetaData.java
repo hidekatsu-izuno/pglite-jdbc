@@ -4,6 +4,7 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
 import java.util.List;
 
 final class PgResultSetMetaData implements InvocationHandler {
@@ -25,7 +26,7 @@ final class PgResultSetMetaData implements InvocationHandler {
     }
 
     @Override
-    public Object invoke(Object proxy, Method method, Object[] args) {
+    public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
         var name = method.getName();
         if (method.getDeclaringClass() == Object.class) {
             return switch (name) {
@@ -38,9 +39,9 @@ final class PgResultSetMetaData implements InvocationHandler {
 
         return switch (name) {
             case "getColumnCount" -> columns.size();
-            case "getColumnLabel", "getColumnName" -> columns.get(((Integer) args[0]) - 1).label();
-            case "getColumnType" -> JdbcCompat.oidToJdbcType(columns.get(((Integer) args[0]) - 1).oid());
-            case "getColumnTypeName" -> JdbcCompat.oidToPgType(columns.get(((Integer) args[0]) - 1).oid());
+            case "getColumnLabel", "getColumnName" -> column((Integer) args[0]).label();
+            case "getColumnType" -> JdbcCompat.oidToJdbcType(column((Integer) args[0]).oid());
+            case "getColumnTypeName" -> JdbcCompat.oidToPgType(column((Integer) args[0]).oid());
             case "isNullable" -> ResultSetMetaData.columnNullableUnknown;
             case "isAutoIncrement" -> false;
             case "isCaseSensitive" -> true;
@@ -51,8 +52,8 @@ final class PgResultSetMetaData implements InvocationHandler {
             case "getSchemaName", "getTableName", "getCatalogName" -> "";
             case "isReadOnly" -> true;
             case "isWritable", "isDefinitelyWritable" -> false;
-            case "getColumnClassName" -> columnClassName(columns.get(((Integer) args[0]) - 1).oid());
-            case "getBaseColumnName" -> columns.get(((Integer) args[0]) - 1).label();
+            case "getColumnClassName" -> columnClassName(column((Integer) args[0]).oid());
+            case "getBaseColumnName" -> column((Integer) args[0]).label();
             case "getBaseTableName", "getBaseSchemaName" -> "";
             case "getFormat" -> 0;
             case "unwrap" -> {
@@ -60,11 +61,18 @@ final class PgResultSetMetaData implements InvocationHandler {
                 if (iface.isInstance(proxy)) {
                     yield proxy;
                 }
-                throw new IllegalArgumentException("Not a wrapper for " + iface.getName());
+                throw new SQLException("Not a wrapper for " + iface.getName());
             }
             case "isWrapperFor" -> ((Class<?>) args[0]).isInstance(proxy);
             default -> JdbcCompat.defaultReturn(method.getReturnType());
         };
+    }
+
+    private Column column(int index) throws SQLException {
+        if (index < 1 || index > columns.size()) {
+            throw new SQLException("Column index out of bounds: " + index);
+        }
+        return columns.get(index - 1);
     }
 
     private String columnClassName(int oid) {
