@@ -279,6 +279,38 @@ final class JdbcCompat {
         }
     }
 
+    static byte toByte(Object value) throws SQLException {
+        return toIntegral(value, BigDecimal.valueOf(Byte.MIN_VALUE), BigDecimal.valueOf(Byte.MAX_VALUE), "byte")
+            .byteValue();
+    }
+
+    static short toShort(Object value) throws SQLException {
+        return toIntegral(value, BigDecimal.valueOf(Short.MIN_VALUE), BigDecimal.valueOf(Short.MAX_VALUE), "short")
+            .shortValue();
+    }
+
+    static int toInt(Object value) throws SQLException {
+        return toIntegral(value, BigDecimal.valueOf(Integer.MIN_VALUE), BigDecimal.valueOf(Integer.MAX_VALUE), "int")
+            .intValue();
+    }
+
+    static long toLong(Object value) throws SQLException {
+        return toIntegral(value, BigDecimal.valueOf(Long.MIN_VALUE), BigDecimal.valueOf(Long.MAX_VALUE), "long")
+            .longValue();
+    }
+
+    private static BigDecimal toIntegral(Object value, BigDecimal min, BigDecimal max, String target)
+        throws SQLException {
+        if (value == null) {
+            return BigDecimal.ZERO;
+        }
+        var decimal = toBigDecimal(value).setScale(0, java.math.RoundingMode.DOWN);
+        if (decimal.compareTo(min) < 0 || decimal.compareTo(max) > 0) {
+            throw new SQLException("Value out of range for " + target + ": " + value);
+        }
+        return decimal;
+    }
+
     static String stringify(Object value) {
         return value != null ? String.valueOf(value) : null;
     }
@@ -314,6 +346,14 @@ final class JdbcCompat {
         }
         if (value instanceof BigDecimal decimal) {
             return decimal;
+        }
+        if (
+            value instanceof Byte ||
+            value instanceof Short ||
+            value instanceof Integer ||
+            value instanceof Long
+        ) {
+            return BigDecimal.valueOf(((Number) value).longValue());
         }
         if (value instanceof Number number) {
             return BigDecimal.valueOf(number.doubleValue());

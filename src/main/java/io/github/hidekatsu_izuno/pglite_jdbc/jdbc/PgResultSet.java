@@ -184,10 +184,10 @@ final class PgResultSet implements InvocationHandler {
             }
             case "getString", "getNString" -> JdbcCompat.stringify(getValue(args[0]));
             case "getBoolean" -> JdbcCompat.toBoolean(getValue(args[0]));
-            case "getByte" -> JdbcCompat.toNumber(getValue(args[0])).byteValue();
-            case "getShort" -> JdbcCompat.toNumber(getValue(args[0])).shortValue();
-            case "getInt" -> JdbcCompat.toNumber(getValue(args[0])).intValue();
-            case "getLong" -> JdbcCompat.toNumber(getValue(args[0])).longValue();
+            case "getByte" -> JdbcCompat.toByte(getValue(args[0]));
+            case "getShort" -> JdbcCompat.toShort(getValue(args[0]));
+            case "getInt" -> JdbcCompat.toInt(getValue(args[0]));
+            case "getLong" -> JdbcCompat.toLong(getValue(args[0]));
             case "getFloat" -> JdbcCompat.toNumber(getValue(args[0])).floatValue();
             case "getDouble" -> JdbcCompat.toNumber(getValue(args[0])).doubleValue();
             case "getBigDecimal" -> args.length >= 2 && args[1] instanceof Integer scale

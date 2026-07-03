@@ -157,6 +157,72 @@ class PgjdbcInspiredResultSetTest {
     }
 
     @Test
+    void numericGettersTruncateAndCheckOverflowLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("""
+                 SELECT *
+                 FROM (VALUES
+                   ('1.2'::numeric),
+                   ('-2.5'::numeric),
+                   ('127'::numeric),
+                   ('128'::numeric),
+                   ('32767'::numeric),
+                   ('32768'::numeric),
+                   ('2147483647'::numeric),
+                   ('2147483648'::numeric),
+                   ('9223372036854775807'::numeric),
+                   ('9223372036854775807.9'::numeric),
+                   ('9223372036854775808'::numeric),
+                   ('-9223372036854775809'::numeric)
+                 ) AS values(value)
+                 """)) {
+            assertTrue(resultSet.next());
+            assertEquals(1, resultSet.getByte("value"));
+            assertEquals(1, resultSet.getShort("value"));
+            assertEquals(1, resultSet.getInt("value"));
+            assertEquals(1L, resultSet.getLong("value"));
+
+            assertTrue(resultSet.next());
+            assertEquals(-2, resultSet.getByte("value"));
+            assertEquals(-2, resultSet.getShort("value"));
+            assertEquals(-2, resultSet.getInt("value"));
+            assertEquals(-2L, resultSet.getLong("value"));
+
+            assertTrue(resultSet.next());
+            assertEquals(127, resultSet.getByte("value"));
+
+            assertTrue(resultSet.next());
+            assertThrows(SQLException.class, () -> resultSet.getByte("value"));
+
+            assertTrue(resultSet.next());
+            assertEquals(32767, resultSet.getShort("value"));
+
+            assertTrue(resultSet.next());
+            assertThrows(SQLException.class, () -> resultSet.getShort("value"));
+
+            assertTrue(resultSet.next());
+            assertEquals(Integer.MAX_VALUE, resultSet.getInt("value"));
+
+            assertTrue(resultSet.next());
+            assertThrows(SQLException.class, () -> resultSet.getInt("value"));
+
+            assertTrue(resultSet.next());
+            assertEquals(Long.MAX_VALUE, resultSet.getLong("value"));
+
+            assertTrue(resultSet.next());
+            assertEquals(Long.MAX_VALUE, resultSet.getLong("value"));
+
+            assertTrue(resultSet.next());
+            assertThrows(SQLException.class, () -> resultSet.getLong("value"));
+
+            assertTrue(resultSet.next());
+            assertThrows(SQLException.class, () -> resultSet.getLong("value"));
+
+            assertFalse(resultSet.next());
+        }
+    }
+
+    @Test
     void columnLookupIsLocaleIndependentLikePgjdbcTurkishLocaleCase() throws Exception {
         var previous = Locale.getDefault();
         try {
