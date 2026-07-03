@@ -851,6 +851,11 @@ class PgjdbcInspiredDatabaseMetaDataTest {
                 AS 'SELECT 1, ''a''::text, now()::timestamp, ''c''::text, ''q''::text'
                 LANGUAGE SQL
                 """);
+            statement.execute("""
+                CREATE OR REPLACE FUNCTION pgjdbc_meta_f5()
+                RETURNS TABLE (i int)
+                LANGUAGE SQL AS 'SELECT 1'
+                """);
         }
 
         var metadata = connection.getMetaData();
@@ -932,6 +937,30 @@ class PgjdbcInspiredDatabaseMetaDataTest {
             assertEquals(DatabaseMetaData.procedureColumnResult, columns.getInt("COLUMN_TYPE"));
             assertEquals(Types.VARCHAR, columns.getInt("DATA_TYPE"));
             assertFalse(columns.next());
+        }
+
+        try (var columns = metadata.getProcedureColumns(null, null, "pgjdbc_meta_f5", null)) {
+            assertTrue(columns.next());
+            assertEquals("returnValue", columns.getString("COLUMN_NAME"));
+            assertEquals(DatabaseMetaData.procedureColumnReturn, columns.getInt("COLUMN_TYPE"));
+            assertEquals(Types.INTEGER, columns.getInt("DATA_TYPE"));
+
+            assertTrue(columns.next());
+            assertEquals("i", columns.getString("COLUMN_NAME"));
+            assertEquals(DatabaseMetaData.procedureColumnReturn, columns.getInt("COLUMN_TYPE"));
+            assertEquals(Types.INTEGER, columns.getInt("DATA_TYPE"));
+            assertFalse(columns.next());
+        }
+
+        try (var procedures = metadata.getProcedures(null, null, "pgjdbc_meta_f1")) {
+            var resultSetMetaData = procedures.getMetaData();
+            assertEquals("PROCEDURE_CAT", resultSetMetaData.getColumnLabel(1));
+            assertEquals("SPECIFIC_NAME", resultSetMetaData.getColumnLabel(9));
+            assertTrue(procedures.next());
+            assertEquals("public", procedures.getString("PROCEDURE_SCHEM"));
+            assertEquals("pgjdbc_meta_f1", procedures.getString("PROCEDURE_NAME"));
+            assertEquals(DatabaseMetaData.procedureReturnsResult, procedures.getInt("PROCEDURE_TYPE"));
+            assertFalse(procedures.next());
         }
     }
 

@@ -83,6 +83,7 @@ final class PgDatabaseMetaData implements InvocationHandler {
             case "getUDTs" -> getUDTs(args);
             case "getFunctionColumns" -> getRoutineColumns(args, true);
             case "getProcedureColumns" -> getRoutineColumns(args, false);
+            case "getProcedures" -> getProcedures(args);
             case "unwrap" -> {
                 var iface = (Class<?>) args[0];
                 if (iface.isInstance(proxy)) {
@@ -536,6 +537,46 @@ final class PgDatabaseMetaData implements InvocationHandler {
             rows.removeIf(row -> !like(String.valueOf(row.get("COLUMN_NAME")), columnPattern));
         }
         return result(functions ? functionColumnColumns() : procedureColumnColumns(), rows);
+    }
+
+    private ResultSet getProcedures(Object[] args) throws SQLException {
+        if (!catalogMatches(value(args, 0))) {
+            return result(procedureColumns(), List.of());
+        }
+        var schemaPattern = pattern(args, 1);
+        var procedurePattern = pattern(args, 2);
+        var sql = """
+            SELECT current_database() AS procedure_cat,
+                   n.nspname AS procedure_schem,
+                   p.proname AS procedure_name,
+                   obj_description(p.oid, 'pg_proc') AS remarks,
+                   p.oid::text AS specific_name
+            FROM pg_catalog.pg_proc p
+            JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+              %s
+              %s
+            ORDER BY procedure_schem, procedure_name, specific_name
+            """.formatted(
+                likeCondition("n.nspname", schemaPattern),
+                likeCondition("p.proname", procedurePattern)
+            );
+        var raw = query(sql);
+        var rows = new ArrayList<Map<String, Object>>();
+        for (var row : raw) {
+            var out = new LinkedHashMap<String, Object>();
+            out.put("PROCEDURE_CAT", row.get("PROCEDURE_CAT"));
+            out.put("PROCEDURE_SCHEM", row.get("PROCEDURE_SCHEM"));
+            out.put("PROCEDURE_NAME", row.get("PROCEDURE_NAME"));
+            out.put("RESERVED1", null);
+            out.put("RESERVED2", null);
+            out.put("RESERVED3", null);
+            out.put("REMARKS", row.get("REMARKS"));
+            out.put("PROCEDURE_TYPE", DatabaseMetaData.procedureReturnsResult);
+            out.put("SPECIFIC_NAME", row.get("SPECIFIC_NAME"));
+            rows.add(out);
+        }
+        return result(procedureColumns(), rows);
     }
 
     private void addCompositeReturnColumns(
@@ -1073,6 +1114,20 @@ final class PgDatabaseMetaData implements InvocationHandler {
             new Column("CHAR_OCTET_LENGTH", 23),
             new Column("ORDINAL_POSITION", 23),
             new Column("IS_NULLABLE", 19),
+            new Column("SPECIFIC_NAME", 19)
+        );
+    }
+
+    private List<Column> procedureColumns() {
+        return List.of(
+            new Column("PROCEDURE_CAT", 19),
+            new Column("PROCEDURE_SCHEM", 19),
+            new Column("PROCEDURE_NAME", 19),
+            new Column("RESERVED1", 19),
+            new Column("RESERVED2", 19),
+            new Column("RESERVED3", 19),
+            new Column("REMARKS", 25),
+            new Column("PROCEDURE_TYPE", 21),
             new Column("SPECIFIC_NAME", 19)
         );
     }
