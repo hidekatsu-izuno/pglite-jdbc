@@ -303,6 +303,59 @@ class PgjdbcInspiredPreparedStatementTest {
     }
 
     @Test
+    void preparedStatementToStringKeepsBinaryStreamsAsQuestionMarksLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("CREATE TEMP TABLE IF NOT EXISTS pgjdbc_stream_test(payload bytea, body text)");
+        }
+
+        try (var prepared = connection.prepareStatement("INSERT INTO pgjdbc_stream_test VALUES (?, ?)")) {
+            prepared.setBinaryStream(1, new ByteArrayInputStream(new byte[] { 0, 1, 2, 3 }), 4);
+            assertEquals("INSERT INTO pgjdbc_stream_test VALUES (?, ?)", prepared.toString());
+
+            prepared.setString(2, "stream");
+            var expected = "INSERT INTO pgjdbc_stream_test VALUES (?, ('stream'))";
+            assertEquals(expected, prepared.toString());
+            assertEquals(expected, prepared.toString());
+            assertEquals(1, prepared.executeUpdate());
+            assertEquals(expected, prepared.toString());
+        }
+
+        try (var prepared = connection.prepareStatement("INSERT INTO pgjdbc_stream_test VALUES (?, ?)")) {
+            prepared.setBinaryStream(1, new ByteArrayInputStream(new byte[] { 0, 1 }), 2);
+            prepared.setString(2, "line1");
+            prepared.addBatch();
+            prepared.setBinaryStream(1, new ByteArrayInputStream(new byte[] { 0, 1, 2 }), 3);
+            prepared.setString(2, "line2");
+            prepared.addBatch();
+
+            assertEquals("""
+                INSERT INTO pgjdbc_stream_test VALUES (?, ('line1'));
+                INSERT INTO pgjdbc_stream_test VALUES (?, ('line2'))""", prepared.toString());
+            assertEquals(2, prepared.executeBatch().length);
+            assertEquals("INSERT INTO pgjdbc_stream_test VALUES (?, ('line2'))", prepared.toString());
+        }
+
+        try (var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("""
+                 SELECT encode(payload, 'hex') AS payload, body
+                 FROM pgjdbc_stream_test
+                 WHERE body IN ('stream', 'line1', 'line2')
+                 ORDER BY body
+                 """)) {
+            assertTrue(resultSet.next());
+            assertEquals("0001", resultSet.getString("payload"));
+            assertEquals("line1", resultSet.getString("body"));
+            assertTrue(resultSet.next());
+            assertEquals("000102", resultSet.getString("payload"));
+            assertEquals("line2", resultSet.getString("body"));
+            assertTrue(resultSet.next());
+            assertEquals("00010203", resultSet.getString("payload"));
+            assertEquals("stream", resultSet.getString("body"));
+            assertFalse(resultSet.next());
+        }
+    }
+
+    @Test
     void preparedStatementToStringRendersByteaPgObjectsLikePgjdbc() throws Exception {
         try (var statement = connection.createStatement()) {
             statement.execute("CREATE TEMP TABLE IF NOT EXISTS pgjdbc_stream_test(payload bytea, body text)");

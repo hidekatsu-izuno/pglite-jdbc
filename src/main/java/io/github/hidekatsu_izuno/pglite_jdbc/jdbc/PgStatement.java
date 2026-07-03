@@ -25,6 +25,8 @@ import java.util.Map;
 import java.util.TreeMap;
 
 final class PgStatement implements InvocationHandler {
+    private record StreamParameter(Object value) {}
+
     private final PgConnection connection;
     private final String preparedSql;
     private final String preparedProtocolSql;
@@ -178,7 +180,7 @@ final class PgStatement implements InvocationHandler {
             }
             case "addBatch" -> {
                 if (preparedSql != null && (args == null || args.length == 0)) {
-                    preparedBatch.add(buildParams());
+                    preparedBatch.add(buildDisplayParams());
                 } else if (args != null && args.length > 0) {
                     sqlBatch.add((String) args[0]);
                 } else {
@@ -338,9 +340,12 @@ final class PgStatement implements InvocationHandler {
             case "setBinaryStream" -> readBinaryStream(method, args);
             case "setAsciiStream" -> {
                 var bytes = readBinaryStream(method, args);
-                yield bytes == null ? null : new String(bytes, StandardCharsets.US_ASCII);
+                yield bytes == null ? null : new StreamParameter(new String(bytes, StandardCharsets.US_ASCII));
             }
-            case "setCharacterStream", "setNCharacterStream" -> readCharacterStream(method, args);
+            case "setCharacterStream", "setNCharacterStream" -> {
+                var text = readCharacterStream(method, args);
+                yield text == null ? null : new StreamParameter(text);
+            }
             case "setBlob" -> blobParameter(method, args);
             case "setClob", "setNClob" -> clobParameter(method, args);
             case "setSQLXML" -> args[1] == null ? null : ((java.sql.SQLXML) args[1]).getString();
@@ -357,7 +362,7 @@ final class PgStatement implements InvocationHandler {
                 : args[1];
             default -> args[1];
         };
-        parameters.put(index, value);
+        parameters.put(index, "setBinaryStream".equals(methodName) && value != null ? new StreamParameter(value) : value);
         updateParameterTypeOverride(methodName, index, args);
         return null;
     }
@@ -923,6 +928,9 @@ final class PgStatement implements InvocationHandler {
         if (value == null) {
             return "NULL";
         }
+        if (value instanceof StreamParameter) {
+            return "?";
+        }
         if (value instanceof byte[] bytes) {
             return "'\\x" + hex(bytes) + "'::bytea";
         }
@@ -1018,15 +1026,34 @@ final class PgStatement implements InvocationHandler {
     }
 
     private Object[] buildParams() {
+        return executionParameters(buildDisplayParams());
+    }
+
+    private Object[] buildDisplayParams() {
         if (parameters.isEmpty()) {
             return new Object[0];
         }
         var max = parameters.lastKey();
         var values = new Object[max];
         for (var entry : parameters.entrySet()) {
-            values[entry.getKey() - 1] = unwrapPgObject(entry.getValue());
+            values[entry.getKey() - 1] = entry.getValue();
         }
         return values;
+    }
+
+    private Object[] executionParameters(Object[] values) {
+        var out = values.clone();
+        for (var i = 0; i < out.length; i++) {
+            out[i] = executionParameter(out[i]);
+        }
+        return out;
+    }
+
+    private Object executionParameter(Object value) {
+        if (value instanceof StreamParameter streamParameter) {
+            return streamParameter.value();
+        }
+        return unwrapPgObject(value);
     }
 
     private void validateParameterIndex(int index) throws SQLException {
@@ -1194,7 +1221,7 @@ final class PgStatement implements InvocationHandler {
             var out = new int[preparedBatch.size()];
             var sql = typedPreparedProtocolSql();
             for (var i = 0; i < preparedBatch.size(); i++) {
-                var result = connection.query(sql, preparedBatch.get(i), this::addWarning);
+                var result = connection.query(sql, executionParameters(preparedBatch.get(i)), this::addWarning);
                 out[i] = JdbcCompat.safeAffectedRows(result);
             }
             preparedBatch.clear();
