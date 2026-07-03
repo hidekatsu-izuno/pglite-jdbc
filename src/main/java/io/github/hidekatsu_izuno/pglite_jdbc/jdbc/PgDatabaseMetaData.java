@@ -287,17 +287,17 @@ final class PgDatabaseMetaData implements InvocationHandler {
                    NOT ix.indisunique AS non_unique,
                    n.nspname AS index_qualifier,
                    i.relname AS index_name,
-                   a.attname AS column_name,
+                   pg_get_indexdef(ix.indexrelid, u.ord::int, true) AS column_name,
                    u.ord::int AS ordinal_position,
-                   CASE WHEN o.option & 1 = 1 THEN 'D' ELSE 'A' END AS asc_or_desc
+                   CASE WHEN o.option & 1 = 1 THEN 'D' ELSE 'A' END AS asc_or_desc,
+                   pg_get_expr(ix.indpred, ix.indrelid) AS filter_condition
             FROM pg_catalog.pg_index ix
             JOIN pg_catalog.pg_class c ON c.oid = ix.indrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             JOIN pg_catalog.pg_class i ON i.oid = ix.indexrelid
             JOIN unnest(ix.indkey, ix.indoption) WITH ORDINALITY AS u(attnum, option, ord) ON true
-            LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum = u.attnum
             LEFT JOIN LATERAL (SELECT u.option) o ON true
-            WHERE true
+            WHERE u.ord <= ix.indnkeyatts
               %s
               %s
               %s
@@ -323,7 +323,7 @@ final class PgDatabaseMetaData implements InvocationHandler {
             out.put("ASC_OR_DESC", row.get("ASC_OR_DESC"));
             out.put("CARDINALITY", 0L);
             out.put("PAGES", 0L);
-            out.put("FILTER_CONDITION", null);
+            out.put("FILTER_CONDITION", row.get("FILTER_CONDITION"));
             rows.add(out);
         }
         return result(indexColumns(), rows);
@@ -367,7 +367,7 @@ final class PgDatabaseMetaData implements InvocationHandler {
                    con.confupdtype AS update_rule_code,
                    con.confdeltype AS delete_rule_code,
                    con.conname AS fk_name,
-                   pki.relname AS pk_name,
+                   pkcon.conname AS pk_name,
                    con.condeferrable AS condeferrable,
                    con.condeferred AS condeferred
             FROM pg_catalog.pg_constraint con
@@ -378,8 +378,10 @@ final class PgDatabaseMetaData implements InvocationHandler {
             JOIN unnest(con.conkey, con.confkey) WITH ORDINALITY AS k(fk_attnum, pk_attnum, ord) ON true
             JOIN pg_catalog.pg_attribute fa ON fa.attrelid = fc.oid AND fa.attnum = k.fk_attnum
             JOIN pg_catalog.pg_attribute pa ON pa.attrelid = pc.oid AND pa.attnum = k.pk_attnum
-            LEFT JOIN pg_catalog.pg_index pkix ON pkix.indrelid = pc.oid AND pkix.indisprimary
-            LEFT JOIN pg_catalog.pg_class pki ON pki.oid = pkix.indexrelid
+            LEFT JOIN pg_catalog.pg_constraint pkcon
+              ON pkcon.conrelid = pc.oid
+             AND pkcon.contype IN ('p', 'u')
+             AND pkcon.conkey = con.confkey
             WHERE con.contype = 'f'
               %s
               %s

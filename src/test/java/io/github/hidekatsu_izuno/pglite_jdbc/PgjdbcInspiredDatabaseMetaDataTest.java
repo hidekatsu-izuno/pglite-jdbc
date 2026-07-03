@@ -180,6 +180,98 @@ class PgjdbcInspiredDatabaseMetaDataTest {
     }
 
     @Test
+    void databaseMetadataReportsExpressionPartialIndexesAndUniqueFkTargetsLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("""
+                CREATE TEMP TABLE pgjdbc_meta_index_expr(
+                  id int4 NOT NULL,
+                  name text,
+                  colour text,
+                  quest text
+                )
+                """);
+            statement.execute("CREATE UNIQUE INDEX pgjdbc_meta_idx_un_id ON pgjdbc_meta_index_expr(id)");
+            statement.execute("CREATE INDEX pgjdbc_meta_idx_func_single ON pgjdbc_meta_index_expr(upper(colour))");
+            statement.execute("CREATE INDEX pgjdbc_meta_idx_func_multi ON pgjdbc_meta_index_expr(upper(colour), upper(quest))");
+            statement.execute("CREATE INDEX pgjdbc_meta_idx_func_mixed ON pgjdbc_meta_index_expr(colour, upper(quest))");
+            statement.execute("CREATE INDEX pgjdbc_meta_idx_partial ON pgjdbc_meta_index_expr(name) WHERE id > 5");
+
+            statement.execute("""
+                CREATE TEMP TABLE pgjdbc_meta_unique_parent(
+                  a int4 NOT NULL,
+                  b int4 NOT NULL,
+                  CONSTRAINT pgjdbc_meta_unique_parent_pk PRIMARY KEY (a),
+                  CONSTRAINT pgjdbc_meta_unique_parent_b_key UNIQUE (b)
+                )
+                """);
+            statement.execute("""
+                CREATE TEMP TABLE pgjdbc_meta_unique_child(
+                  c int4,
+                  CONSTRAINT pgjdbc_meta_unique_child_fk FOREIGN KEY (c)
+                    REFERENCES pgjdbc_meta_unique_parent (b)
+                )
+                """);
+        }
+
+        var metadata = connection.getMetaData();
+        try (var indexes = metadata.getIndexInfo(null, null, "pgjdbc_meta_index_expr", false, false)) {
+            var sawUnique = false;
+            var sawMixedColumn = false;
+            var sawMixedExpression = false;
+            var sawMultiFirstExpression = false;
+            var sawMultiSecondExpression = false;
+            var sawSingleExpression = false;
+            var sawPartial = false;
+            while (indexes.next()) {
+                var indexName = indexes.getString("INDEX_NAME");
+                var position = indexes.getInt("ORDINAL_POSITION");
+                if ("pgjdbc_meta_idx_un_id".equals(indexName)) {
+                    assertFalse(indexes.getBoolean("NON_UNIQUE"));
+                    assertEquals("id", indexes.getString("COLUMN_NAME"));
+                    sawUnique = true;
+                } else if ("pgjdbc_meta_idx_func_mixed".equals(indexName) && position == 1) {
+                    assertEquals("colour", indexes.getString("COLUMN_NAME"));
+                    sawMixedColumn = true;
+                } else if ("pgjdbc_meta_idx_func_mixed".equals(indexName) && position == 2) {
+                    assertEquals("upper(quest)", indexes.getString("COLUMN_NAME"));
+                    sawMixedExpression = true;
+                } else if ("pgjdbc_meta_idx_func_multi".equals(indexName) && position == 1) {
+                    assertEquals("upper(colour)", indexes.getString("COLUMN_NAME"));
+                    sawMultiFirstExpression = true;
+                } else if ("pgjdbc_meta_idx_func_multi".equals(indexName) && position == 2) {
+                    assertEquals("upper(quest)", indexes.getString("COLUMN_NAME"));
+                    sawMultiSecondExpression = true;
+                } else if ("pgjdbc_meta_idx_func_single".equals(indexName)) {
+                    assertEquals("upper(colour)", indexes.getString("COLUMN_NAME"));
+                    sawSingleExpression = true;
+                } else if ("pgjdbc_meta_idx_partial".equals(indexName)) {
+                    assertEquals("name", indexes.getString("COLUMN_NAME"));
+                    assertEquals("(id > 5)", indexes.getString("FILTER_CONDITION"));
+                    assertTrue(indexes.getBoolean("NON_UNIQUE"));
+                    sawPartial = true;
+                }
+            }
+            assertTrue(sawUnique);
+            assertTrue(sawMixedColumn);
+            assertTrue(sawMixedExpression);
+            assertTrue(sawMultiFirstExpression);
+            assertTrue(sawMultiSecondExpression);
+            assertTrue(sawSingleExpression);
+            assertTrue(sawPartial);
+        }
+
+        try (var importedKeys = metadata.getImportedKeys(null, null, "pgjdbc_meta_unique_child")) {
+            assertTrue(importedKeys.next());
+            assertEquals("pgjdbc_meta_unique_parent", importedKeys.getString("PKTABLE_NAME"));
+            assertEquals("pgjdbc_meta_unique_child", importedKeys.getString("FKTABLE_NAME"));
+            assertEquals("b", importedKeys.getString("PKCOLUMN_NAME"));
+            assertEquals("c", importedKeys.getString("FKCOLUMN_NAME"));
+            assertEquals("pgjdbc_meta_unique_parent_b_key", importedKeys.getString("PK_NAME"));
+            assertFalse(importedKeys.next());
+        }
+    }
+
+    @Test
     void databaseMetadataEmptyCatalogAndSchemaArgumentsReturnNoRows() throws Exception {
         try (var statement = connection.createStatement()) {
             statement.execute("CREATE TEMP TABLE pgjdbc_meta_empty_args(id int4 PRIMARY KEY)");
