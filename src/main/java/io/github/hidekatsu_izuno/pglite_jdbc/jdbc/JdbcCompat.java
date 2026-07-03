@@ -689,7 +689,7 @@ final class JdbcCompat {
             case 25, 1042, 1043 -> Types.VARCHAR;
             case 1560, 1562 -> Types.BIT;
             case 700 -> Types.REAL;
-            case 701 -> Types.DOUBLE;
+            case 701, 790 -> Types.DOUBLE;
             case 1082 -> Types.DATE;
             case 1083 -> Types.TIME;
             case 1266 -> Types.TIME_WITH_TIMEZONE;
@@ -716,6 +716,7 @@ final class JdbcCompat {
             case 650 -> "cidr";
             case 700 -> "float4";
             case 701 -> "float8";
+            case 790 -> "money";
             case 774 -> "macaddr8";
             case 829 -> "macaddr";
             case 869 -> "inet";

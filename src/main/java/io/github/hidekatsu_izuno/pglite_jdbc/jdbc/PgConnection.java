@@ -1114,6 +1114,7 @@ public final class PgConnection implements InvocationHandler {
             case "oid" -> Types.BIGINT;
             case "float4", "real" -> Types.REAL;
             case "float8", "double", "double precision" -> Types.DOUBLE;
+            case "money" -> Types.DOUBLE;
             case "numeric", "decimal" -> Types.NUMERIC;
             case "text", "varchar", "character varying", "bpchar", "char", "character" -> Types.VARCHAR;
             case "bytea" -> Types.BINARY;
@@ -1143,6 +1144,7 @@ public final class PgConnection implements InvocationHandler {
             case "text" -> 25;
             case "float4", "real" -> 700;
             case "float8", "double", "double precision" -> 701;
+            case "money" -> 790;
             case "date" -> 1082;
             case "time" -> 1083;
             case "timetz", "time with time zone" -> 1266;
@@ -1183,6 +1185,7 @@ public final class PgConnection implements InvocationHandler {
             case 25 -> 1009;
             case 700 -> 1021;
             case 701 -> 1022;
+            case 790 -> 791;
             case 1082 -> 1182;
             case 1083 -> 1183;
             case 1266 -> 1270;
@@ -1209,6 +1212,7 @@ public final class PgConnection implements InvocationHandler {
             case 1009 -> 25;
             case 1021 -> 700;
             case 1022 -> 701;
+            case 791 -> 790;
             case 1182 -> 1082;
             case 1183 -> 1083;
             case 1270 -> 1266;
@@ -1263,7 +1267,7 @@ public final class PgConnection implements InvocationHandler {
             case 23, 26 -> 10;
             case 20 -> 19;
             case 700 -> 8;
-            case 701 -> 17;
+            case 701, 790 -> 17;
             case 1042, 1043 -> typmod == -1 ? 0 : typmod - 4;
             case 1082, 1083, 1114, 1184, 1186, 1266 -> displaySize(oid, typmod);
             case 1560 -> typmod;
@@ -1277,7 +1281,7 @@ public final class PgConnection implements InvocationHandler {
         oid = arrayOidToElementOidOrSelf(oid);
         return switch (oid) {
             case 700 -> 8;
-            case 701 -> 17;
+            case 701, 790 -> 17;
             case 1083, 1114, 1184, 1266 -> typmod == -1 ? 6 : typmod;
             case 1186 -> typmod == -1 ? 6 : typmod & 0xffff;
             case 1700 -> typmod == -1 ? 0 : (typmod - 4) & 0xffff;
@@ -1294,7 +1298,7 @@ public final class PgConnection implements InvocationHandler {
             case 26 -> 10;
             case 20 -> 20;
             case 700 -> 15;
-            case 701 -> 25;
+            case 701, 790 -> 25;
             case 1082 -> 13;
             case 1083 -> 8 + timeSecondSize(typmod);
             case 1266 -> 8 + timeSecondSize(typmod) + 6;

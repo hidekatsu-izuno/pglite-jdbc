@@ -74,18 +74,26 @@ class PgjdbcInspiredDatabaseMetaDataTest {
 
                 var sawInt4 = false;
                 var sawFloat8 = false;
+                var sawMoney = false;
                 var sawText = false;
+                var typeNames = new ArrayList<String>();
                 try (var types = metadata.getTypeInfo()) {
                     while (types.next()) {
-                        if ("int4".equals(types.getString("TYPE_NAME"))) {
+                        var typeName = types.getString("TYPE_NAME");
+                        typeNames.add(typeName);
+                        if ("int4".equals(typeName)) {
                             assertNull(types.getString("LITERAL_PREFIX"));
                             assertNull(types.getString("LITERAL_SUFFIX"));
                             assertFalse(types.getBoolean("UNSIGNED_ATTRIBUTE"));
                             sawInt4 = true;
-                        } else if ("float8".equals(types.getString("TYPE_NAME"))) {
+                        } else if ("float8".equals(typeName)) {
                             assertFalse(types.getBoolean("UNSIGNED_ATTRIBUTE"));
                             sawFloat8 = true;
-                        } else if ("text".equals(types.getString("TYPE_NAME"))) {
+                        } else if ("money".equals(typeName)) {
+                            assertEquals(Types.DOUBLE, types.getInt("DATA_TYPE"));
+                            assertFalse(types.getBoolean("UNSIGNED_ATTRIBUTE"));
+                            sawMoney = true;
+                        } else if ("text".equals(typeName)) {
                             assertEquals("'", types.getString("LITERAL_PREFIX"));
                             assertEquals("'", types.getString("LITERAL_SUFFIX"));
                             assertTrue(types.getBoolean("UNSIGNED_ATTRIBUTE"));
@@ -95,7 +103,48 @@ class PgjdbcInspiredDatabaseMetaDataTest {
                 }
                 assertTrue(sawInt4);
                 assertTrue(sawFloat8);
+                assertTrue(sawMoney);
                 assertTrue(sawText);
+                assertTrue(typeNames.containsAll(List.of(
+                    "bit",
+                    "bool",
+                    "box",
+                    "bytea",
+                    "char",
+                    "cidr",
+                    "circle",
+                    "date",
+                    "float4",
+                    "float8",
+                    "inet",
+                    "int2",
+                    "int4",
+                    "int8",
+                    "interval",
+                    "line",
+                    "lseg",
+                    "macaddr",
+                    "money",
+                    "numeric",
+                    "path",
+                    "point",
+                    "polygon",
+                    "text",
+                    "time",
+                    "timestamp",
+                    "timestamptz",
+                    "timetz",
+                    "varbit",
+                    "varchar",
+                    "tsquery",
+                    "tsvector",
+                    "txid_snapshot",
+                    "uuid",
+                    "xml",
+                    "json",
+                    "jsonb",
+                    "pg_lsn"
+                )));
             }
         });
     }

@@ -57,8 +57,7 @@ final class PgResultSetMetaData implements InvocationHandler {
             }
             case "isSigned" -> isSigned(column((Integer) args[0]).oid());
             case "isCurrency" -> {
-                column((Integer) args[0]);
-                yield false;
+                yield column((Integer) args[0]).oid() == 790;
             }
             case "getColumnDisplaySize", "getPrecision", "getScale" -> {
                 column((Integer) args[0]);
