@@ -13,6 +13,7 @@ import java.sql.SQLWarning;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -22,7 +23,7 @@ final class PgResultSet implements InvocationHandler {
     private final PgConnection connection;
     private final java.sql.Statement statement;
     private final List<Column> columns;
-    private final List<Map<String, Object>> rows;
+    private final List<List<Object>> rows;
     private final Map<String, Integer> labelIndex;
     private final int type;
     private final int concurrency;
@@ -39,7 +40,7 @@ final class PgResultSet implements InvocationHandler {
         PgConnection connection,
         java.sql.Statement statement,
         List<Column> columns,
-        List<Map<String, Object>> rows,
+        List<List<Object>> rows,
         int type,
         int concurrency,
         int holdability,
@@ -83,7 +84,7 @@ final class PgResultSet implements InvocationHandler {
             connection,
             statement,
             columns,
-            rows,
+            mapRows(columns, rows),
             ResultSet.TYPE_FORWARD_ONLY,
             ResultSet.CONCUR_READ_ONLY,
             ResultSet.CLOSE_CURSORS_AT_COMMIT,
@@ -106,7 +107,7 @@ final class PgResultSet implements InvocationHandler {
             connection,
             statement,
             columns,
-            rows,
+            mapRows(columns, rows),
             type,
             concurrency,
             holdability,
@@ -120,7 +121,7 @@ final class PgResultSet implements InvocationHandler {
         PgConnection connection,
         java.sql.Statement statement,
         List<Column> columns,
-        List<Map<String, Object>> rows,
+        List<List<Object>> rows,
         int type,
         int concurrency,
         int holdability,
@@ -144,6 +145,82 @@ final class PgResultSet implements InvocationHandler {
                 fetchDirection
             )
         );
+    }
+
+    static ResultSet createArrayRows(
+        PgConnection connection,
+        java.sql.Statement statement,
+        List<Column> columns,
+        List<List<Object>> rows,
+        int type,
+        int concurrency,
+        int holdability,
+        int maxFieldSize,
+        int fetchSize,
+        int fetchDirection
+    ) {
+        return create(
+            connection,
+            statement,
+            columns,
+            rows,
+            type,
+            concurrency,
+            holdability,
+            maxFieldSize,
+            fetchSize,
+            fetchDirection
+        );
+    }
+
+    static ResultSet createMappedRows(
+        PgConnection connection,
+        java.sql.Statement statement,
+        List<Column> columns,
+        List<Map<String, Object>> rows,
+        int type,
+        int concurrency,
+        int holdability,
+        int maxFieldSize,
+        int fetchSize,
+        int fetchDirection
+    ) {
+        return create(
+            connection,
+            statement,
+            columns,
+            mapRows(columns, rows),
+            type,
+            concurrency,
+            holdability,
+            maxFieldSize,
+            fetchSize,
+            fetchDirection
+        );
+    }
+
+    private static List<List<Object>> mapRows(List<Column> columns, List<Map<String, Object>> rows) {
+        var out = new ArrayList<List<Object>>(rows.size());
+        for (var row : rows) {
+            var values = new ArrayList<Object>(columns.size());
+            for (var column : columns) {
+                values.add(valueByLabel(row, column.label()));
+            }
+            out.add(values);
+        }
+        return out;
+    }
+
+    private static Object valueByLabel(Map<String, Object> row, String label) {
+        if (row.containsKey(label)) {
+            return row.get(label);
+        }
+        for (var entry : row.entrySet()) {
+            if (entry.getKey().equalsIgnoreCase(label)) {
+                return entry.getValue();
+            }
+        }
+        return null;
     }
 
     @Override
@@ -487,16 +564,7 @@ final class PgResultSet implements InvocationHandler {
         }
         ensureOnRow();
         var row = rows.get(cursor);
-        var label = columns.get(index - 1).label();
-        if (row.containsKey(label)) {
-            return row.get(label);
-        }
-        for (var entry : row.entrySet()) {
-            if (entry.getKey().equalsIgnoreCase(label)) {
-                return entry.getValue();
-            }
-        }
-        return null;
+        return index <= row.size() ? row.get(index - 1) : null;
     }
 
     private Object objectValue(int column, Object value) throws SQLException {

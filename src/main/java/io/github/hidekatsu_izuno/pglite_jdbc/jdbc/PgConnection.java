@@ -170,9 +170,19 @@ public final class PgConnection implements InvocationHandler {
         return queryExecutor.query(sql, params);
     }
 
+    interface_.Results<List<Object>> queryArray(String sql, Object[] params) throws SQLException {
+        ensureTransactionIfNeeded();
+        return queryExecutor.queryArray(sql, params);
+    }
+
     List<interface_.Results<Map<String, Object>>> exec(String sql) throws SQLException {
         ensureTransactionIfNeeded();
         return queryExecutor.exec(sql);
+    }
+
+    List<interface_.Results<List<Object>>> execArray(String sql) throws SQLException {
+        ensureTransactionIfNeeded();
+        return queryExecutor.execArray(sql);
     }
 
     interface_.ExecProtocolResult execProtocol(byte[] message, boolean throwOnError) throws SQLException {

@@ -41,7 +41,7 @@ final class PgStatement implements InvocationHandler {
     private int updateCount = -1;
     private ResultSet currentResultSet;
     private ResultSet generatedKeys;
-    private List<interface_.Results<Map<String, Object>>> currentResults = List.of();
+    private List<interface_.Results<List<Object>>> currentResults = List.of();
     private int currentResultIndex = -1;
     private java.sql.SQLWarning warnings;
     private int fetchSize;
@@ -688,7 +688,7 @@ final class PgStatement implements InvocationHandler {
             generatedKeys = PgResultSet.create(self, List.of(), List.of());
             return;
         }
-        generatedKeys = PgResultSet.create(
+        generatedKeys = PgResultSet.createMappedRows(
             connection,
             self,
             JdbcCompat.toColumns(result.fields()),
@@ -751,7 +751,7 @@ final class PgStatement implements InvocationHandler {
         closeCurrentResultSet();
         generatedKeys = null;
         var params = preparedSql != null ? buildParams() : null;
-        var result = connection.query(sql, params);
+        var result = connection.queryArray(sql, params);
         if (result.fields().isEmpty()) {
             currentResults = List.of();
             currentResultIndex = -1;
@@ -761,7 +761,7 @@ final class PgStatement implements InvocationHandler {
         }
         currentResults = List.of();
         currentResultIndex = -1;
-        currentResultSet = createStatementResultSet(result);
+        currentResultSet = createStatementArrayResultSet(result);
         updateCount = -1;
         return currentResultSet;
     }
@@ -809,34 +809,43 @@ final class PgStatement implements InvocationHandler {
         closeCurrentResultSet();
         var generatedColumns = preparedSql != null ? preparedGeneratedColumns : generatedColumns(args, 1);
         if (preparedSql != null) {
-            var result = connection.query(withGeneratedKeys(sql, generatedColumns), buildParams());
-            currentResults = List.of();
-            currentResultIndex = -1;
-            if (generatedColumns != null) {
-                setGeneratedKeys(result);
+            if (generatedColumns == null) {
+                var result = connection.queryArray(sql, buildParams());
+                currentResults = List.of();
+                currentResultIndex = -1;
+                if (!result.fields().isEmpty()) {
+                    currentResultSet = createStatementArrayResultSet(result);
+                    updateCount = -1;
+                    return true;
+                }
                 currentResultSet = null;
                 updateCount = JdbcCompat.safeAffectedRows(result);
                 return false;
             }
-            if (!result.fields().isEmpty()) {
-                currentResultSet = createStatementResultSet(result);
-                updateCount = -1;
-                return true;
-            }
+            var result = connection.query(withGeneratedKeys(sql, generatedColumns), buildParams());
+            currentResults = List.of();
+            currentResultIndex = -1;
+            setGeneratedKeys(result);
             currentResultSet = null;
             updateCount = JdbcCompat.safeAffectedRows(result);
             return false;
         }
 
-        var results = connection.exec(withGeneratedKeys(sql, generatedColumns));
-        if (generatedColumns != null && !results.isEmpty()) {
-            setGeneratedKeys(results.getLast());
+        if (generatedColumns != null) {
+            var results = connection.exec(withGeneratedKeys(sql, generatedColumns));
+            if (!results.isEmpty()) {
+                setGeneratedKeys(results.getLast());
+                updateCount = JdbcCompat.safeAffectedRows(results.getLast());
+            } else {
+                generatedKeys = PgResultSet.create(self, List.of(), List.of());
+                updateCount = -1;
+            }
             currentResults = List.of();
             currentResultIndex = -1;
             currentResultSet = null;
-            updateCount = JdbcCompat.safeAffectedRows(results.getLast());
             return false;
         }
+        var results = connection.execArray(sql);
         generatedKeys = null;
         currentResults = results;
         currentResultIndex = -1;
@@ -927,7 +936,7 @@ final class PgStatement implements InvocationHandler {
         }
         var result = currentResults.get(currentResultIndex);
         if (!result.fields().isEmpty()) {
-            currentResultSet = createStatementResultSet(result);
+            currentResultSet = createStatementArrayResultSet(result);
             updateCount = -1;
             return true;
         }
@@ -936,8 +945,8 @@ final class PgStatement implements InvocationHandler {
         return false;
     }
 
-    private ResultSet createStatementResultSet(interface_.Results<Map<String, Object>> result) {
-        return PgResultSet.create(
+    private ResultSet createStatementArrayResultSet(interface_.Results<List<Object>> result) {
+        return PgResultSet.createArrayRows(
             connection,
             self,
             JdbcCompat.toColumns(result.fields()),
@@ -951,7 +960,7 @@ final class PgStatement implements InvocationHandler {
         );
     }
 
-    private List<Map<String, Object>> trimRows(List<Map<String, Object>> rows) {
+    private <T> List<T> trimRows(List<T> rows) {
         if (maxRows <= 0 || rows.size() <= maxRows) {
             return rows;
         }

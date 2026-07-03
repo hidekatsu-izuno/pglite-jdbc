@@ -225,7 +225,7 @@ final class JdbcCompat {
         return new RewrittenSql(out.toString(), placeholderIndex);
     }
 
-    static int safeAffectedRows(interface_.Results<java.util.Map<String, Object>> result) {
+    static int safeAffectedRows(interface_.Results<?> result) {
         return result.affectedRows() != null ? result.affectedRows() : 0;
     }
 

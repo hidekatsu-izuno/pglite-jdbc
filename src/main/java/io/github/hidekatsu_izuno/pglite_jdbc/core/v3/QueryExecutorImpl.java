@@ -35,10 +35,48 @@ public final class QueryExecutorImpl implements QueryExecutor {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
+    public interface_.Results<List<Object>> queryArray(String sql, Object[] params) throws SQLException {
+        ensureOpen();
+        try {
+            var options = new interface_.QueryOptions(
+                interface_.RowMode.array,
+                null,
+                null,
+                null,
+                null,
+                null
+            );
+            return (interface_.Results<List<Object>>) (interface_.Results<?>) db.query(sql, params, options).join();
+        } catch (Throwable error) {
+            throw toSqlException(error);
+        }
+    }
+
+    @Override
     public List<interface_.Results<Map<String, Object>>> exec(String sql) throws SQLException {
         ensureOpen();
         try {
             return db.exec(sql, null).join();
+        } catch (Throwable error) {
+            throw toSqlException(error);
+        }
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public List<interface_.Results<List<Object>>> execArray(String sql) throws SQLException {
+        ensureOpen();
+        try {
+            var options = new interface_.QueryOptions(
+                interface_.RowMode.array,
+                null,
+                null,
+                null,
+                null,
+                null
+            );
+            return (List<interface_.Results<List<Object>>>) (List<?>) db.exec(sql, options).join();
         } catch (Throwable error) {
             throw toSqlException(error);
         }

@@ -11,7 +11,11 @@ public interface QueryExecutor {
 
     interface_.Results<Map<String, Object>> query(String sql, Object[] params) throws SQLException;
 
+    interface_.Results<List<Object>> queryArray(String sql, Object[] params) throws SQLException;
+
     List<interface_.Results<Map<String, Object>>> exec(String sql) throws SQLException;
+
+    List<interface_.Results<List<Object>>> execArray(String sql) throws SQLException;
 
     interface_.DescribeQueryResult describe(String sql) throws SQLException;
 

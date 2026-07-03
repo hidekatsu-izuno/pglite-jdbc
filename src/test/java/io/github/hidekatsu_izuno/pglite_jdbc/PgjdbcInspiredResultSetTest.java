@@ -469,6 +469,46 @@ class PgjdbcInspiredResultSetTest {
     }
 
     @Test
+    void duplicateColumnLabelsPreserveColumnOrderLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("SELECT 1 AS value, 2 AS value, 3 AS value")) {
+            assertTrue(resultSet.next());
+            assertEquals(1, resultSet.getInt(1));
+            assertEquals(2, resultSet.getInt(2));
+            assertEquals(3, resultSet.getInt(3));
+            assertEquals(1, resultSet.getInt("value"));
+            assertFalse(resultSet.next());
+        }
+
+        try (var statement = connection.createStatement()) {
+            assertTrue(statement.execute("SELECT 1 AS value, 2 AS value, 3 AS value"));
+            try (var resultSet = statement.getResultSet()) {
+                assertTrue(resultSet.next());
+                assertEquals(1, resultSet.getInt(1));
+                assertEquals(2, resultSet.getInt(2));
+                assertEquals(3, resultSet.getInt(3));
+                assertEquals(1, resultSet.getInt("value"));
+                assertFalse(resultSet.next());
+            }
+        }
+
+        try (var prepared = connection.prepareStatement("SELECT ? AS value, ? AS value, ? AS value")) {
+            prepared.setInt(1, 1);
+            prepared.setInt(2, 2);
+            prepared.setInt(3, 3);
+
+            try (var resultSet = prepared.executeQuery()) {
+                assertTrue(resultSet.next());
+                assertEquals(1, resultSet.getInt(1));
+                assertEquals(2, resultSet.getInt(2));
+                assertEquals(3, resultSet.getInt(3));
+                assertEquals(1, resultSet.getInt("value"));
+                assertFalse(resultSet.next());
+            }
+        }
+    }
+
+    @Test
     void connectionRejectsInvalidResultSetOptionsLikePgjdbc() throws Exception {
         assertThrows(SQLException.class, () -> connection.createStatement(-1, -1, -1));
         assertThrows(
