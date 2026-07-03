@@ -16,7 +16,6 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.sql.DriverManager;
-import java.sql.JDBCType;
 import java.sql.SQLException;
 import java.sql.Types;
 import java.time.LocalDateTime;
@@ -286,8 +285,8 @@ class OrgPostgresqlCompatibilityTest {
                 statement.setObject(2, new BigDecimal("12.345"), Types.NUMERIC, 2);
                 statement.setObject(3, payload, Types.OTHER);
                 statement.setObject(4, uuid, Types.OTHER);
-                statement.setObject(5, "bytes", JDBCType.BINARY);
-                statement.setObject(6, "2024-01-02 03:04:05", JDBCType.TIMESTAMP);
+                statement.setObject(5, "bytes", Types.BINARY);
+                statement.setObject(6, "2024-01-02 03:04:05", Types.TIMESTAMP);
 
                 try (var resultSet = statement.executeQuery()) {
                     assertTrue(resultSet.next());
@@ -330,6 +329,32 @@ class OrgPostgresqlCompatibilityTest {
                     assertEquals("int4", metadata.getParameterTypeName(1));
                     assertEquals(Integer.class.getName(), metadata.getParameterClassName(1));
                 }
+            }
+        });
+    }
+
+    @Test
+    void shouldRejectSqlTypeSetObjectLikePgjdbc() throws Exception {
+        assertTimeout(Duration.ofSeconds(180), () -> {
+            try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000");
+                 var statement = connection.prepareStatement("SELECT ?")) {
+                var error = assertThrows(
+                    java.sql.SQLFeatureNotSupportedException.class,
+                    () -> statement.setObject(1, "value", java.sql.JDBCType.VARCHAR)
+                );
+                assertEquals(
+                    "Method org.postgresql.jdbc.PgPreparedStatement.setObject is not yet implemented.",
+                    error.getMessage()
+                );
+
+                var scaledError = assertThrows(
+                    java.sql.SQLFeatureNotSupportedException.class,
+                    () -> statement.setObject(1, null, java.sql.JDBCType.VARCHAR, 0)
+                );
+                assertEquals(
+                    "Method org.postgresql.jdbc.PgPreparedStatement.setObject is not yet implemented.",
+                    scaledError.getMessage()
+                );
             }
         });
     }

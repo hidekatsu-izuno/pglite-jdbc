@@ -10,9 +10,9 @@ import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.sql.ParameterMetaData;
 import java.sql.PreparedStatement;
-import java.sql.JDBCType;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
 import java.sql.SQLWarning;
 import java.sql.SQLType;
 import java.sql.Statement;
@@ -444,6 +444,11 @@ final class PgStatement implements InvocationHandler {
 
     private Object objectParameter(Object[] args) throws SQLException {
         var value = args[1];
+        if (args.length >= 3 && args[2] instanceof SQLType) {
+            throw new SQLFeatureNotSupportedException(
+                "Method org.postgresql.jdbc.PgPreparedStatement.setObject is not yet implemented."
+            );
+        }
         if (args.length < 3 || value == null) {
             return value;
         }
@@ -460,15 +465,6 @@ final class PgStatement implements InvocationHandler {
     private Integer targetSqlType(Object value) throws SQLException {
         if (value instanceof Integer integer) {
             return integer;
-        }
-        if (value instanceof SQLType sqlType) {
-            var vendorType = sqlType.getVendorTypeNumber();
-            if (vendorType != null) {
-                return vendorType;
-            }
-            if (sqlType instanceof JDBCType jdbcType) {
-                return jdbcType.getVendorTypeNumber();
-            }
         }
         throw new SQLException("Unsupported SQLType: " + value);
     }
