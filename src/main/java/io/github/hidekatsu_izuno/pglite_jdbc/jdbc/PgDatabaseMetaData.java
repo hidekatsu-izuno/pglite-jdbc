@@ -490,6 +490,7 @@ final class PgDatabaseMetaData implements InvocationHandler {
                    p.oid::text AS specific_name,
                    p.prorettype::int AS return_type_oid,
                    rt.typname AS return_type_name,
+                   rt.typtype AS return_type_kind,
                    COALESCE(array_to_string(p.proargnames, ','), '') AS arg_names,
                    COALESCE(array_to_string(p.proargmodes, ','), '') AS arg_modes,
                    CASE
@@ -514,7 +515,8 @@ final class PgDatabaseMetaData implements InvocationHandler {
             var argNames = split(String.valueOf(routine.get("ARG_NAMES")), ",");
             var argModes = split(String.valueOf(routine.get("ARG_MODES")), ",");
             var argOids = splitInts(String.valueOf(routine.get("ARG_TYPE_OIDS")));
-            if (functions || argModes.stream().noneMatch(mode -> "o".equals(mode) || "b".equals(mode))) {
+            var compositeReturn = "c".equals(String.valueOf(routine.get("RETURN_TYPE_KIND")));
+            if ((functions || argModes.stream().noneMatch(mode -> "o".equals(mode) || "b".equals(mode))) && !compositeReturn) {
                 addRoutineColumn(rows, routine, "returnValue", functions, true, returnOid, 0);
             }
             for (var i = 0; i < argOids.size(); i++) {
@@ -526,11 +528,49 @@ final class PgDatabaseMetaData implements InvocationHandler {
                 }
                 addRoutineColumn(rows, routine, name, functions, columnType, argOids.get(i), i + 1);
             }
+            if (!functions && compositeReturn) {
+                addCompositeReturnColumns(rows, routine, returnOid);
+            }
         }
         if (columnPattern != null) {
             rows.removeIf(row -> !like(String.valueOf(row.get("COLUMN_NAME")), columnPattern));
         }
         return result(functions ? functionColumnColumns() : procedureColumnColumns(), rows);
+    }
+
+    private void addCompositeReturnColumns(
+        List<Map<String, Object>> rows,
+        Map<String, Object> routine,
+        int returnOid
+    ) throws SQLException {
+        var sql = """
+            SELECT a.attname AS column_name,
+                   CASE WHEN t.typtype = 'd' THEN t.typbasetype ELSE a.atttypid END::int AS pg_type_oid,
+                   CASE WHEN t.typtype = 'd' AND t.typtypmod >= 0 THEN t.typtypmod ELSE a.atttypmod END AS pg_type_mod
+            FROM pg_catalog.pg_type rt
+            JOIN pg_catalog.pg_class c ON c.oid = rt.typrelid
+            JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
+            JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
+            WHERE rt.oid = %d
+              AND a.attnum > 0
+              AND NOT a.attisdropped
+            ORDER BY a.attnum
+            """.formatted(returnOid);
+        var raw = query(sql);
+        var ordinal = rows.size();
+        for (var row : raw) {
+            var oid = number(row.get("PG_TYPE_OID")).intValue();
+            ordinal++;
+            addRoutineColumn(
+                rows,
+                routine,
+                String.valueOf(row.get("COLUMN_NAME")),
+                false,
+                DatabaseMetaData.procedureColumnResult,
+                oid,
+                ordinal
+            );
+        }
     }
 
     private void addRoutineColumn(

@@ -835,6 +835,22 @@ class PgjdbcInspiredDatabaseMetaDataTest {
                 CREATE OR REPLACE FUNCTION pgjdbc_meta_f3(IN a int, INOUT b varchar, OUT c timestamptz)
                 AS $f$ BEGIN b := 'a'; c := now(); return; END; $f$ LANGUAGE plpgsql
                 """);
+            statement.execute("DROP TABLE IF EXISTS pgjdbc_meta_func_composite");
+            statement.execute("""
+                CREATE TABLE pgjdbc_meta_func_composite(
+                  id int4,
+                  name text,
+                  updated timestamp,
+                  colour text,
+                  quest text
+                )
+                """);
+            statement.execute("""
+                CREATE OR REPLACE FUNCTION pgjdbc_meta_f4(int)
+                RETURNS pgjdbc_meta_func_composite
+                AS 'SELECT 1, ''a''::text, now()::timestamp, ''c''::text, ''q''::text'
+                LANGUAGE SQL
+                """);
         }
 
         var metadata = connection.getMetaData();
@@ -882,6 +898,39 @@ class PgjdbcInspiredDatabaseMetaDataTest {
             assertEquals("c", columns.getString("COLUMN_NAME"));
             assertEquals(DatabaseMetaData.procedureColumnOut, columns.getInt("COLUMN_TYPE"));
             assertEquals(Types.TIMESTAMP_WITH_TIMEZONE, columns.getInt("DATA_TYPE"));
+            assertFalse(columns.next());
+        }
+
+        try (var columns = metadata.getProcedureColumns(null, null, "pgjdbc_meta_f4", null)) {
+            assertTrue(columns.next());
+            assertEquals("$1", columns.getString("COLUMN_NAME"));
+            assertEquals(DatabaseMetaData.procedureColumnIn, columns.getInt("COLUMN_TYPE"));
+            assertEquals(Types.INTEGER, columns.getInt("DATA_TYPE"));
+
+            assertTrue(columns.next());
+            assertEquals("id", columns.getString("COLUMN_NAME"));
+            assertEquals(DatabaseMetaData.procedureColumnResult, columns.getInt("COLUMN_TYPE"));
+            assertEquals(Types.INTEGER, columns.getInt("DATA_TYPE"));
+
+            assertTrue(columns.next());
+            assertEquals("name", columns.getString("COLUMN_NAME"));
+            assertEquals(DatabaseMetaData.procedureColumnResult, columns.getInt("COLUMN_TYPE"));
+            assertEquals(Types.VARCHAR, columns.getInt("DATA_TYPE"));
+
+            assertTrue(columns.next());
+            assertEquals("updated", columns.getString("COLUMN_NAME"));
+            assertEquals(DatabaseMetaData.procedureColumnResult, columns.getInt("COLUMN_TYPE"));
+            assertEquals(Types.TIMESTAMP, columns.getInt("DATA_TYPE"));
+
+            assertTrue(columns.next());
+            assertEquals("colour", columns.getString("COLUMN_NAME"));
+            assertEquals(DatabaseMetaData.procedureColumnResult, columns.getInt("COLUMN_TYPE"));
+            assertEquals(Types.VARCHAR, columns.getInt("DATA_TYPE"));
+
+            assertTrue(columns.next());
+            assertEquals("quest", columns.getString("COLUMN_NAME"));
+            assertEquals(DatabaseMetaData.procedureColumnResult, columns.getInt("COLUMN_TYPE"));
+            assertEquals(Types.VARCHAR, columns.getInt("DATA_TYPE"));
             assertFalse(columns.next());
         }
     }
