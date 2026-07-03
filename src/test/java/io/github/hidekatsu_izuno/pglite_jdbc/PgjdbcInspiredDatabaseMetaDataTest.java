@@ -87,37 +87,53 @@ class PgjdbcInspiredDatabaseMetaDataTest {
                         var typeName = types.getString("TYPE_NAME");
                         typeNames.add(typeName);
                         if ("int4".equals(typeName)) {
+                            assertEquals(0, types.getInt("PRECISION"));
                             assertNull(types.getString("LITERAL_PREFIX"));
                             assertNull(types.getString("LITERAL_SUFFIX"));
                             assertFalse(types.getBoolean("UNSIGNED_ATTRIBUTE"));
                             sawInt4 = true;
+                        } else if ("serial".equals(typeName)) {
+                            assertEquals(0, types.getInt("PRECISION"));
+                            assertTrue(types.getBoolean("AUTO_INCREMENT"));
                         } else if ("char".equals(typeName)) {
                             assertEquals(Types.CHAR, types.getInt("DATA_TYPE"));
+                            assertEquals(0, types.getInt("PRECISION"));
                             sawChar = true;
                         } else if ("float8".equals(typeName)) {
+                            assertEquals(0, types.getInt("PRECISION"));
                             assertFalse(types.getBoolean("UNSIGNED_ATTRIBUTE"));
                             sawFloat8 = true;
                         } else if ("money".equals(typeName)) {
                             assertEquals(Types.DOUBLE, types.getInt("DATA_TYPE"));
+                            assertEquals(0, types.getInt("PRECISION"));
                             assertFalse(types.getBoolean("UNSIGNED_ATTRIBUTE"));
                             sawMoney = true;
                         } else if ("text".equals(typeName)) {
+                            assertEquals(0, types.getInt("PRECISION"));
                             assertEquals("'", types.getString("LITERAL_PREFIX"));
                             assertEquals("'", types.getString("LITERAL_SUFFIX"));
                             assertTrue(types.getBoolean("UNSIGNED_ATTRIBUTE"));
                             sawText = true;
                         } else if ("bool".equals(typeName)) {
                             assertEquals(Types.BIT, types.getInt("DATA_TYPE"));
+                            assertEquals(0, types.getInt("PRECISION"));
                             sawBool = true;
                         } else if ("varbit".equals(typeName)) {
                             assertEquals(Types.OTHER, types.getInt("DATA_TYPE"));
+                            assertEquals(83886080, types.getInt("PRECISION"));
                             sawVarbit = true;
                         } else if ("timetz".equals(typeName)) {
                             assertEquals(Types.TIME, types.getInt("DATA_TYPE"));
+                            assertEquals(6, types.getInt("PRECISION"));
                             sawTimetz = true;
                         } else if ("timestamptz".equals(typeName)) {
                             assertEquals(Types.TIMESTAMP, types.getInt("DATA_TYPE"));
+                            assertEquals(6, types.getInt("PRECISION"));
                             sawTimestamptz = true;
+                        } else if ("varchar".equals(typeName)) {
+                            assertEquals(10485760, types.getInt("PRECISION"));
+                        } else if ("numeric".equals(typeName)) {
+                            assertEquals(1000, types.getInt("PRECISION"));
                         }
                     }
                 }
@@ -145,6 +161,9 @@ class PgjdbcInspiredDatabaseMetaDataTest {
                     "int2",
                     "int4",
                     "int8",
+                    "smallserial",
+                    "serial",
+                    "bigserial",
                     "interval",
                     "line",
                     "lseg",

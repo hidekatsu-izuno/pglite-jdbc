@@ -1001,48 +1001,62 @@ final class PgDatabaseMetaData implements InvocationHandler {
     private ResultSet getTypeInfo() {
         var rows = new ArrayList<Map<String, Object>>();
         addType(rows, "bit", Types.BIT, 83886080, false);
-        addType(rows, "bool", Types.BIT, 1, false);
+        addType(rows, "bool", Types.BIT, 0, false);
         addType(rows, "box", Types.OTHER, 0, true);
-        addType(rows, "bytea", Types.BINARY, Integer.MAX_VALUE, true);
-        addType(rows, "char", Types.CHAR, 1, true);
+        addType(rows, "bytea", Types.BINARY, 0, true);
+        addType(rows, "char", Types.CHAR, 0, true);
         addType(rows, "cidr", Types.OTHER, 0, true);
         addType(rows, "circle", Types.OTHER, 0, true);
-        addType(rows, "date", Types.DATE, 13, true);
-        addType(rows, "float4", Types.REAL, 8, false);
-        addType(rows, "float8", Types.DOUBLE, 17, false);
+        addType(rows, "date", Types.DATE, 0, true);
+        addType(rows, "float4", Types.REAL, 0, false);
+        addType(rows, "float8", Types.DOUBLE, 0, false);
         addType(rows, "inet", Types.OTHER, 0, true);
-        addType(rows, "int2", Types.SMALLINT, 5, false);
-        addType(rows, "int4", Types.INTEGER, 10, false);
-        addType(rows, "int8", Types.BIGINT, 19, false);
-        addType(rows, "interval", Types.OTHER, 49, true);
+        addType(rows, "int2", Types.SMALLINT, 0, false);
+        addType(rows, "smallserial", Types.SMALLINT, 0, false, true);
+        addType(rows, "int4", Types.INTEGER, 0, false);
+        addType(rows, "serial", Types.INTEGER, 0, false, true);
+        addType(rows, "int8", Types.BIGINT, 0, false);
+        addType(rows, "bigserial", Types.BIGINT, 0, false, true);
+        addType(rows, "interval", Types.OTHER, 6, true);
         addType(rows, "line", Types.OTHER, 0, true);
         addType(rows, "lseg", Types.OTHER, 0, true);
         addType(rows, "macaddr", Types.OTHER, 0, true);
-        addType(rows, "money", Types.DOUBLE, 17, false);
+        addType(rows, "money", Types.DOUBLE, 0, false);
         addType(rows, "numeric", Types.NUMERIC, 1000, false);
         addType(rows, "path", Types.OTHER, 0, true);
         addType(rows, "pg_lsn", Types.OTHER, 0, true);
         addType(rows, "point", Types.OTHER, 0, true);
         addType(rows, "polygon", Types.OTHER, 0, true);
         addType(rows, "refcursor", Types.REF_CURSOR, 0, true);
-        addType(rows, "text", Types.VARCHAR, Integer.MAX_VALUE, true);
-        addType(rows, "time", Types.TIME, 15, true);
-        addType(rows, "timestamp", Types.TIMESTAMP, 29, true);
-        addType(rows, "timestamptz", Types.TIMESTAMP, 35, true);
-        addType(rows, "timetz", Types.TIME, 21, true);
+        addType(rows, "text", Types.VARCHAR, 0, true);
+        addType(rows, "time", Types.TIME, 6, true);
+        addType(rows, "timestamp", Types.TIMESTAMP, 6, true);
+        addType(rows, "timestamptz", Types.TIMESTAMP, 6, true);
+        addType(rows, "timetz", Types.TIME, 6, true);
         addType(rows, "tsquery", Types.OTHER, 0, true);
         addType(rows, "tsvector", Types.OTHER, 0, true);
         addType(rows, "txid_snapshot", Types.OTHER, 0, true);
-        addType(rows, "uuid", Types.OTHER, 36, true);
+        addType(rows, "uuid", Types.OTHER, 0, true);
         addType(rows, "varbit", Types.OTHER, 83886080, false);
-        addType(rows, "varchar", Types.VARCHAR, Integer.MAX_VALUE, true);
-        addType(rows, "xml", Types.SQLXML, Integer.MAX_VALUE, true);
-        addType(rows, "json", Types.OTHER, Integer.MAX_VALUE, true);
-        addType(rows, "jsonb", Types.OTHER, Integer.MAX_VALUE, true);
+        addType(rows, "varchar", Types.VARCHAR, 10485760, true);
+        addType(rows, "xml", Types.SQLXML, 0, true);
+        addType(rows, "json", Types.OTHER, 0, true);
+        addType(rows, "jsonb", Types.OTHER, 0, true);
         return result(typeInfoColumns(), rows);
     }
 
     private void addType(List<Map<String, Object>> rows, String name, int dataType, int precision, boolean quoted) {
+        addType(rows, name, dataType, precision, quoted, false);
+    }
+
+    private void addType(
+        List<Map<String, Object>> rows,
+        String name,
+        int dataType,
+        int precision,
+        boolean quoted,
+        boolean autoIncrement
+    ) {
         var row = new LinkedHashMap<String, Object>();
         row.put("TYPE_NAME", name);
         row.put("DATA_TYPE", dataType);
@@ -1055,7 +1069,7 @@ final class PgDatabaseMetaData implements InvocationHandler {
         row.put("SEARCHABLE", DatabaseMetaData.typeSearchable);
         row.put("UNSIGNED_ATTRIBUTE", !isSignedType(dataType));
         row.put("FIXED_PREC_SCALE", false);
-        row.put("AUTO_INCREMENT", false);
+        row.put("AUTO_INCREMENT", autoIncrement);
         row.put("LOCAL_TYPE_NAME", name);
         row.put("MINIMUM_SCALE", 0);
         row.put("MAXIMUM_SCALE", dataType == Types.NUMERIC ? 1000 : 0);
