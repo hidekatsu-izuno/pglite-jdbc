@@ -23,6 +23,9 @@ final class PgResultSet implements InvocationHandler {
     private final List<Column> columns;
     private final List<Map<String, Object>> rows;
     private final Map<String, Integer> labelIndex;
+    private final int type;
+    private final int concurrency;
+    private final int holdability;
     private int cursor = -1;
     private boolean closed;
     private boolean wasNull;
@@ -31,12 +34,18 @@ final class PgResultSet implements InvocationHandler {
         PgConnection connection,
         java.sql.Statement statement,
         List<Column> columns,
-        List<Map<String, Object>> rows
+        List<Map<String, Object>> rows,
+        int type,
+        int concurrency,
+        int holdability
     ) {
         this.connection = connection;
         this.statement = statement;
         this.columns = columns;
         this.rows = rows;
+        this.type = type;
+        this.concurrency = concurrency;
+        this.holdability = holdability;
         this.labelIndex = new HashMap<>();
         for (var i = 0; i < columns.size(); i++) {
             var label = columns.get(i).label();
@@ -59,10 +68,30 @@ final class PgResultSet implements InvocationHandler {
         List<Column> columns,
         List<Map<String, Object>> rows
     ) {
+        return create(
+            connection,
+            statement,
+            columns,
+            rows,
+            ResultSet.TYPE_FORWARD_ONLY,
+            ResultSet.CONCUR_READ_ONLY,
+            ResultSet.CLOSE_CURSORS_AT_COMMIT
+        );
+    }
+
+    static ResultSet create(
+        PgConnection connection,
+        java.sql.Statement statement,
+        List<Column> columns,
+        List<Map<String, Object>> rows,
+        int type,
+        int concurrency,
+        int holdability
+    ) {
         return (ResultSet) Proxy.newProxyInstance(
             PgResultSet.class.getClassLoader(),
             new Class<?>[] { ResultSet.class },
-            new PgResultSet(connection, statement, columns, rows)
+            new PgResultSet(connection, statement, columns, rows, type, concurrency, holdability)
         );
     }
 
@@ -232,10 +261,10 @@ final class PgResultSet implements InvocationHandler {
                 throw new SQLException("Not a wrapper for " + iface.getName());
             }
             case "isWrapperFor" -> ((Class<?>) args[0]).isInstance(proxy);
-            case "getType" -> ResultSet.TYPE_FORWARD_ONLY;
-            case "getConcurrency" -> ResultSet.CONCUR_READ_ONLY;
+            case "getType" -> type;
+            case "getConcurrency" -> concurrency;
             case "getFetchDirection" -> ResultSet.FETCH_FORWARD;
-            case "getHoldability" -> ResultSet.CLOSE_CURSORS_AT_COMMIT;
+            case "getHoldability" -> holdability;
             default -> {
                 if (method.getReturnType() == void.class) {
                     yield null;

@@ -658,7 +658,7 @@ final class PgStatement implements InvocationHandler {
         var result = connection.query(sql, params);
         currentResults = List.of();
         currentResultIndex = -1;
-        currentResultSet = PgResultSet.create(connection, self, JdbcCompat.toColumns(result.fields()), trimRows(result.rows()));
+        currentResultSet = createStatementResultSet(result);
         updateCount = -1;
         return currentResultSet;
     }
@@ -714,12 +714,7 @@ final class PgStatement implements InvocationHandler {
                 return false;
             }
             if (!result.fields().isEmpty()) {
-                currentResultSet = PgResultSet.create(
-                    connection,
-                    self,
-                    JdbcCompat.toColumns(result.fields()),
-                    trimRows(result.rows())
-                );
+                currentResultSet = createStatementResultSet(result);
                 updateCount = -1;
                 return true;
             }
@@ -819,18 +814,25 @@ final class PgStatement implements InvocationHandler {
         }
         var result = currentResults.get(currentResultIndex);
         if (!result.fields().isEmpty()) {
-            currentResultSet = PgResultSet.create(
-                connection,
-                self,
-                JdbcCompat.toColumns(result.fields()),
-                trimRows(result.rows())
-            );
+            currentResultSet = createStatementResultSet(result);
             updateCount = -1;
             return true;
         }
         currentResultSet = null;
         updateCount = JdbcCompat.safeAffectedRows(result);
         return false;
+    }
+
+    private ResultSet createStatementResultSet(interface_.Results<Map<String, Object>> result) {
+        return PgResultSet.create(
+            connection,
+            self,
+            JdbcCompat.toColumns(result.fields()),
+            trimRows(result.rows()),
+            resultSetType,
+            resultSetConcurrency,
+            resultSetHoldability
+        );
     }
 
     private List<Map<String, Object>> trimRows(List<Map<String, Object>> rows) {

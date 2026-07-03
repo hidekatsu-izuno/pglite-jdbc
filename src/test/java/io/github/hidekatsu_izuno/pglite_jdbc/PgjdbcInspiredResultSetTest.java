@@ -364,4 +364,32 @@ class PgjdbcInspiredResultSetTest {
             )
         );
     }
+
+    @Test
+    void resultSetReportsStatementRequestedOptionsLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement(
+                 ResultSet.TYPE_SCROLL_SENSITIVE,
+                 ResultSet.CONCUR_UPDATABLE,
+                 ResultSet.HOLD_CURSORS_OVER_COMMIT
+             );
+             var resultSet = statement.executeQuery("SELECT 1 AS value")) {
+            assertEquals(ResultSet.TYPE_SCROLL_SENSITIVE, resultSet.getType());
+            assertEquals(ResultSet.CONCUR_UPDATABLE, resultSet.getConcurrency());
+            assertEquals(ResultSet.HOLD_CURSORS_OVER_COMMIT, resultSet.getHoldability());
+            assertEquals(statement, resultSet.getStatement());
+        }
+
+        try (var prepared = connection.prepareStatement(
+                 "SELECT 1 AS value",
+                 ResultSet.TYPE_SCROLL_INSENSITIVE,
+                 ResultSet.CONCUR_READ_ONLY,
+                 ResultSet.CLOSE_CURSORS_AT_COMMIT
+             );
+             var resultSet = prepared.executeQuery()) {
+            assertEquals(ResultSet.TYPE_SCROLL_INSENSITIVE, resultSet.getType());
+            assertEquals(ResultSet.CONCUR_READ_ONLY, resultSet.getConcurrency());
+            assertEquals(ResultSet.CLOSE_CURSORS_AT_COMMIT, resultSet.getHoldability());
+            assertEquals(prepared, resultSet.getStatement());
+        }
+    }
 }
