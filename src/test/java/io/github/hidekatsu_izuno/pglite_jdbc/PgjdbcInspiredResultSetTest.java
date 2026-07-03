@@ -217,6 +217,56 @@ class PgjdbcInspiredResultSetTest {
     }
 
     @Test
+    void oneRowResultPositioningMatchesPgjdbcExpectations() throws Exception {
+        try (var statement = connection.createStatement(
+                 ResultSet.TYPE_SCROLL_INSENSITIVE,
+                 ResultSet.CONCUR_READ_ONLY
+             );
+             var resultSet = statement.executeQuery("SELECT 1 AS id")) {
+            assertTrue(resultSet.isBeforeFirst());
+            assertFalse(resultSet.isAfterLast());
+            assertFalse(resultSet.isFirst());
+            assertFalse(resultSet.isLast());
+
+            assertTrue(resultSet.next());
+            assertFalse(resultSet.isBeforeFirst());
+            assertFalse(resultSet.isAfterLast());
+            assertTrue(resultSet.isFirst());
+            assertTrue(resultSet.isLast());
+
+            assertFalse(resultSet.next());
+            assertFalse(resultSet.isBeforeFirst());
+            assertTrue(resultSet.isAfterLast());
+            assertFalse(resultSet.isFirst());
+            assertFalse(resultSet.isLast());
+
+            assertTrue(resultSet.previous());
+            assertFalse(resultSet.isBeforeFirst());
+            assertFalse(resultSet.isAfterLast());
+            assertTrue(resultSet.isFirst());
+            assertTrue(resultSet.isLast());
+
+            assertTrue(resultSet.absolute(1));
+            assertFalse(resultSet.isBeforeFirst());
+            assertFalse(resultSet.isAfterLast());
+            assertTrue(resultSet.isFirst());
+            assertTrue(resultSet.isLast());
+
+            assertFalse(resultSet.absolute(0));
+            assertTrue(resultSet.isBeforeFirst());
+            assertFalse(resultSet.isAfterLast());
+            assertFalse(resultSet.isFirst());
+            assertFalse(resultSet.isLast());
+
+            assertFalse(resultSet.absolute(2));
+            assertFalse(resultSet.isBeforeFirst());
+            assertTrue(resultSet.isAfterLast());
+            assertFalse(resultSet.isFirst());
+            assertFalse(resultSet.isLast());
+        }
+    }
+
+    @Test
     void booleanGetterAcceptsPgjdbcCompatibleValuesAndRejectsInvalidValues() throws Exception {
         try (var statement = connection.createStatement();
              var resultSet = statement.executeQuery("""
