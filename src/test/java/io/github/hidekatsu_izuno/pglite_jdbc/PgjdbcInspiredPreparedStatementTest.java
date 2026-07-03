@@ -284,6 +284,33 @@ class PgjdbcInspiredPreparedStatementTest {
     }
 
     @Test
+    void preparedStatementDoubleQuestionMarkEscapesPostgresqlOperatorsLikePgjdbc() throws Exception {
+        try (var prepared = connection.prepareStatement("SELECT ??- lseg '((-1,0),(1,0))'")) {
+            assertThrows(SQLException.class, () -> prepared.setInt(1, 7));
+
+            try (var resultSet = prepared.executeQuery()) {
+                assertTrue(resultSet.next());
+                assertTrue(resultSet.getBoolean(1));
+                assertEquals("true", resultSet.getString(1));
+                assertFalse(resultSet.next());
+            }
+        }
+
+        try (var prepared = connection.prepareStatement(
+                 "SELECT lseg '((-1,0),(1,0))' ??# box '((-2,-2),(2,2))'"
+             )) {
+            assertThrows(SQLException.class, () -> prepared.setInt(1, 7));
+
+            try (var resultSet = prepared.executeQuery()) {
+                assertTrue(resultSet.next());
+                assertTrue(resultSet.getBoolean(1));
+                assertEquals("true", resultSet.getString(1));
+                assertFalse(resultSet.next());
+            }
+        }
+    }
+
+    @Test
     void preparedStatementAsciiStreamAndBigDecimalScaleFollowPgjdbcCases() throws Exception {
         try (var prepared = connection.prepareStatement("SELECT ?::text AS body, ?::numeric AS amount")) {
             prepared.setAsciiStream(
