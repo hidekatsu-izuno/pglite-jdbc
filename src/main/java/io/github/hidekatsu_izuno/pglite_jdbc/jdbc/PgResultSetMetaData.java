@@ -50,15 +50,9 @@ final class PgResultSetMetaData implements InvocationHandler {
             case "getColumnCount" -> columns.size();
             case "getColumnLabel", "getColumnName" -> column((Integer) args[0]).label();
             case "getColumnType" -> JdbcCompat.oidToJdbcType(column((Integer) args[0]).oid());
-            case "getColumnTypeName" -> JdbcCompat.oidToPgType(column((Integer) args[0]).oid());
-            case "isNullable" -> {
-                column((Integer) args[0]);
-                yield ResultSetMetaData.columnNullableUnknown;
-            }
-            case "isAutoIncrement" -> {
-                column((Integer) args[0]);
-                yield false;
-            }
+            case "getColumnTypeName" -> columnTypeName(column((Integer) args[0]));
+            case "isNullable" -> nullable(column((Integer) args[0]));
+            case "isAutoIncrement" -> autoIncrement(column((Integer) args[0]));
             case "isCaseSensitive" -> isCaseSensitive(column((Integer) args[0]).oid());
             case "isSearchable" -> {
                 column((Integer) args[0]);
@@ -232,6 +226,29 @@ final class PgResultSetMetaData implements InvocationHandler {
         return info == null ? "" : info.columnName();
     }
 
+    private String columnTypeName(Column column) throws SQLException {
+        var type = JdbcCompat.oidToPgType(column.oid());
+        if (!autoIncrement(column)) {
+            return type;
+        }
+        return switch (type) {
+            case "int4" -> "serial";
+            case "int8" -> "bigserial";
+            case "int2" -> "smallserial";
+            default -> type;
+        };
+    }
+
+    private int nullable(Column column) throws SQLException {
+        var info = fieldInfo(column);
+        return info == null ? ResultSetMetaData.columnNullableUnknown : info.nullable();
+    }
+
+    private boolean autoIncrement(Column column) throws SQLException {
+        var info = fieldInfo(column);
+        return info != null && info.autoIncrement();
+    }
+
     private String baseTableName(Column column) throws SQLException {
         var info = fieldInfo(column);
         return info == null ? "" : info.tableName();
@@ -254,10 +271,15 @@ final class PgResultSetMetaData implements InvocationHandler {
             """
             SELECT n.nspname AS schema_name,
                    c.relname AS table_name,
-                   a.attname AS column_name
+                   a.attname AS column_name,
+                   a.attnotnull OR (t.typtype = 'd' AND t.typnotnull) AS not_null,
+                   a.attidentity != ''
+                     OR pg_catalog.pg_get_expr(d.adbin, d.adrelid) LIKE '%nextval(%' AS auto_increment
             FROM pg_catalog.pg_attribute a
             JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
+            LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
             WHERE a.attrelid = $1::oid
               AND a.attnum = $2::int2
               AND NOT a.attisdropped
@@ -271,7 +293,11 @@ final class PgResultSetMetaData implements InvocationHandler {
             : new FieldInfo(
                 string(rows.get(0), "SCHEMA_NAME"),
                 string(rows.get(0), "TABLE_NAME"),
-                string(rows.get(0), "COLUMN_NAME")
+                string(rows.get(0), "COLUMN_NAME"),
+                bool(rows.get(0), "NOT_NULL")
+                    ? ResultSetMetaData.columnNoNulls
+                    : ResultSetMetaData.columnNullable,
+                bool(rows.get(0), "AUTO_INCREMENT")
             );
         fieldInfo.put(key, info);
         return info;
@@ -285,7 +311,24 @@ final class PgResultSetMetaData implements InvocationHandler {
         return value == null ? "" : String.valueOf(value);
     }
 
+    private boolean bool(Map<String, Object> row, String key) {
+        var value = row.get(key);
+        if (value == null) {
+            value = row.get(key.toLowerCase(java.util.Locale.ROOT));
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        return Boolean.parseBoolean(String.valueOf(value));
+    }
+
     private record ColumnKey(int tableOid, int positionInTable) {}
 
-    private record FieldInfo(String schemaName, String tableName, String columnName) {}
+    private record FieldInfo(
+        String schemaName,
+        String tableName,
+        String columnName,
+        int nullable,
+        boolean autoIncrement
+    ) {}
 }

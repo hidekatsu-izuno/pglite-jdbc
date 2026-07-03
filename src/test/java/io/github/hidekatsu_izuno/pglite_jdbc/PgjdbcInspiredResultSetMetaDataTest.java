@@ -99,22 +99,30 @@ class PgjdbcInspiredResultSetMetaDataTest {
     @Test
     void resultSetMetadataReportsBaseNamesLikePgjdbc() throws Exception {
         try (var statement = connection.createStatement()) {
-            statement.execute("CREATE TEMP TABLE pgjdbc_rsmd_base(id int4, name text)");
+            statement.execute("CREATE TEMP TABLE pgjdbc_rsmd_base(id serial PRIMARY KEY, name text)");
             statement.execute("INSERT INTO pgjdbc_rsmd_base VALUES (1, 'alice')");
 
             try (var resultSet = statement.executeQuery(
                     "SELECT id AS alias_id, name, id + 1 AS expression_value FROM pgjdbc_rsmd_base"
                 )) {
-                var metadata = resultSet.getMetaData().unwrap(PGResultSetMetaData.class);
+                var resultSetMetaData = resultSet.getMetaData();
+                var metadata = resultSetMetaData.unwrap(PGResultSetMetaData.class);
 
                 assertEquals("id", metadata.getBaseColumnName(1));
                 assertEquals("pgjdbc_rsmd_base", metadata.getBaseTableName(1));
                 assertEquals("pg_temp", metadata.getBaseSchemaName(1).substring(0, 7));
+                assertEquals(true, resultSetMetaData.isAutoIncrement(1));
+                assertEquals("serial", resultSetMetaData.getColumnTypeName(1));
+                assertEquals(java.sql.ResultSetMetaData.columnNoNulls, resultSetMetaData.isNullable(1));
                 assertEquals("name", metadata.getBaseColumnName(2));
                 assertEquals("pgjdbc_rsmd_base", metadata.getBaseTableName(2));
+                assertEquals(false, resultSetMetaData.isAutoIncrement(2));
+                assertEquals(java.sql.ResultSetMetaData.columnNullable, resultSetMetaData.isNullable(2));
                 assertEquals("", metadata.getBaseColumnName(3));
                 assertEquals("", metadata.getBaseTableName(3));
                 assertEquals("", metadata.getBaseSchemaName(3));
+                assertEquals(false, resultSetMetaData.isAutoIncrement(3));
+                assertEquals(java.sql.ResultSetMetaData.columnNullableUnknown, resultSetMetaData.isNullable(3));
             }
         }
     }
