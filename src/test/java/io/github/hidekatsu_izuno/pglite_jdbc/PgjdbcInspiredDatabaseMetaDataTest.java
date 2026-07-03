@@ -514,10 +514,36 @@ class PgjdbcInspiredDatabaseMetaDataTest {
 
         try (var columns = metadata.getColumns(null, null, "pgjdbc_metadata_missing", "%")) {
             var resultSetMetaData = columns.getMetaData();
-            assertEquals("TABLE_CAT", resultSetMetaData.getColumnLabel(1));
-            assertEquals("COLUMN_NAME", resultSetMetaData.getColumnLabel(4));
-            assertEquals("DATA_TYPE", resultSetMetaData.getColumnLabel(5));
-            assertEquals("IS_GENERATEDCOLUMN", resultSetMetaData.getColumnLabel(24));
+            var metadataColumns = List.of(
+                "TABLE_CAT",
+                "TABLE_SCHEM",
+                "TABLE_NAME",
+                "COLUMN_NAME",
+                "DATA_TYPE",
+                "TYPE_NAME",
+                "COLUMN_SIZE",
+                "BUFFER_LENGTH",
+                "DECIMAL_DIGITS",
+                "NUM_PREC_RADIX",
+                "NULLABLE",
+                "REMARKS",
+                "COLUMN_DEF",
+                "SQL_DATA_TYPE",
+                "SQL_DATETIME_SUB",
+                "CHAR_OCTET_LENGTH",
+                "ORDINAL_POSITION",
+                "IS_NULLABLE",
+                "SCOPE_CATALOG",
+                "SCOPE_SCHEMA",
+                "SCOPE_TABLE",
+                "SOURCE_DATA_TYPE",
+                "IS_AUTOINCREMENT",
+                "IS_GENERATEDCOLUMN"
+            );
+            for (var i = 0; i < metadataColumns.size(); i++) {
+                assertEquals(metadataColumns.get(i), resultSetMetaData.getColumnLabel(i + 1));
+                assertEquals(i + 1, columns.findColumn(metadataColumns.get(i)));
+            }
         }
 
         try (var typeInfo = metadata.getTypeInfo()) {
