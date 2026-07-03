@@ -6,11 +6,14 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.File;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.LocalDate;
 import java.util.Locale;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -252,6 +255,30 @@ class PgjdbcInspiredResultSetTest {
 
             assertTrue(resultSet.next());
             assertThrows(SQLException.class, () -> resultSet.getObject("value", Long.class));
+            assertFalse(resultSet.next());
+        }
+    }
+
+    @Test
+    void typedGetObjectRejectsUnsupportedAndInvalidConversionsLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("""
+                 SELECT
+                   'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid AS uid,
+                   'not-a-uuid'::text AS bad_uuid,
+                   '2024-02-29'::date AS leap_day,
+                   'not-a-date'::text AS bad_date,
+                   42::int4 AS value
+                 """)) {
+            assertTrue(resultSet.next());
+            assertEquals(
+                UUID.fromString("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"),
+                resultSet.getObject("uid", UUID.class)
+            );
+            assertEquals(LocalDate.of(2024, 2, 29), resultSet.getObject("leap_day", LocalDate.class));
+            assertThrows(SQLException.class, () -> resultSet.getObject("bad_uuid", UUID.class));
+            assertThrows(SQLException.class, () -> resultSet.getObject("bad_date", LocalDate.class));
+            assertThrows(SQLException.class, () -> resultSet.getObject("value", File.class));
             assertFalse(resultSet.next());
         }
     }

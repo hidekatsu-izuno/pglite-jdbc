@@ -594,33 +594,58 @@ final class JdbcCompat {
             return toBytes(value);
         }
         if (targetType == UUID.class) {
-            return UUID.fromString(String.valueOf(value));
+            try {
+                return UUID.fromString(String.valueOf(value));
+            } catch (IllegalArgumentException exception) {
+                throw new SQLException("Cannot cast to UUID: " + value, exception);
+            }
         }
         if (targetType == LocalDate.class) {
-            return LocalDate.parse(String.valueOf(value));
+            try {
+                var text = String.valueOf(value);
+                return LocalDate.parse(text.length() >= 10 ? text.substring(0, 10) : text);
+            } catch (java.time.format.DateTimeParseException exception) {
+                throw new SQLException("Cannot cast to LocalDate: " + value, exception);
+            }
         }
         if (targetType == LocalTime.class) {
-            return LocalTime.parse(String.valueOf(value));
+            try {
+                return LocalTime.parse(String.valueOf(value));
+            } catch (java.time.format.DateTimeParseException exception) {
+                throw new SQLException("Cannot cast to LocalTime: " + value, exception);
+            }
         }
         if (targetType == LocalDateTime.class) {
             var text = String.valueOf(value).replace(' ', 'T');
-            if (text.endsWith("Z") || text.matches(".*[+-][0-9]{2}:[0-9]{2}$")) {
-                return OffsetDateTime.parse(text).toLocalDateTime();
+            try {
+                if (text.endsWith("Z") || text.matches(".*[+-][0-9]{2}:[0-9]{2}$")) {
+                    return OffsetDateTime.parse(text).toLocalDateTime();
+                }
+                return LocalDateTime.parse(text);
+            } catch (java.time.format.DateTimeParseException exception) {
+                throw new SQLException("Cannot cast to LocalDateTime: " + value, exception);
             }
-            return LocalDateTime.parse(text);
         }
         if (targetType == OffsetDateTime.class) {
             var text = String.valueOf(value).replace(' ', 'T');
-            return OffsetDateTime.parse(text);
+            try {
+                return OffsetDateTime.parse(text);
+            } catch (java.time.format.DateTimeParseException exception) {
+                throw new SQLException("Cannot cast to OffsetDateTime: " + value, exception);
+            }
         }
         if (targetType == java.sql.Timestamp.class) {
             var text = String.valueOf(value).replace('T', ' ');
-            if (text.endsWith("Z") || text.matches(".*[+-][0-9]{2}:[0-9]{2}$")) {
-                return java.sql.Timestamp.valueOf(OffsetDateTime.parse(text.replace(' ', 'T')).toLocalDateTime());
+            try {
+                if (text.endsWith("Z") || text.matches(".*[+-][0-9]{2}:[0-9]{2}$")) {
+                    return java.sql.Timestamp.valueOf(OffsetDateTime.parse(text.replace(' ', 'T')).toLocalDateTime());
+                }
+                return java.sql.Timestamp.valueOf(LocalDateTime.parse(text.replace(' ', 'T')));
+            } catch (IllegalArgumentException exception) {
+                throw new SQLException("Cannot cast to Timestamp: " + value, exception);
             }
-            return java.sql.Timestamp.valueOf(LocalDateTime.parse(text.replace(' ', 'T')));
         }
-        return value;
+        throw new SQLException("Unsupported conversion to " + targetType.getName());
     }
 
     static int oidToJdbcType(int oid) {
