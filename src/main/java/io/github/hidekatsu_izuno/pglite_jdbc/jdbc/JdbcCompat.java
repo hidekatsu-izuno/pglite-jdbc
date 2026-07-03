@@ -326,11 +326,11 @@ final class JdbcCompat {
             return bool;
         }
         if (value instanceof Number number) {
-            var numericValue = number.longValue();
-            if (numericValue == 1L) {
+            var numericValue = toBigDecimal(number);
+            if (BigDecimal.ONE.compareTo(numericValue) == 0) {
                 return true;
             }
-            if (numericValue == 0L) {
+            if (BigDecimal.ZERO.compareTo(numericValue) == 0) {
                 return false;
             }
             throw new SQLException("Cannot cast to boolean: " + value);
@@ -566,16 +566,16 @@ final class JdbcCompat {
         if (Number.class.isAssignableFrom(targetType) || targetType.isPrimitive()) {
             var number = toNumber(value);
             if (targetType == Integer.class || targetType == int.class) {
-                return number.intValue();
+                return toInt(value);
             }
             if (targetType == Long.class || targetType == long.class) {
-                return number.longValue();
+                return toLong(value);
             }
             if (targetType == Short.class || targetType == short.class) {
-                return number.shortValue();
+                return toShort(value);
             }
             if (targetType == Byte.class || targetType == byte.class) {
-                return number.byteValue();
+                return toByte(value);
             }
             if (targetType == Float.class || targetType == float.class) {
                 return number.floatValue();

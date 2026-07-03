@@ -11,6 +11,7 @@ import java.sql.SQLFeatureNotSupportedException;
 import java.sql.ResultSet;
 import java.sql.Savepoint;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.sql.Types;
 import java.util.Collections;
 import java.util.HashMap;
@@ -765,8 +766,29 @@ public final class PgConnection implements InvocationHandler {
             (String) args[0],
             options.type(),
             options.concurrency(),
-            options.holdability()
+            options.holdability(),
+            generatedColumns(args)
         );
+    }
+
+    private String[] generatedColumns(Object[] args) {
+        if (args == null || args.length < 2) {
+            return null;
+        }
+        if (args[1] instanceof Integer flag) {
+            return flag == java.sql.Statement.RETURN_GENERATED_KEYS ? new String[0] : null;
+        }
+        if (args[1] instanceof String[] columns) {
+            return columns.clone();
+        }
+        if (args[1] instanceof int[] columns && columns.length > 0) {
+            var out = new String[columns.length];
+            for (var i = 0; i < columns.length; i++) {
+                out[i] = String.valueOf(columns[i]);
+            }
+            return out;
+        }
+        return null;
     }
 
     private StatementOptions statementOptions(Object[] args, int offset) throws SQLException {

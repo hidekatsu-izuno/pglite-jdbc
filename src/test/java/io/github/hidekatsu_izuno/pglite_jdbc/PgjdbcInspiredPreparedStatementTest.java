@@ -7,12 +7,14 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.sql.Types;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.AfterAll;
@@ -121,6 +123,41 @@ class PgjdbcInspiredPreparedStatementTest {
              )) {
             assertTrue(resultSet.next());
             assertEquals("one,two", resultSet.getString("bodies"));
+        }
+    }
+
+    @Test
+    void preparedStatementGeneratedKeysFollowPgjdbcReturningBehavior() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("CREATE TEMP TABLE pgjdbc_prepared_keys(id serial primary key, body text)");
+        }
+
+        try (var prepared = connection.prepareStatement(
+            "INSERT INTO pgjdbc_prepared_keys(body) VALUES (?)",
+            Statement.RETURN_GENERATED_KEYS
+        )) {
+            prepared.setString(1, "one");
+            assertEquals(1, prepared.executeUpdate());
+            try (var keys = prepared.getGeneratedKeys()) {
+                assertTrue(keys.next());
+                assertEquals(1, keys.getInt("id"));
+                assertEquals("one", keys.getString("body"));
+                assertFalse(keys.next());
+            }
+        }
+
+        try (var prepared = connection.prepareStatement(
+            "INSERT INTO pgjdbc_prepared_keys(body) VALUES (?)",
+            new String[] { "id" }
+        )) {
+            prepared.setString(1, "two");
+            assertEquals(1, prepared.executeUpdate());
+            try (var keys = prepared.getGeneratedKeys()) {
+                assertTrue(keys.next());
+                assertEquals(2, keys.getInt("id"));
+                assertThrows(SQLException.class, () -> keys.findColumn("body"));
+                assertFalse(keys.next());
+            }
         }
     }
 
@@ -251,6 +288,23 @@ class PgjdbcInspiredPreparedStatementTest {
                 assertEquals(0, BigDecimal.ZERO.compareTo(resultSet.getBigDecimal("false_decimal")));
                 assertFalse(resultSet.next());
             }
+        }
+    }
+
+    @Test
+    void preparedStatementRejectsBadBooleanObjectCastsLikePgjdbc() throws Exception {
+        try (var prepared = connection.prepareStatement("SELECT ?::boolean AS value")) {
+            assertThrows(SQLException.class, () -> prepared.setObject(1, "this is not boolean", Types.BOOLEAN));
+            assertThrows(SQLException.class, () -> prepared.setObject(1, 'X', Types.BOOLEAN));
+            assertThrows(SQLException.class, () -> prepared.setObject(1, new File(""), Types.BOOLEAN));
+            assertThrows(SQLException.class, () -> prepared.setObject(1, "1.0", Types.BOOLEAN));
+            assertThrows(SQLException.class, () -> prepared.setObject(1, "-1", Types.BOOLEAN));
+            assertThrows(SQLException.class, () -> prepared.setObject(1, "ok", Types.BOOLEAN));
+            assertThrows(SQLException.class, () -> prepared.setObject(1, 0.99f, Types.BOOLEAN));
+            assertThrows(SQLException.class, () -> prepared.setObject(1, -0.01d, Types.BOOLEAN));
+            assertThrows(SQLException.class, () -> prepared.setObject(1, new java.sql.Date(0), Types.BOOLEAN));
+            assertThrows(SQLException.class, () -> prepared.setObject(1, new BigInteger("1000"), Types.BOOLEAN));
+            assertThrows(SQLException.class, () -> prepared.setObject(1, Math.PI, Types.BOOLEAN));
         }
     }
 

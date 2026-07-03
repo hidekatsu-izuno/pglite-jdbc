@@ -223,6 +223,63 @@ class PgjdbcInspiredResultSetTest {
     }
 
     @Test
+    void typedGetObjectNumericConversionsCheckOverflowLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("""
+                 SELECT *
+                 FROM (VALUES
+                   ('1.2'::numeric),
+                   ('128'::numeric),
+                   ('32768'::numeric),
+                   ('2147483648'::numeric),
+                   ('9223372036854775808'::numeric)
+                 ) AS values(value)
+                 """)) {
+            assertTrue(resultSet.next());
+            assertEquals((byte) 1, resultSet.getObject("value", Byte.class));
+            assertEquals((short) 1, resultSet.getObject("value", Short.class));
+            assertEquals(1, resultSet.getObject("value", Integer.class));
+            assertEquals(1L, resultSet.getObject("value", Long.class));
+
+            assertTrue(resultSet.next());
+            assertThrows(SQLException.class, () -> resultSet.getObject("value", Byte.class));
+
+            assertTrue(resultSet.next());
+            assertThrows(SQLException.class, () -> resultSet.getObject("value", Short.class));
+
+            assertTrue(resultSet.next());
+            assertThrows(SQLException.class, () -> resultSet.getObject("value", Integer.class));
+
+            assertTrue(resultSet.next());
+            assertThrows(SQLException.class, () -> resultSet.getObject("value", Long.class));
+            assertFalse(resultSet.next());
+        }
+    }
+
+    @Test
+    void booleanGetterRejectsPgjdbcBadBooleanSourceTypes() throws Exception {
+        try (var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("""
+                 SELECT
+                   '2017-03-13 14:25:48.130861'::timestamp AS bad_timestamp,
+                   '2017-03-13'::date AS bad_date,
+                   '14:25:48.130861'::time AS bad_time,
+                   ARRAY[[1,0],[0,1]] AS bad_array,
+                   29::bit(4) AS bad_bit,
+                   'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid AS bad_uuid
+                 """)) {
+            assertTrue(resultSet.next());
+            assertThrows(SQLException.class, () -> resultSet.getBoolean("bad_timestamp"));
+            assertThrows(SQLException.class, () -> resultSet.getBoolean("bad_date"));
+            assertThrows(SQLException.class, () -> resultSet.getBoolean("bad_time"));
+            assertThrows(SQLException.class, () -> resultSet.getBoolean("bad_array"));
+            assertThrows(SQLException.class, () -> resultSet.getBoolean("bad_bit"));
+            assertThrows(SQLException.class, () -> resultSet.getBoolean("bad_uuid"));
+            assertFalse(resultSet.next());
+        }
+    }
+
+    @Test
     void columnLookupIsLocaleIndependentLikePgjdbcTurkishLocaleCase() throws Exception {
         var previous = Locale.getDefault();
         try {

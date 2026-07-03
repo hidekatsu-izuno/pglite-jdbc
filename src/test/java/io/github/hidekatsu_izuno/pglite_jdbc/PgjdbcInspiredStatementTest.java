@@ -91,6 +91,41 @@ class PgjdbcInspiredStatementTest {
     }
 
     @Test
+    void statementGeneratedKeysFollowPgjdbcReturningBehavior() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("CREATE TEMP TABLE pgjdbc_statement_keys(id serial primary key, body text)");
+
+            assertEquals(
+                1,
+                statement.executeUpdate(
+                    "INSERT INTO pgjdbc_statement_keys(body) VALUES ('one')",
+                    Statement.RETURN_GENERATED_KEYS
+                )
+            );
+            try (var keys = statement.getGeneratedKeys()) {
+                assertTrue(keys.next());
+                assertEquals(1, keys.getInt("id"));
+                assertEquals("one", keys.getString("body"));
+                assertFalse(keys.next());
+            }
+
+            assertEquals(
+                1,
+                statement.executeUpdate(
+                    "INSERT INTO pgjdbc_statement_keys(body) VALUES ('two')",
+                    new String[] { "id" }
+                )
+            );
+            try (var keys = statement.getGeneratedKeys()) {
+                assertTrue(keys.next());
+                assertEquals(2, keys.getInt("id"));
+                assertThrows(SQLException.class, () -> keys.findColumn("body"));
+                assertFalse(keys.next());
+            }
+        }
+    }
+
+    @Test
     void emptyQueryProducesNoResultSetAndNoMoreResults() throws Exception {
         try (var statement = connection.createStatement()) {
             assertFalse(statement.execute(""));
