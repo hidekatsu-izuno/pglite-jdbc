@@ -1,6 +1,7 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.jdbc;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.core.QueryExecutor;
+import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -27,6 +28,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
 import java.util.logging.Logger;
 import org.postgresql.jdbc.AutoSave;
 import org.postgresql.jdbc.PreferQueryMode;
@@ -166,23 +168,53 @@ public final class PgConnection implements InvocationHandler {
     }
 
     interface_.Results<Map<String, Object>> query(String sql, Object[] params) throws SQLException {
+        return query(sql, params, null);
+    }
+
+    interface_.Results<Map<String, Object>> query(
+        String sql,
+        Object[] params,
+        Consumer<messages.NoticeMessage> onNotice
+    ) throws SQLException {
         ensureTransactionIfNeeded();
-        return queryExecutor.query(sql, params);
+        return queryExecutor.query(sql, params, onNotice);
     }
 
     interface_.Results<List<Object>> queryArray(String sql, Object[] params) throws SQLException {
+        return queryArray(sql, params, null);
+    }
+
+    interface_.Results<List<Object>> queryArray(
+        String sql,
+        Object[] params,
+        Consumer<messages.NoticeMessage> onNotice
+    ) throws SQLException {
         ensureTransactionIfNeeded();
-        return queryExecutor.queryArray(sql, params);
+        return queryExecutor.queryArray(sql, params, onNotice);
     }
 
     List<interface_.Results<Map<String, Object>>> exec(String sql) throws SQLException {
+        return exec(sql, null);
+    }
+
+    List<interface_.Results<Map<String, Object>>> exec(
+        String sql,
+        Consumer<messages.NoticeMessage> onNotice
+    ) throws SQLException {
         ensureTransactionIfNeeded();
-        return queryExecutor.exec(sql);
+        return queryExecutor.exec(sql, onNotice);
     }
 
     List<interface_.Results<List<Object>>> execArray(String sql) throws SQLException {
+        return execArray(sql, null);
+    }
+
+    List<interface_.Results<List<Object>>> execArray(
+        String sql,
+        Consumer<messages.NoticeMessage> onNotice
+    ) throws SQLException {
         ensureTransactionIfNeeded();
-        return queryExecutor.execArray(sql);
+        return queryExecutor.execArray(sql, onNotice);
     }
 
     interface_.ExecProtocolResult execProtocol(byte[] message, boolean throwOnError) throws SQLException {

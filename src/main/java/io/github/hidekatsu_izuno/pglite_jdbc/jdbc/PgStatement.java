@@ -13,6 +13,7 @@ import java.sql.PreparedStatement;
 import java.sql.JDBCType;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.SQLWarning;
 import java.sql.SQLType;
 import java.sql.Statement;
 import java.sql.Types;
@@ -43,7 +44,7 @@ final class PgStatement implements InvocationHandler {
     private ResultSet generatedKeys;
     private List<interface_.Results<List<Object>>> currentResults = List.of();
     private int currentResultIndex = -1;
-    private java.sql.SQLWarning warnings;
+    private SQLWarning warnings;
     private int fetchSize;
     private int fetchDirection = ResultSet.FETCH_FORWARD;
     private int maxFieldSize;
@@ -755,9 +756,10 @@ final class PgStatement implements InvocationHandler {
 
     private ResultSet executeQuery(String sql) throws SQLException {
         closeCurrentResultSet();
+        clearExecutionWarnings();
         generatedKeys = null;
         var params = preparedSql != null ? buildParams() : null;
-        var result = connection.queryArray(sql, params);
+        var result = connection.queryArray(sql, params, this::addWarning);
         if (result.fields().isEmpty()) {
             currentResults = List.of();
             currentResultIndex = -1;
@@ -774,9 +776,10 @@ final class PgStatement implements InvocationHandler {
 
     private int executeUpdate(String sql, Object[] args) throws SQLException {
         closeCurrentResultSet();
+        clearExecutionWarnings();
         var generatedColumns = preparedSql != null ? preparedGeneratedColumns : generatedColumns(args, 1);
         if (preparedSql != null) {
-            var result = connection.query(withGeneratedKeys(sql, generatedColumns), buildParams());
+            var result = connection.query(withGeneratedKeys(sql, generatedColumns), buildParams(), this::addWarning);
             if (!result.fields().isEmpty() && generatedColumns == null) {
                 clearResultState();
                 throw new SQLException("A result was returned when none was expected");
@@ -792,7 +795,7 @@ final class PgStatement implements InvocationHandler {
             updateCount = JdbcCompat.safeAffectedRows(result);
             return updateCount;
         }
-        var results = connection.exec(withGeneratedKeys(sql, generatedColumns));
+        var results = connection.exec(withGeneratedKeys(sql, generatedColumns), this::addWarning);
         for (var result : results) {
             if (!result.fields().isEmpty() && generatedColumns == null) {
                 clearResultState();
@@ -813,10 +816,11 @@ final class PgStatement implements InvocationHandler {
 
     private boolean execute(String sql, Object[] args) throws SQLException {
         closeCurrentResultSet();
+        clearExecutionWarnings();
         var generatedColumns = preparedSql != null ? preparedGeneratedColumns : generatedColumns(args, 1);
         if (preparedSql != null) {
             if (generatedColumns == null) {
-                var result = connection.queryArray(sql, buildParams());
+                var result = connection.queryArray(sql, buildParams(), this::addWarning);
                 currentResults = List.of();
                 currentResultIndex = -1;
                 if (!result.fields().isEmpty()) {
@@ -828,7 +832,7 @@ final class PgStatement implements InvocationHandler {
                 updateCount = JdbcCompat.safeAffectedRows(result);
                 return false;
             }
-            var result = connection.query(withGeneratedKeys(sql, generatedColumns), buildParams());
+            var result = connection.query(withGeneratedKeys(sql, generatedColumns), buildParams(), this::addWarning);
             currentResults = List.of();
             currentResultIndex = -1;
             setGeneratedKeys(result);
@@ -838,7 +842,7 @@ final class PgStatement implements InvocationHandler {
         }
 
         if (generatedColumns != null) {
-            var results = connection.exec(withGeneratedKeys(sql, generatedColumns));
+            var results = connection.exec(withGeneratedKeys(sql, generatedColumns), this::addWarning);
             if (!results.isEmpty()) {
                 setGeneratedKeys(results.getLast());
                 updateCount = JdbcCompat.safeAffectedRows(results.getLast());
@@ -851,7 +855,7 @@ final class PgStatement implements InvocationHandler {
             currentResultSet = null;
             return false;
         }
-        var results = connection.execArray(sql);
+        var results = connection.execArray(sql, this::addWarning);
         generatedKeys = null;
         currentResults = results;
         currentResultIndex = -1;
@@ -865,11 +869,12 @@ final class PgStatement implements InvocationHandler {
 
     private int[] executeBatch() throws SQLException {
         closeCurrentResultSet();
+        clearExecutionWarnings();
         if (preparedSql != null) {
             var out = new int[preparedBatch.size()];
             var sql = typedPreparedProtocolSql();
             for (var i = 0; i < preparedBatch.size(); i++) {
-                var result = connection.query(sql, preparedBatch.get(i));
+                var result = connection.query(sql, preparedBatch.get(i), this::addWarning);
                 out[i] = JdbcCompat.safeAffectedRows(result);
             }
             preparedBatch.clear();
@@ -882,7 +887,7 @@ final class PgStatement implements InvocationHandler {
 
         var out = new int[sqlBatch.size()];
         for (var i = 0; i < sqlBatch.size(); i++) {
-            var results = connection.exec(sqlBatch.get(i));
+            var results = connection.exec(sqlBatch.get(i), this::addWarning);
             out[i] = results.isEmpty() ? 0 : JdbcCompat.safeAffectedRows(results.getLast());
         }
         sqlBatch.clear();
@@ -971,6 +976,19 @@ final class PgStatement implements InvocationHandler {
             return rows;
         }
         return rows.subList(0, maxRows);
+    }
+
+    private void clearExecutionWarnings() {
+        warnings = null;
+    }
+
+    private void addWarning(io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages.NoticeMessage notice) {
+        var warning = new SQLWarning(notice.message(), notice.code());
+        if (warnings == null) {
+            warnings = warning;
+            return;
+        }
+        warnings.setNextWarning(warning);
     }
 
     private void ensureOpen() throws SQLException {

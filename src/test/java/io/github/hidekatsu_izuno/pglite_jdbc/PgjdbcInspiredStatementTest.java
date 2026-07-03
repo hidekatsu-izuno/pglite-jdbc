@@ -402,4 +402,64 @@ class PgjdbcInspiredStatementTest {
             assertThrows(SQLException.class, () -> statement.executeQuery("SELECT {fn version()}"));
         }
     }
+
+    @Test
+    void statementWarningsFollowPgjdbcNoticeHandling() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("""
+                DO $$
+                BEGIN
+                  RAISE NOTICE 'Test 1';
+                  RAISE NOTICE 'Test 2';
+                END
+                $$;
+                """);
+
+            var warning = statement.getWarnings();
+            assertNotNull(warning);
+            assertEquals("Test 1", warning.getMessage());
+            assertNotNull(warning.getNextWarning());
+            assertEquals("Test 2", warning.getNextWarning().getMessage());
+
+            statement.clearWarnings();
+            assertNull(statement.getWarnings());
+
+            statement.execute("""
+                DO $$
+                BEGIN
+                  RAISE NOTICE 'To be cleared';
+                END
+                $$;
+                """);
+            assertNotNull(statement.getWarnings());
+
+            statement.executeQuery("SELECT 1").close();
+            assertNull(statement.getWarnings());
+        }
+    }
+
+    @Test
+    void preparedStatementWarningsFollowPgjdbcNoticeHandling() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("""
+                CREATE OR REPLACE FUNCTION pgjdbc_raise_prepared_notice(value text) RETURNS void AS $$
+                BEGIN
+                  RAISE NOTICE 'Prepared %', value;
+                END
+                $$ LANGUAGE plpgsql
+                """);
+        }
+
+        try (var prepared = connection.prepareStatement("SELECT pgjdbc_raise_prepared_notice(?)")) {
+            prepared.setString(1, "notice");
+            assertTrue(prepared.execute());
+
+            var warning = prepared.getWarnings();
+            assertNotNull(warning);
+            assertEquals("Prepared notice", warning.getMessage());
+
+            prepared.clearWarnings();
+            assertNull(prepared.getWarnings());
+        }
+    }
 }
