@@ -1116,7 +1116,8 @@ public final class PgConnection implements InvocationHandler {
             case "float8", "double", "double precision" -> Types.DOUBLE;
             case "money" -> Types.DOUBLE;
             case "numeric", "decimal" -> Types.NUMERIC;
-            case "text", "varchar", "character varying", "bpchar", "char", "character" -> Types.VARCHAR;
+            case "char" -> Types.CHAR;
+            case "name", "text", "varchar", "character varying", "bpchar", "character" -> Types.VARCHAR;
             case "bytea" -> Types.BINARY;
             case "date" -> Types.DATE;
             case "time" -> Types.TIME;
@@ -1137,6 +1138,8 @@ public final class PgConnection implements InvocationHandler {
         }
         return switch (typeName.toLowerCase()) {
             case "bool", "boolean" -> 16;
+            case "char" -> 18;
+            case "name" -> 19;
             case "int2", "smallint" -> 21;
             case "int4", "integer", "int" -> 23;
             case "int8", "bigint" -> 20;
@@ -1152,7 +1155,7 @@ public final class PgConnection implements InvocationHandler {
             case "timestamptz", "timestamp with time zone" -> 1184;
             case "numeric", "decimal" -> 1700;
             case "varchar", "character varying" -> 1043;
-            case "bpchar", "char", "character" -> 1042;
+            case "bpchar", "character" -> 1042;
             case "bytea" -> 17;
             case "uuid" -> 2950;
             case "json" -> 114;
@@ -1178,6 +1181,8 @@ public final class PgConnection implements InvocationHandler {
     private int elementOidToArrayOid(int oid) {
         return switch (oid) {
             case 16 -> 1000;
+            case 18 -> 1002;
+            case 19 -> 1003;
             case 21 -> 1005;
             case 23 -> 1007;
             case 20 -> 1016;
@@ -1194,6 +1199,8 @@ public final class PgConnection implements InvocationHandler {
             case 1700 -> 1231;
             case 1043 -> 1015;
             case 1042 -> 1014;
+            case 1560 -> 1561;
+            case 1562 -> 1563;
             case 17 -> 1001;
             case 2950 -> 2951;
             case 114 -> 199;
@@ -1205,6 +1212,8 @@ public final class PgConnection implements InvocationHandler {
     private int arrayOidToElementOid(int oid) {
         return switch (oid) {
             case 1000 -> 16;
+            case 1002 -> 18;
+            case 1003 -> 19;
             case 1005 -> 21;
             case 1007 -> 23;
             case 1016 -> 20;
@@ -1221,6 +1230,8 @@ public final class PgConnection implements InvocationHandler {
             case 1231 -> 1700;
             case 1015 -> 1043;
             case 1014 -> 1042;
+            case 1561 -> 1560;
+            case 1563 -> 1562;
             case 1001 -> 17;
             case 2951 -> 2950;
             case 199 -> 114;

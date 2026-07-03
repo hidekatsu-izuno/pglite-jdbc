@@ -683,6 +683,8 @@ final class JdbcCompat {
     static int oidToJdbcType(int oid) {
         return switch (oid) {
             case 16 -> Types.BOOLEAN;
+            case 18 -> Types.CHAR;
+            case 19 -> Types.VARCHAR;
             case 20, 26 -> Types.BIGINT;
             case 21 -> Types.SMALLINT;
             case 23 -> Types.INTEGER;
@@ -697,8 +699,8 @@ final class JdbcCompat {
             case 1184 -> Types.TIMESTAMP_WITH_TIMEZONE;
             case 1700 -> Types.NUMERIC;
             case 17 -> Types.BINARY;
-            case 1000, 1001, 1005, 1007, 1009, 1014, 1015, 1016, 1021, 1022, 1028,
-                1115, 1182, 1183, 1185, 1231, 1270, 199, 2951, 3807 -> Types.ARRAY;
+            case 1000, 1001, 1002, 1003, 1005, 1007, 1009, 1014, 1015, 1016, 1021, 1022, 1028,
+                1115, 1182, 1183, 1185, 1231, 1270, 791, 1561, 1563, 199, 2951, 3807 -> Types.ARRAY;
             default -> Types.OTHER;
         };
     }
@@ -707,6 +709,8 @@ final class JdbcCompat {
         return switch (oid) {
             case 16 -> "bool";
             case 17 -> "bytea";
+            case 18 -> "char";
+            case 19 -> "name";
             case 20 -> "int8";
             case 21 -> "int2";
             case 23 -> "int4";
@@ -732,6 +736,8 @@ final class JdbcCompat {
             case 3802 -> "jsonb";
             case 1000 -> "_bool";
             case 1001 -> "_bytea";
+            case 1002 -> "_char";
+            case 1003 -> "_name";
             case 1005 -> "_int2";
             case 1007 -> "_int4";
             case 1009 -> "_text";
@@ -740,6 +746,7 @@ final class JdbcCompat {
             case 1016 -> "_int8";
             case 1021 -> "_float4";
             case 1022 -> "_float8";
+            case 791 -> "_money";
             case 1028 -> "_oid";
             case 1115 -> "_timestamp";
             case 1182 -> "_date";
@@ -747,6 +754,8 @@ final class JdbcCompat {
             case 1185 -> "_timestamptz";
             case 1231 -> "_numeric";
             case 1270 -> "_timetz";
+            case 1561 -> "_bit";
+            case 1563 -> "_varbit";
             case 199 -> "_json";
             case 2951 -> "_uuid";
             case 3807 -> "_jsonb";

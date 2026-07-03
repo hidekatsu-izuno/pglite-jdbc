@@ -1002,7 +1002,7 @@ final class PgDatabaseMetaData implements InvocationHandler {
         addType(rows, "bool", Types.BOOLEAN, 1, false);
         addType(rows, "box", Types.OTHER, 0, true);
         addType(rows, "bytea", Types.BINARY, Integer.MAX_VALUE, true);
-        addType(rows, "char", Types.VARCHAR, 1, true);
+        addType(rows, "char", Types.CHAR, 1, true);
         addType(rows, "cidr", Types.OTHER, 0, true);
         addType(rows, "circle", Types.OTHER, 0, true);
         addType(rows, "date", Types.DATE, 13, true);

@@ -73,6 +73,7 @@ class PgjdbcInspiredDatabaseMetaDataTest {
                 }
 
                 var sawInt4 = false;
+                var sawChar = false;
                 var sawFloat8 = false;
                 var sawMoney = false;
                 var sawText = false;
@@ -86,6 +87,9 @@ class PgjdbcInspiredDatabaseMetaDataTest {
                             assertNull(types.getString("LITERAL_SUFFIX"));
                             assertFalse(types.getBoolean("UNSIGNED_ATTRIBUTE"));
                             sawInt4 = true;
+                        } else if ("char".equals(typeName)) {
+                            assertEquals(Types.CHAR, types.getInt("DATA_TYPE"));
+                            sawChar = true;
                         } else if ("float8".equals(typeName)) {
                             assertFalse(types.getBoolean("UNSIGNED_ATTRIBUTE"));
                             sawFloat8 = true;
@@ -102,6 +106,7 @@ class PgjdbcInspiredDatabaseMetaDataTest {
                     }
                 }
                 assertTrue(sawInt4);
+                assertTrue(sawChar);
                 assertTrue(sawFloat8);
                 assertTrue(sawMoney);
                 assertTrue(sawText);
