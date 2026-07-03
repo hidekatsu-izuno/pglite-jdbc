@@ -247,16 +247,19 @@ class PgjdbcInspiredStatementTest {
     void statementRejectsNegativeLimitsAndTimeoutsLikePgjdbc() throws Exception {
         try (var statement = connection.createStatement()) {
             assertThrows(SQLException.class, () -> statement.setFetchSize(-1));
+            assertThrows(SQLException.class, () -> statement.setMaxFieldSize(-1));
             assertThrows(SQLException.class, () -> statement.setMaxRows(-1));
             assertThrows(SQLException.class, () -> statement.setLargeMaxRows(-1));
             assertThrows(SQLException.class, () -> statement.setQueryTimeout(-1));
 
             statement.setFetchSize(2);
+            statement.setMaxFieldSize(6);
             statement.setMaxRows(3);
             statement.setLargeMaxRows(4);
             statement.setQueryTimeout(5);
 
             assertEquals(2, statement.getFetchSize());
+            assertEquals(6, statement.getMaxFieldSize());
             assertEquals(4, statement.getMaxRows());
             assertEquals(4L, statement.getLargeMaxRows());
             assertEquals(5, statement.getQueryTimeout());

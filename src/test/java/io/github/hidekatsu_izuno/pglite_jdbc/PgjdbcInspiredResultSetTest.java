@@ -140,6 +140,33 @@ class PgjdbcInspiredResultSetTest {
     }
 
     @Test
+    void statementMaxFieldSizeAppliesOnlyToCharacterAndBinaryColumnsLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.setMaxFieldSize(2);
+            assertEquals(2, statement.getMaxFieldSize());
+
+            try (var resultSet = statement.executeQuery("""
+                SELECT
+                  12345::int4 AS int_value,
+                  '12345'::text AS text_value,
+                  '12345'::varchar AS varchar_value,
+                  decode('0102030405', 'hex') AS bytea_value
+                """)) {
+                assertTrue(resultSet.next());
+                assertTrue(resultSet.getString("int_value").length() > 2);
+                assertTrue(resultSet.getBytes("int_value").length >= 4);
+                assertEquals("12", resultSet.getString("text_value"));
+                assertEquals("12", resultSet.getString("varchar_value"));
+                org.junit.jupiter.api.Assertions.assertArrayEquals(
+                    new byte[] { 1, 2 },
+                    resultSet.getBytes("bytea_value")
+                );
+                assertFalse(resultSet.next());
+            }
+        }
+    }
+
+    @Test
     void duplicateColumnNameFindsFirstColumnAndIndexesAreBoundsChecked() throws Exception {
         try (var statement = connection.createStatement();
              var resultSet = statement.executeQuery("SELECT 1 AS a, 2 AS a")) {

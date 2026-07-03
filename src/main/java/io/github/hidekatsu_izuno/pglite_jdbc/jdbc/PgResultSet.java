@@ -27,6 +27,7 @@ final class PgResultSet implements InvocationHandler {
     private final int type;
     private final int concurrency;
     private final int holdability;
+    private final int maxFieldSize;
     private int cursor = -1;
     private boolean closed;
     private boolean wasNull;
@@ -42,6 +43,7 @@ final class PgResultSet implements InvocationHandler {
         int type,
         int concurrency,
         int holdability,
+        int maxFieldSize,
         int fetchSize,
         int fetchDirection
     ) {
@@ -52,6 +54,7 @@ final class PgResultSet implements InvocationHandler {
         this.type = type;
         this.concurrency = concurrency;
         this.holdability = holdability;
+        this.maxFieldSize = maxFieldSize;
         this.fetchSize = fetchSize;
         this.fetchDirection = fetchDirection;
         this.labelIndex = new HashMap<>();
@@ -85,6 +88,7 @@ final class PgResultSet implements InvocationHandler {
             ResultSet.CONCUR_READ_ONLY,
             ResultSet.CLOSE_CURSORS_AT_COMMIT,
             0,
+            0,
             ResultSet.FETCH_FORWARD
         );
     }
@@ -107,6 +111,7 @@ final class PgResultSet implements InvocationHandler {
             concurrency,
             holdability,
             0,
+            0,
             ResultSet.FETCH_FORWARD
         );
     }
@@ -119,6 +124,7 @@ final class PgResultSet implements InvocationHandler {
         int type,
         int concurrency,
         int holdability,
+        int maxFieldSize,
         int fetchSize,
         int fetchDirection
     ) {
@@ -133,6 +139,7 @@ final class PgResultSet implements InvocationHandler {
                 type,
                 concurrency,
                 holdability,
+                maxFieldSize,
                 fetchSize,
                 fetchDirection
             )
@@ -264,7 +271,7 @@ final class PgResultSet implements InvocationHandler {
                         JdbcCompat.stringify(value)
                     );
             }
-            case "getString", "getNString" -> JdbcCompat.stringify(getValue(args[0]));
+            case "getString", "getNString" -> truncateString(columnIndex(args[0]), getValue(args[0]));
             case "getBoolean" -> JdbcCompat.toBoolean(getValue(args[0]));
             case "getByte" -> JdbcCompat.toByte(getValue(args[0]));
             case "getShort" -> JdbcCompat.toShort(getValue(args[0]));
@@ -275,7 +282,7 @@ final class PgResultSet implements InvocationHandler {
             case "getBigDecimal" -> args.length >= 2 && args[1] instanceof Integer scale
                 ? JdbcCompat.toBigDecimal(getValue(args[0]), scale)
                 : JdbcCompat.toBigDecimal(getValue(args[0]));
-            case "getBytes" -> JdbcCompat.toBytes(getValue(args[0]));
+            case "getBytes" -> truncateBytes(columnIndex(args[0]), JdbcCompat.toBytes(getValue(args[0])));
             case "getURL" -> toUrl(getValue(args[0]));
             case "getBinaryStream", "getAsciiStream" -> {
                 var bytes = JdbcCompat.toBytes(getValue(args[0]));
@@ -404,6 +411,28 @@ final class PgResultSet implements InvocationHandler {
         var value = valueAt(columnIndex(columnArg));
         wasNull = value == null;
         return value;
+    }
+
+    private String truncateString(int column, Object value) {
+        var text = JdbcCompat.stringify(value);
+        if (text == null || maxFieldSize <= 0 || !isMaxFieldSizeColumn(column)) {
+            return text;
+        }
+        return text.length() <= maxFieldSize ? text : text.substring(0, maxFieldSize);
+    }
+
+    private byte[] truncateBytes(int column, byte[] bytes) {
+        if (bytes == null || maxFieldSize <= 0 || !isMaxFieldSizeColumn(column) || bytes.length <= maxFieldSize) {
+            return bytes;
+        }
+        return java.util.Arrays.copyOf(bytes, maxFieldSize);
+    }
+
+    private boolean isMaxFieldSizeColumn(int column) {
+        return switch (columns.get(column - 1).oid()) {
+            case 17, 25, 1042, 1043 -> true;
+            default -> false;
+        };
     }
 
     private int columnIndex(Object columnArg) throws SQLException {

@@ -46,6 +46,7 @@ final class PgStatement implements InvocationHandler {
     private java.sql.SQLWarning warnings;
     private int fetchSize;
     private int fetchDirection = ResultSet.FETCH_FORWARD;
+    private int maxFieldSize;
     private int maxRows;
     private int queryTimeout;
     private int prepareThreshold;
@@ -205,6 +206,11 @@ final class PgStatement implements InvocationHandler {
                 yield null;
             }
             case "getFetchSize" -> fetchSize;
+            case "setMaxFieldSize" -> {
+                maxFieldSize = nonNegativeInt((Integer) args[0], "max field size");
+                yield null;
+            }
+            case "getMaxFieldSize" -> maxFieldSize;
             case "setMaxRows" -> {
                 maxRows = nonNegativeInt((Integer) args[0], "max rows");
                 yield null;
@@ -677,6 +683,7 @@ final class PgStatement implements InvocationHandler {
             resultSetType,
             resultSetConcurrency,
             resultSetHoldability,
+            maxFieldSize,
             fetchSize,
             fetchDirection
         );
@@ -909,6 +916,7 @@ final class PgStatement implements InvocationHandler {
             resultSetType,
             resultSetConcurrency,
             resultSetHoldability,
+            maxFieldSize,
             fetchSize,
             fetchDirection
         );
