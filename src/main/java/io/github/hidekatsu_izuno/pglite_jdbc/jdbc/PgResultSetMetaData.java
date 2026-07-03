@@ -50,7 +50,8 @@ final class PgResultSetMetaData implements InvocationHandler {
                 column((Integer) args[0]);
                 yield false;
             }
-            case "isCaseSensitive", "isSearchable" -> {
+            case "isCaseSensitive" -> isCaseSensitive(column((Integer) args[0]).oid());
+            case "isSearchable" -> {
                 column((Integer) args[0]);
                 yield true;
             }
@@ -134,6 +135,14 @@ final class PgResultSetMetaData implements InvocationHandler {
                 java.sql.Types.REAL, java.sql.Types.DOUBLE, java.sql.Types.FLOAT,
                 java.sql.Types.NUMERIC, java.sql.Types.DECIMAL -> true;
             default -> false;
+        };
+    }
+
+    private boolean isCaseSensitive(int oid) {
+        return switch (oid) {
+            case 16, 20, 21, 23, 26, 700, 701, 1082, 1083, 1114, 1184, 1186, 1266, 1560, 1562, 1700 ->
+                false;
+            default -> true;
         };
     }
 }

@@ -45,6 +45,7 @@ class PgjdbcInspiredResultSetMetaDataTest {
             assertEquals(Types.INTEGER, metadata.getColumnType(1));
             assertEquals(Integer.class.getName(), metadata.getColumnClassName(1));
             assertEquals(true, metadata.isSigned(1));
+            assertEquals(false, metadata.isCaseSensitive(1));
             assertEquals(false, metadata.isReadOnly(1));
             assertEquals(true, metadata.isWritable(1));
             assertEquals(false, metadata.isDefinitelyWritable(1));
@@ -52,15 +53,19 @@ class PgjdbcInspiredResultSetMetaDataTest {
             assertEquals(Types.BIGINT, metadata.getColumnType(2));
             assertEquals(Long.class.getName(), metadata.getColumnClassName(2));
             assertEquals(true, metadata.isSigned(2));
+            assertEquals(false, metadata.isCaseSensitive(2));
             assertEquals(Types.NUMERIC, metadata.getColumnType(3));
             assertEquals(java.math.BigDecimal.class.getName(), metadata.getColumnClassName(3));
             assertEquals(true, metadata.isSigned(3));
+            assertEquals(false, metadata.isCaseSensitive(3));
             assertEquals(Types.VARCHAR, metadata.getColumnType(4));
             assertEquals(String.class.getName(), metadata.getColumnClassName(4));
             assertEquals(false, metadata.isSigned(4));
+            assertEquals(true, metadata.isCaseSensitive(4));
             assertEquals(Types.BINARY, metadata.getColumnType(5));
             assertEquals(byte[].class.getName(), metadata.getColumnClassName(5));
             assertEquals(false, metadata.isSigned(5));
+            assertEquals(true, metadata.isCaseSensitive(5));
         }
     }
 
