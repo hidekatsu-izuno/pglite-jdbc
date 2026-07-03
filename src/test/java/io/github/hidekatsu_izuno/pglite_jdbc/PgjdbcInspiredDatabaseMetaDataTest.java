@@ -268,6 +268,25 @@ class PgjdbcInspiredDatabaseMetaDataTest {
     }
 
     @Test
+    void databaseMetadataFunctionListsMatchPgjdbc() throws Exception {
+        var metadata = connection.getMetaData();
+
+        assertEquals(
+            "abs,acos,asin,atan,atan2,ceiling,cos,cot,degrees,exp,floor,log,log10,mod,pi,power,radians,round,sign,sin,sqrt,tan,truncate",
+            metadata.getNumericFunctions()
+        );
+        assertEquals(
+            "ascii,char,concat,lcase,left,length,ltrim,repeat,rtrim,space,substring,ucase,replace",
+            metadata.getStringFunctions()
+        );
+        assertEquals("database,ifnull,user", metadata.getSystemFunctions());
+        assertEquals(
+            "curdate,curtime,dayname,dayofmonth,dayofweek,dayofyear,hour,minute,month,monthname,now,quarter,second,week,year,timestampadd",
+            metadata.getTimeDateFunctions()
+        );
+    }
+
+    @Test
     void databaseMetadataReportsDroppedColumnOrdinalsAndImplicitNumericPrecisionLikePgjdbc() throws Exception {
         try (var statement = connection.createStatement()) {
             statement.execute("""

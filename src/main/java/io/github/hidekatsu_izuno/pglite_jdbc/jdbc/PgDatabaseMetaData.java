@@ -97,6 +97,13 @@ final class PgDatabaseMetaData implements InvocationHandler {
                 "supportsCatalogsInPrivilegeDefinitions" -> false;
             case "getIdentifierQuoteString" -> "\"";
             case "getExtraNameCharacters" -> "";
+            case "getNumericFunctions" ->
+                "abs,acos,asin,atan,atan2,ceiling,cos,cot,degrees,exp,floor,log,log10,mod,pi,power,radians,round,sign,sin,sqrt,tan,truncate";
+            case "getStringFunctions" ->
+                "ascii,char,concat,lcase,left,length,ltrim,repeat,rtrim,space,substring,ucase,replace";
+            case "getSystemFunctions" -> "database,ifnull,user";
+            case "getTimeDateFunctions" ->
+                "curdate,curtime,dayname,dayofmonth,dayofweek,dayofyear,hour,minute,month,monthname,now,quarter,second,week,year,timestampadd";
             case "storesLowerCaseIdentifiers" -> true;
             case "getCatalogSeparator" -> ".";
             case "getCatalogTerm" -> "database";
