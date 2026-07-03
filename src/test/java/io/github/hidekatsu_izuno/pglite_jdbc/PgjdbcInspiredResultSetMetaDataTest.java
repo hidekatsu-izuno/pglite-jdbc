@@ -35,11 +35,12 @@ class PgjdbcInspiredResultSetMetaDataTest {
                    2::int8 AS big_id,
                    3.50::numeric AS amount,
                    'body'::text AS body,
-                   decode('0102', 'hex') AS payload
+                   decode('0102', 'hex') AS payload,
+                   42::oid AS object_id
                  """)) {
             var metadata = resultSet.getMetaData();
 
-            assertEquals(5, metadata.getColumnCount());
+            assertEquals(6, metadata.getColumnCount());
             assertEquals("id", metadata.getColumnLabel(1));
             assertEquals("id", metadata.getColumnName(1));
             assertEquals(Types.INTEGER, metadata.getColumnType(1));
@@ -66,6 +67,10 @@ class PgjdbcInspiredResultSetMetaDataTest {
             assertEquals(byte[].class.getName(), metadata.getColumnClassName(5));
             assertEquals(false, metadata.isSigned(5));
             assertEquals(true, metadata.isCaseSensitive(5));
+            assertEquals(Types.BIGINT, metadata.getColumnType(6));
+            assertEquals(Long.class.getName(), metadata.getColumnClassName(6));
+            assertEquals(false, metadata.isSigned(6));
+            assertEquals(false, metadata.isCaseSensitive(6));
         }
     }
 

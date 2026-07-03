@@ -346,10 +346,22 @@ class OrgPostgresqlCompatibilityTest {
                 assertEquals("int4", typeInfo.getPGType(23));
                 assertEquals(java.sql.Types.INTEGER, typeInfo.getJavaArrayType("int4"));
                 assertEquals(Integer.class.getName(), typeInfo.getJavaClass(23));
-                assertEquals(10, typeInfo.getMaximumPrecision(23));
+                assertEquals(10, typeInfo.getPrecision(23, -1));
+                assertEquals(11, typeInfo.getDisplaySize(23, -1));
+                assertEquals(0, typeInfo.getMaximumPrecision(23));
+                assertEquals(10, typeInfo.getPrecision(1043, 14));
+                assertEquals(10, typeInfo.getDisplaySize(1043, 14));
+                assertEquals(10485760, typeInfo.getMaximumPrecision(1043));
+                assertEquals(12, typeInfo.getPrecision(1700, 786438));
+                assertEquals(2, typeInfo.getScale(1700, 786438));
+                assertEquals(14, typeInfo.getDisplaySize(1700, 786438));
+                assertEquals(15, typeInfo.getPrecision(1083, -1));
+                assertEquals(15, typeInfo.getDisplaySize(1083, -1));
+                assertEquals(6, typeInfo.getScale(1083, -1));
                 assertTrue(typeInfo.isSigned(23));
                 assertEquals(false, typeInfo.isCaseSensitive(23));
                 assertEquals(false, typeInfo.isSigned(25));
+                assertEquals(false, typeInfo.isSigned(26));
                 assertTrue(typeInfo.isCaseSensitive(25));
 
                 var queryExecutor = baseConnection.getQueryExecutor();

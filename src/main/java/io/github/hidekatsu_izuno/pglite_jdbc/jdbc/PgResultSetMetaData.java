@@ -130,10 +130,8 @@ final class PgResultSetMetaData implements InvocationHandler {
     }
 
     private boolean isSigned(int oid) {
-        return switch (JdbcCompat.oidToJdbcType(oid)) {
-            case java.sql.Types.SMALLINT, java.sql.Types.INTEGER, java.sql.Types.BIGINT,
-                java.sql.Types.REAL, java.sql.Types.DOUBLE, java.sql.Types.FLOAT,
-                java.sql.Types.NUMERIC, java.sql.Types.DECIMAL -> true;
+        return switch (oid) {
+            case 20, 21, 23, 700, 701, 1700 -> true;
             default -> false;
         };
     }

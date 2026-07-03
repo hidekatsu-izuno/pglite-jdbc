@@ -1256,49 +1256,98 @@ public final class PgConnection implements InvocationHandler {
     }
 
     private int precision(int oid, int typmod) {
-        return switch (JdbcCompat.oidToJdbcType(oid)) {
-            case Types.SMALLINT -> 5;
-            case Types.INTEGER -> 10;
-            case Types.BIGINT -> 19;
-            case Types.REAL -> 8;
-            case Types.DOUBLE, Types.FLOAT -> 17;
-            case Types.NUMERIC, Types.DECIMAL -> typmod >= 4 ? ((typmod - 4) >> 16) & 0xffff : 0;
-            case Types.DATE -> 13;
-            case Types.TIME, Types.TIME_WITH_TIMEZONE -> 15;
-            case Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE -> 29;
+        oid = arrayOidToElementOidOrSelf(oid);
+        return switch (oid) {
+            case 16, 18 -> 1;
+            case 21 -> 5;
+            case 23, 26 -> 10;
+            case 20 -> 19;
+            case 700 -> 8;
+            case 701 -> 17;
+            case 1042, 1043 -> typmod == -1 ? 0 : typmod - 4;
+            case 1082, 1083, 1114, 1184, 1186, 1266 -> displaySize(oid, typmod);
+            case 1560 -> typmod;
+            case 1562 -> typmod == -1 ? 0 : typmod;
+            case 1700 -> typmod == -1 ? 0 : ((typmod - 4) & 0xffff0000) >> 16;
             default -> 0;
         };
     }
 
     private int scale(int oid, int typmod) {
-        return switch (JdbcCompat.oidToJdbcType(oid)) {
-            case Types.NUMERIC, Types.DECIMAL -> typmod >= 4 ? (typmod - 4) & 0xffff : 0;
+        oid = arrayOidToElementOidOrSelf(oid);
+        return switch (oid) {
+            case 700 -> 8;
+            case 701 -> 17;
+            case 1083, 1114, 1184, 1266 -> typmod == -1 ? 6 : typmod;
+            case 1186 -> typmod == -1 ? 6 : typmod & 0xffff;
+            case 1700 -> typmod == -1 ? 0 : (typmod - 4) & 0xffff;
             default -> 0;
         };
     }
 
     private int displaySize(int oid, int typmod) {
-        var precision = precision(oid, typmod);
-        return precision > 0 ? precision : 0;
-    }
-
-    private int maximumPrecision(int oid) {
-        return switch (JdbcCompat.oidToJdbcType(oid)) {
-            case Types.SMALLINT -> 5;
-            case Types.INTEGER -> 10;
-            case Types.BIGINT -> 19;
-            case Types.REAL -> 8;
-            case Types.DOUBLE, Types.FLOAT -> 17;
-            case Types.NUMERIC, Types.DECIMAL -> 1000;
+        oid = arrayOidToElementOidOrSelf(oid);
+        return switch (oid) {
+            case 16, 18 -> 1;
+            case 21 -> 6;
+            case 23 -> 11;
+            case 26 -> 10;
+            case 20 -> 20;
+            case 700 -> 15;
+            case 701 -> 25;
+            case 1082 -> 13;
+            case 1083 -> 8 + timeSecondSize(typmod);
+            case 1266 -> 8 + timeSecondSize(typmod) + 6;
+            case 1114 -> 22 + timeSecondSize(typmod);
+            case 1184 -> 22 + timeSecondSize(typmod) + 6;
+            case 1186 -> 49;
+            case 1042, 1043 -> typmod == -1 ? 0 : typmod - 4;
+            case 1560 -> typmod;
+            case 1562 -> typmod == -1 ? 0 : typmod;
+            case 1700 -> numericDisplaySize(typmod);
             default -> 0;
         };
     }
 
+    private int maximumPrecision(int oid) {
+        oid = arrayOidToElementOidOrSelf(oid);
+        return switch (oid) {
+            case 1042, 1043 -> 10485760;
+            case 1083, 1266 -> 6;
+            case 1114, 1184, 1186 -> 6;
+            case 1560, 1562 -> 83886080;
+            case 1700 -> 1000;
+            default -> 0;
+        };
+    }
+
+    private int arrayOidToElementOidOrSelf(int oid) {
+        var elementOid = arrayOidToElementOid(oid);
+        return elementOid == 0 ? oid : elementOid;
+    }
+
+    private int timeSecondSize(int typmod) {
+        return switch (typmod) {
+            case -1 -> 7;
+            case 0 -> 0;
+            case 1 -> 3;
+            default -> typmod + 1;
+        };
+    }
+
+    private int numericDisplaySize(int typmod) {
+        if (typmod == -1) {
+            return 131089;
+        }
+        var precision = ((typmod - 4) >> 16) & 0xffff;
+        var scale = (typmod - 4) & 0xffff;
+        return 1 + precision + (scale == 0 ? 0 : 1);
+    }
+
     private boolean isSignedOid(int oid) {
-        return switch (JdbcCompat.oidToJdbcType(oid)) {
-            case Types.SMALLINT, Types.INTEGER, Types.BIGINT,
-                Types.REAL, Types.DOUBLE, Types.FLOAT,
-                Types.NUMERIC, Types.DECIMAL -> true;
+        oid = arrayOidToElementOidOrSelf(oid);
+        return switch (oid) {
+            case 20, 21, 23, 700, 701, 1700 -> true;
             default -> false;
         };
     }
