@@ -33,8 +33,8 @@ class PgjdbcInspiredResultSetMetaDataTest {
                  SELECT
                    1::int4 AS id,
                    2::int8 AS big_id,
-                   3.50::numeric AS amount,
-                   'body'::text AS body,
+                   3.50::numeric(8, 3) AS amount,
+                   'body'::varchar(10) AS body,
                    decode('0102', 'hex') AS payload,
                    42::oid AS object_id,
                    12.34::money AS price
@@ -60,10 +60,15 @@ class PgjdbcInspiredResultSetMetaDataTest {
             assertEquals(java.math.BigDecimal.class.getName(), metadata.getColumnClassName(3));
             assertEquals(true, metadata.isSigned(3));
             assertEquals(false, metadata.isCaseSensitive(3));
+            assertEquals(8, metadata.getPrecision(3));
+            assertEquals(3, metadata.getScale(3));
+            assertEquals(10, metadata.getColumnDisplaySize(3));
             assertEquals(Types.VARCHAR, metadata.getColumnType(4));
             assertEquals(String.class.getName(), metadata.getColumnClassName(4));
             assertEquals(false, metadata.isSigned(4));
             assertEquals(true, metadata.isCaseSensitive(4));
+            assertEquals(10, metadata.getPrecision(4));
+            assertEquals(10, metadata.getColumnDisplaySize(4));
             assertEquals(Types.BINARY, metadata.getColumnType(5));
             assertEquals(byte[].class.getName(), metadata.getColumnClassName(5));
             assertEquals(false, metadata.isSigned(5));

@@ -295,7 +295,12 @@ public abstract class base {
         if (rowDescription != null) {
             for (var field : rowDescription.fields) {
                 resultFields.add(
-                    new interface_.ResultField(field.name, field.dataTypeID, parserFor(field.dataTypeID, options))
+                    new interface_.ResultField(
+                        field.name,
+                        field.dataTypeID,
+                        field.dataTypeModifier,
+                        parserFor(field.dataTypeID, options)
+                    )
                 );
             }
         }

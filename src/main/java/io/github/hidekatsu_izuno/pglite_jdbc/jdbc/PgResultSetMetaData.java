@@ -59,10 +59,9 @@ final class PgResultSetMetaData implements InvocationHandler {
             case "isCurrency" -> {
                 yield column((Integer) args[0]).oid() == 790;
             }
-            case "getColumnDisplaySize", "getPrecision", "getScale" -> {
-                column((Integer) args[0]);
-                yield 0;
-            }
+            case "getColumnDisplaySize" -> displaySize(column((Integer) args[0]));
+            case "getPrecision" -> precision(column((Integer) args[0]));
+            case "getScale" -> scale(column((Integer) args[0]));
             case "getSchemaName", "getTableName", "getCatalogName" -> {
                 column((Integer) args[0]);
                 yield "";
@@ -141,5 +140,80 @@ final class PgResultSetMetaData implements InvocationHandler {
                 false;
             default -> true;
         };
+    }
+
+    private int precision(Column column) {
+        var oid = column.oid();
+        var typmod = column.typmod();
+        return switch (oid) {
+            case 16, 18 -> 1;
+            case 21 -> 5;
+            case 23, 26 -> 10;
+            case 20 -> 19;
+            case 700 -> 8;
+            case 701, 790 -> 17;
+            case 1042, 1043 -> typmod == -1 ? 0 : typmod - 4;
+            case 1082, 1083, 1114, 1184, 1186, 1266 -> displaySize(column);
+            case 1560 -> typmod;
+            case 1562 -> typmod == -1 ? 0 : typmod;
+            case 1700 -> typmod == -1 ? 0 : ((typmod - 4) & 0xffff0000) >> 16;
+            default -> 0;
+        };
+    }
+
+    private int scale(Column column) {
+        var oid = column.oid();
+        var typmod = column.typmod();
+        return switch (oid) {
+            case 700 -> 8;
+            case 701, 790 -> 17;
+            case 1083, 1114, 1184, 1266 -> typmod == -1 ? 6 : typmod;
+            case 1186 -> typmod == -1 ? 6 : typmod & 0xffff;
+            case 1700 -> typmod == -1 ? 0 : (typmod - 4) & 0xffff;
+            default -> 0;
+        };
+    }
+
+    private int displaySize(Column column) {
+        var oid = column.oid();
+        var typmod = column.typmod();
+        return switch (oid) {
+            case 16, 18 -> 1;
+            case 21 -> 6;
+            case 23 -> 11;
+            case 26 -> 10;
+            case 20 -> 20;
+            case 700 -> 15;
+            case 701, 790 -> 25;
+            case 1082 -> 13;
+            case 1083 -> 8 + timeSecondSize(typmod);
+            case 1266 -> 8 + timeSecondSize(typmod) + 6;
+            case 1114 -> 22 + timeSecondSize(typmod);
+            case 1184 -> 22 + timeSecondSize(typmod) + 6;
+            case 1186 -> 49;
+            case 1042, 1043 -> typmod == -1 ? 0 : typmod - 4;
+            case 1560 -> typmod;
+            case 1562 -> typmod == -1 ? 0 : typmod;
+            case 1700 -> numericDisplaySize(typmod);
+            default -> 0;
+        };
+    }
+
+    private int timeSecondSize(int typmod) {
+        return switch (typmod) {
+            case -1 -> 7;
+            case 0 -> 0;
+            case 1 -> 3;
+            default -> typmod + 1;
+        };
+    }
+
+    private int numericDisplaySize(int typmod) {
+        if (typmod == -1) {
+            return 131089;
+        }
+        var precision = ((typmod - 4) >> 16) & 0xffff;
+        var scale = (typmod - 4) & 0xffff;
+        return 1 + precision + (scale == 0 ? 0 : 1);
     }
 }

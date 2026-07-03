@@ -245,7 +245,7 @@ final class JdbcCompat {
             if (label == null || label.isBlank()) {
                 label = "column" + (i + 1);
             }
-            out.add(new Column(label, field.dataTypeID()));
+            out.add(new Column(label, field.dataTypeID(), field.dataTypeModifier()));
         }
         return out;
     }
@@ -261,7 +261,7 @@ final class JdbcCompat {
             if (label == null || label.isBlank()) {
                 label = "column" + (i + 1);
             }
-            out.add(new Column(label, field.dataTypeID()));
+            out.add(new Column(label, field.dataTypeID(), field.dataTypeModifier()));
         }
         return out;
     }

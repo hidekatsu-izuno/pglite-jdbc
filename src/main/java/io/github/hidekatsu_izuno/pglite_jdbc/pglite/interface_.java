@@ -75,11 +75,19 @@ public class interface_ {
         Consumer<byte[]> onRawData
     ) {}
 
-    public record Field(String name, int dataTypeID) {}
+    public record Field(String name, int dataTypeID, int dataTypeModifier) {
+        public Field(String name, int dataTypeID) {
+            this(name, dataTypeID, -1);
+        }
+    }
 
     public record QueryParamField(int dataTypeID, Serializer serializer) {}
 
-    public record ResultField(String name, int dataTypeID, Parser parser) {}
+    public record ResultField(String name, int dataTypeID, int dataTypeModifier, Parser parser) {
+        public ResultField(String name, int dataTypeID, Parser parser) {
+            this(name, dataTypeID, -1, parser);
+        }
+    }
 
     public record DescribeQueryResult(
         List<QueryParamField> queryParams,
