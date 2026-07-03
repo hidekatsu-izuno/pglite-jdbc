@@ -72,21 +72,28 @@ class PgjdbcInspiredDatabaseMetaDataTest {
                 }
 
                 var sawInt4 = false;
+                var sawFloat8 = false;
                 var sawText = false;
                 try (var types = metadata.getTypeInfo()) {
                     while (types.next()) {
                         if ("int4".equals(types.getString("TYPE_NAME"))) {
                             assertNull(types.getString("LITERAL_PREFIX"));
+                            assertNull(types.getString("LITERAL_SUFFIX"));
                             assertFalse(types.getBoolean("UNSIGNED_ATTRIBUTE"));
                             sawInt4 = true;
+                        } else if ("float8".equals(types.getString("TYPE_NAME"))) {
+                            assertFalse(types.getBoolean("UNSIGNED_ATTRIBUTE"));
+                            sawFloat8 = true;
                         } else if ("text".equals(types.getString("TYPE_NAME"))) {
                             assertEquals("'", types.getString("LITERAL_PREFIX"));
                             assertEquals("'", types.getString("LITERAL_SUFFIX"));
+                            assertTrue(types.getBoolean("UNSIGNED_ATTRIBUTE"));
                             sawText = true;
                         }
                     }
                 }
                 assertTrue(sawInt4);
+                assertTrue(sawFloat8);
                 assertTrue(sawText);
             }
         });

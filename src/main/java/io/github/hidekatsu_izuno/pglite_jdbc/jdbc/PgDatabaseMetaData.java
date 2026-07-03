@@ -957,7 +957,7 @@ final class PgDatabaseMetaData implements InvocationHandler {
         row.put("NULLABLE", DatabaseMetaData.typeNullable);
         row.put("CASE_SENSITIVE", quoted);
         row.put("SEARCHABLE", DatabaseMetaData.typeSearchable);
-        row.put("UNSIGNED_ATTRIBUTE", false);
+        row.put("UNSIGNED_ATTRIBUTE", !isSignedType(dataType));
         row.put("FIXED_PREC_SCALE", false);
         row.put("AUTO_INCREMENT", false);
         row.put("LOCAL_TYPE_NAME", name);
@@ -967,6 +967,14 @@ final class PgDatabaseMetaData implements InvocationHandler {
         row.put("SQL_DATETIME_SUB", null);
         row.put("NUM_PREC_RADIX", 10);
         rows.add(row);
+    }
+
+    private boolean isSignedType(int dataType) {
+        return switch (dataType) {
+            case Types.TINYINT, Types.SMALLINT, Types.INTEGER, Types.BIGINT,
+                Types.REAL, Types.FLOAT, Types.DOUBLE, Types.NUMERIC, Types.DECIMAL -> true;
+            default -> false;
+        };
     }
 
     private ResultSet tableTypes() {
