@@ -459,7 +459,26 @@ final class PgDatabaseMetaData implements InvocationHandler {
 
     private ResultSet tableTypes() {
         var rows = new ArrayList<Map<String, Object>>();
-        for (var type : List.of("TABLE", "VIEW", "MATERIALIZED VIEW", "FOREIGN TABLE")) {
+        for (var type : List.of(
+            "FOREIGN TABLE",
+            "INDEX",
+            "PARTITIONED INDEX",
+            "MATERIALIZED VIEW",
+            "PARTITIONED TABLE",
+            "SEQUENCE",
+            "SYSTEM INDEX",
+            "SYSTEM TABLE",
+            "SYSTEM TOAST INDEX",
+            "SYSTEM TOAST TABLE",
+            "SYSTEM VIEW",
+            "TABLE",
+            "TEMPORARY INDEX",
+            "TEMPORARY SEQUENCE",
+            "TEMPORARY TABLE",
+            "TEMPORARY VIEW",
+            "TYPE",
+            "VIEW"
+        )) {
             var row = new LinkedHashMap<String, Object>();
             row.put("TABLE_TYPE", type);
             rows.add(row);

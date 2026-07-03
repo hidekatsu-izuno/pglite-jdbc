@@ -11,6 +11,9 @@ import java.sql.DatabaseMetaData;
 import java.sql.DriverManager;
 import java.sql.Types;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -225,6 +228,78 @@ class PgjdbcInspiredDatabaseMetaDataTest {
             assertEquals("TYPE_NAME", resultSetMetaData.getColumnLabel(1));
             assertEquals("DATA_TYPE", resultSetMetaData.getColumnLabel(2));
             assertEquals("NUM_PREC_RADIX", resultSetMetaData.getColumnLabel(18));
+        }
+    }
+
+    @Test
+    void databaseMetadataReportsPostgresqlTableTypesLikePgjdbc() throws Exception {
+        var metadata = connection.getMetaData();
+        var foundTypes = new ArrayList<String>();
+        try (var tableTypes = metadata.getTableTypes()) {
+            while (tableTypes.next()) {
+                foundTypes.add(tableTypes.getString("TABLE_TYPE"));
+            }
+        }
+
+        var expectedTypes = new ArrayList<>(List.of(
+            "FOREIGN TABLE",
+            "INDEX",
+            "PARTITIONED INDEX",
+            "MATERIALIZED VIEW",
+            "PARTITIONED TABLE",
+            "SEQUENCE",
+            "SYSTEM INDEX",
+            "SYSTEM TABLE",
+            "SYSTEM TOAST INDEX",
+            "SYSTEM TOAST TABLE",
+            "SYSTEM VIEW",
+            "TABLE",
+            "TEMPORARY INDEX",
+            "TEMPORARY SEQUENCE",
+            "TEMPORARY TABLE",
+            "TEMPORARY VIEW",
+            "TYPE",
+            "VIEW"
+        ));
+        Collections.sort(expectedTypes);
+        Collections.sort(foundTypes);
+        assertEquals(expectedTypes, foundTypes);
+    }
+
+    @Test
+    void databaseMetadataReportsSchemasCatalogsAndSearchEscapeLikePgjdbc() throws Exception {
+        var metadata = connection.getMetaData();
+        var currentDatabase = currentDatabase();
+        var schemas = new ArrayList<String>();
+        try (var resultSet = metadata.getSchemas()) {
+            while (resultSet.next()) {
+                schemas.add(resultSet.getString("TABLE_SCHEM"));
+                assertEquals(currentDatabase, resultSet.getString("TABLE_CATALOG"));
+            }
+        }
+        assertTrue(schemas.contains("public"));
+        assertTrue(schemas.contains("pg_catalog"));
+        assertFalse(schemas.contains(""));
+
+        var catalogs = new ArrayList<String>();
+        try (var resultSet = metadata.getCatalogs()) {
+            while (resultSet.next()) {
+                catalogs.add(resultSet.getString("TABLE_CAT"));
+            }
+        }
+        var sortedCatalogs = new ArrayList<>(catalogs);
+        Collections.sort(sortedCatalogs);
+        assertEquals(sortedCatalogs, catalogs);
+        assertTrue(catalogs.contains(currentDatabase));
+
+        assertEquals("\\", metadata.getSearchStringEscape());
+    }
+
+    private String currentDatabase() throws Exception {
+        try (var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("SELECT current_database()")) {
+            assertTrue(resultSet.next());
+            return resultSet.getString(1);
         }
     }
 }
