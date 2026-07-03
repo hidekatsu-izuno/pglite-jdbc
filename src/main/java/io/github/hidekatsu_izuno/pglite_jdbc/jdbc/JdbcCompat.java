@@ -403,7 +403,15 @@ final class JdbcCompat {
     }
 
     static BigDecimal toBigDecimal(Object value, int scale) throws SQLException {
-        return toBigDecimal(value, scale, RoundingMode.HALF_EVEN);
+        var decimal = toBigDecimal(value);
+        if (decimal == null) {
+            return null;
+        }
+        try {
+            return decimal.setScale(scale);
+        } catch (ArithmeticException arithmeticException) {
+            throw new SQLException("Bad value for type BigDecimal: " + decimal, arithmeticException);
+        }
     }
 
     static BigDecimal toBigDecimal(Object value, int scale, RoundingMode roundingMode) throws SQLException {

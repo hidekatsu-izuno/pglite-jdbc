@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeout;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -16,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.sql.DriverManager;
 import java.sql.JDBCType;
+import java.sql.SQLException;
 import java.sql.Types;
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -98,7 +100,10 @@ class OrgPostgresqlCompatibilityTest {
     void shouldExposeStatementMultipleResultsAndCursorState() throws Exception {
         assertTimeout(Duration.ofSeconds(180), () -> {
             try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000");
-                 var statement = connection.createStatement()) {
+                 var statement = connection.createStatement(
+                     java.sql.ResultSet.TYPE_SCROLL_INSENSITIVE,
+                     java.sql.ResultSet.CONCUR_READ_ONLY
+                 )) {
                 var hasResult = statement.execute("""
                     CREATE TABLE multi_result_test(id int);
                     INSERT INTO multi_result_test VALUES (1), (2);
@@ -245,7 +250,7 @@ class OrgPostgresqlCompatibilityTest {
                     assertTrue(resultSet.next());
                     assertEquals(new URL("https://example.test/path?q=1"), resultSet.getURL("link"));
                     assertEquals("unicode label", resultSet.getNString("label"));
-                    assertEquals(new BigDecimal("12.35"), resultSet.getBigDecimal("amount", 2));
+                    assertThrows(SQLException.class, () -> resultSet.getBigDecimal("amount", 2));
                 }
             }
         });
