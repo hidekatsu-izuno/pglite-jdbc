@@ -75,6 +75,51 @@ class PgjdbcInspiredStatementTest {
     }
 
     @Test
+    void statementParsesDollarQuotedSemicolonsLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            try (var resultSet = statement.executeQuery("SELECT '$a$ ; $a$' AS value")) {
+                assertTrue(resultSet.next());
+                assertEquals("$a$ ; $a$", resultSet.getString("value"));
+                assertFalse(resultSet.next());
+            }
+
+            try (var resultSet = statement.executeQuery("SELECT $$;$$ AS value")) {
+                assertTrue(resultSet.next());
+                assertEquals(";", resultSet.getString("value"));
+                assertFalse(resultSet.next());
+            }
+
+            try (var resultSet = statement.executeQuery(
+                "SELECT $OR$$a$'$b$a$$OR$ AS value WHERE '$a$''$b$a$'=$OR$$a$'$b$a$$OR$ OR ';'=''"
+            )) {
+                assertTrue(resultSet.next());
+                assertEquals("$a$'$b$a$", resultSet.getString("value"));
+                assertFalse(resultSet.next());
+            }
+
+            try (var resultSet = statement.executeQuery("SELECT $B$;$b$B$ AS value")) {
+                assertTrue(resultSet.next());
+                assertEquals(";$b", resultSet.getString("value"));
+                assertFalse(resultSet.next());
+            }
+
+            try (var resultSet = statement.executeQuery("SELECT $c$c$;$c$ AS value")) {
+                assertTrue(resultSet.next());
+                assertEquals("c$;", resultSet.getString("value"));
+                assertFalse(resultSet.next());
+            }
+
+            try (var resultSet = statement.executeQuery(
+                "SELECT $A0$;$A0$ AS value WHERE ''=$t$t$t$ OR ';$t$'=';$t$'"
+            )) {
+                assertTrue(resultSet.next());
+                assertEquals(";", resultSet.getString("value"));
+                assertFalse(resultSet.next());
+            }
+        }
+    }
+
+    @Test
     void statementUpdateCountsAndMaxRowsMatchCommonPgjdbcCases() throws Exception {
         try (var statement = connection.createStatement()) {
             assertEquals(0, statement.executeUpdate("CREATE TEMP TABLE pgjdbc_update_test(i int)"));
