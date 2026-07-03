@@ -224,4 +224,24 @@ class PgjdbcInspiredStatementTest {
             assertEquals(ResultSet.CLOSE_CURSORS_AT_COMMIT, prepared.getResultSetHoldability());
         }
     }
+
+    @Test
+    void statementRejectsNegativeLimitsAndTimeoutsLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            assertThrows(SQLException.class, () -> statement.setFetchSize(-1));
+            assertThrows(SQLException.class, () -> statement.setMaxRows(-1));
+            assertThrows(SQLException.class, () -> statement.setLargeMaxRows(-1));
+            assertThrows(SQLException.class, () -> statement.setQueryTimeout(-1));
+
+            statement.setFetchSize(2);
+            statement.setMaxRows(3);
+            statement.setLargeMaxRows(4);
+            statement.setQueryTimeout(5);
+
+            assertEquals(2, statement.getFetchSize());
+            assertEquals(4, statement.getMaxRows());
+            assertEquals(4L, statement.getLargeMaxRows());
+            assertEquals(5, statement.getQueryTimeout());
+        }
+    }
 }

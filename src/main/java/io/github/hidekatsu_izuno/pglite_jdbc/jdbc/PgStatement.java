@@ -200,17 +200,17 @@ final class PgStatement implements InvocationHandler {
                 yield null;
             }
             case "setFetchSize" -> {
-                fetchSize = (Integer) args[0];
+                fetchSize = nonNegativeInt((Integer) args[0], "fetch size");
                 yield null;
             }
             case "getFetchSize" -> fetchSize;
             case "setMaxRows" -> {
-                maxRows = (Integer) args[0];
+                maxRows = nonNegativeInt((Integer) args[0], "max rows");
                 yield null;
             }
             case "getMaxRows" -> maxRows;
             case "setQueryTimeout" -> {
-                queryTimeout = (Integer) args[0];
+                queryTimeout = nonNegativeInt((Integer) args[0], "query timeout");
                 yield null;
             }
             case "getQueryTimeout" -> queryTimeout;
@@ -224,7 +224,7 @@ final class PgStatement implements InvocationHandler {
             case "isCloseOnCompletion" -> false;
             case "getLargeUpdateCount" -> (long) updateCount;
             case "setLargeMaxRows" -> {
-                maxRows = Math.toIntExact((Long) args[0]);
+                maxRows = nonNegativeLongAsInt((Long) args[0], "large max rows");
                 yield null;
             }
             case "getLargeMaxRows" -> (long) maxRows;
@@ -649,6 +649,20 @@ final class PgStatement implements InvocationHandler {
                 "Parameter index out of range: " + index + ", parameter count: " + parameterCount
             );
         }
+    }
+
+    private int nonNegativeInt(int value, String name) throws SQLException {
+        if (value < 0) {
+            throw new SQLException("Invalid " + name + ": " + value);
+        }
+        return value;
+    }
+
+    private int nonNegativeLongAsInt(long value, String name) throws SQLException {
+        if (value < 0 || value > Integer.MAX_VALUE) {
+            throw new SQLException("Invalid " + name + ": " + value);
+        }
+        return (int) value;
     }
 
     private ResultSet executeQuery(String sql) throws SQLException {
