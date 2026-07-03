@@ -66,6 +66,10 @@ class PgjdbcInspiredResultSetMetaDataTest {
             assertThrows(SQLException.class, () -> metadata.getColumnLabel(2));
             assertThrows(SQLException.class, () -> metadata.getColumnType(0));
             assertThrows(SQLException.class, () -> metadata.getColumnClassName(2));
+            assertThrows(SQLException.class, () -> metadata.isNullable(0));
+            assertThrows(SQLException.class, () -> metadata.isSigned(2));
+            assertThrows(SQLException.class, () -> metadata.getPrecision(0));
+            assertThrows(SQLException.class, () -> metadata.getSchemaName(2));
         }
     }
 }

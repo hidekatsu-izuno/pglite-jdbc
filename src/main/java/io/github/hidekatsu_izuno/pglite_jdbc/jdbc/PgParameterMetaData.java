@@ -46,13 +46,25 @@ final class PgParameterMetaData implements InvocationHandler {
 
         return switch (name) {
             case "getParameterCount" -> parameterTypes.length;
-            case "isNullable" -> ParameterMetaData.parameterNullableUnknown;
-            case "isSigned" -> true;
-            case "getPrecision", "getScale" -> 0;
+            case "isNullable" -> {
+                index(args);
+                yield ParameterMetaData.parameterNullableUnknown;
+            }
+            case "isSigned" -> {
+                index(args);
+                yield true;
+            }
+            case "getPrecision", "getScale" -> {
+                index(args);
+                yield 0;
+            }
             case "getParameterType" -> jdbcType(index(args));
             case "getParameterTypeName" -> JdbcCompat.oidToPgType(oid(index(args)));
             case "getParameterClassName" -> className(index(args));
-            case "getParameterMode" -> ParameterMetaData.parameterModeIn;
+            case "getParameterMode" -> {
+                index(args);
+                yield ParameterMetaData.parameterModeIn;
+            }
             case "unwrap" -> {
                 var iface = (Class<?>) args[0];
                 if (iface.isInstance(proxy)) {

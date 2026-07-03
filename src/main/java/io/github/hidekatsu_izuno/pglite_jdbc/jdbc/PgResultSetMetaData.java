@@ -42,20 +42,48 @@ final class PgResultSetMetaData implements InvocationHandler {
             case "getColumnLabel", "getColumnName" -> column((Integer) args[0]).label();
             case "getColumnType" -> JdbcCompat.oidToJdbcType(column((Integer) args[0]).oid());
             case "getColumnTypeName" -> JdbcCompat.oidToPgType(column((Integer) args[0]).oid());
-            case "isNullable" -> ResultSetMetaData.columnNullableUnknown;
-            case "isAutoIncrement" -> false;
-            case "isCaseSensitive" -> true;
-            case "isSearchable" -> true;
-            case "isCurrency" -> false;
-            case "isSigned" -> true;
-            case "getColumnDisplaySize", "getPrecision", "getScale" -> 0;
-            case "getSchemaName", "getTableName", "getCatalogName" -> "";
-            case "isReadOnly" -> true;
-            case "isWritable", "isDefinitelyWritable" -> false;
+            case "isNullable" -> {
+                column((Integer) args[0]);
+                yield ResultSetMetaData.columnNullableUnknown;
+            }
+            case "isAutoIncrement" -> {
+                column((Integer) args[0]);
+                yield false;
+            }
+            case "isCaseSensitive", "isSearchable", "isSigned" -> {
+                column((Integer) args[0]);
+                yield true;
+            }
+            case "isCurrency" -> {
+                column((Integer) args[0]);
+                yield false;
+            }
+            case "getColumnDisplaySize", "getPrecision", "getScale" -> {
+                column((Integer) args[0]);
+                yield 0;
+            }
+            case "getSchemaName", "getTableName", "getCatalogName" -> {
+                column((Integer) args[0]);
+                yield "";
+            }
+            case "isReadOnly" -> {
+                column((Integer) args[0]);
+                yield true;
+            }
+            case "isWritable", "isDefinitelyWritable" -> {
+                column((Integer) args[0]);
+                yield false;
+            }
             case "getColumnClassName" -> columnClassName(column((Integer) args[0]).oid());
             case "getBaseColumnName" -> column((Integer) args[0]).label();
-            case "getBaseTableName", "getBaseSchemaName" -> "";
-            case "getFormat" -> 0;
+            case "getBaseTableName", "getBaseSchemaName" -> {
+                column((Integer) args[0]);
+                yield "";
+            }
+            case "getFormat" -> {
+                column((Integer) args[0]);
+                yield 0;
+            }
             case "unwrap" -> {
                 var iface = (Class<?>) args[0];
                 if (iface.isInstance(proxy)) {

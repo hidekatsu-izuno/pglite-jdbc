@@ -59,6 +59,10 @@ class PgjdbcInspiredParameterMetaDataTest {
             assertThrows(SQLException.class, () -> metadata.getParameterType(0));
             assertThrows(SQLException.class, () -> metadata.getParameterType(2));
             assertThrows(SQLException.class, () -> metadata.getParameterClassName(2));
+            assertThrows(SQLException.class, () -> metadata.isNullable(0));
+            assertThrows(SQLException.class, () -> metadata.isSigned(2));
+            assertThrows(SQLException.class, () -> metadata.getPrecision(0));
+            assertThrows(SQLException.class, () -> metadata.getParameterMode(2));
         }
     }
 
