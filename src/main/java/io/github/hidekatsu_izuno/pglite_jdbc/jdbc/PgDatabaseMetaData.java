@@ -74,10 +74,20 @@ final class PgDatabaseMetaData implements InvocationHandler {
                 "supportsMultipleResultSets", "supportsMultipleTransactions",
                 "supportsNonNullableColumns", "supportsMinimumSQLGrammar",
                 "supportsANSI92EntryLevelSQL", "supportsIntegrityEnhancementFacility",
-                "supportsOuterJoins", "supportsFullOuterJoins", "supportsLimitedOuterJoins" -> true;
+                "supportsOuterJoins", "supportsFullOuterJoins", "supportsLimitedOuterJoins",
+                "supportsSelectForUpdate", "supportsStoredProcedures",
+                "supportsSubqueriesInComparisons", "supportsSubqueriesInExists",
+                "supportsSubqueriesInIns", "supportsSubqueriesInQuantifieds",
+                "supportsCorrelatedSubqueries", "supportsUnion", "supportsUnionAll",
+                "supportsOpenStatementsAcrossCommit", "supportsOpenStatementsAcrossRollback",
+                "supportsDataDefinitionAndDataManipulationTransactions" -> true;
             case "supportsDifferentTableCorrelationNames", "supportsCoreSQLGrammar",
                 "supportsExtendedSQLGrammar", "supportsANSI92IntermediateSQL",
-                "supportsANSI92FullSQL" -> false;
+                "supportsANSI92FullSQL", "supportsPositionedDelete", "supportsPositionedUpdate",
+                "supportsOpenCursorsAcrossCommit", "supportsOpenCursorsAcrossRollback",
+                "supportsDataManipulationTransactionsOnly", "dataDefinitionCausesTransactionCommit",
+                "dataDefinitionIgnoredInTransactions" -> false;
+            case "supportsTransactionIsolationLevel" -> supportsTransactionIsolationLevel((Integer) args[0]);
             case "isCatalogAtStart" -> true;
             case "supportsSchemasInTableDefinitions", "supportsSchemasInDataManipulation",
                 "supportsSchemasInProcedureCalls", "supportsSchemasInIndexDefinitions",
@@ -167,6 +177,17 @@ final class PgDatabaseMetaData implements InvocationHandler {
             rows.removeIf(row -> !types.contains(String.valueOf(row.get("TABLE_TYPE"))));
         }
         return result(tableColumns(), rows);
+    }
+
+    private boolean supportsTransactionIsolationLevel(int level) {
+        return switch (level) {
+            case Connection.TRANSACTION_NONE,
+                Connection.TRANSACTION_READ_UNCOMMITTED,
+                Connection.TRANSACTION_READ_COMMITTED,
+                Connection.TRANSACTION_REPEATABLE_READ,
+                Connection.TRANSACTION_SERIALIZABLE -> true;
+            default -> false;
+        };
     }
 
     private ResultSet getColumns(Object[] args) throws SQLException {

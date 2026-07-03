@@ -206,6 +206,41 @@ class PgjdbcInspiredDatabaseMetaDataTest {
     }
 
     @Test
+    void databaseMetadataSubqueryAndTransactionFlagsMatchPgjdbc() throws Exception {
+        var metadata = connection.getMetaData();
+
+        assertFalse(metadata.supportsPositionedDelete());
+        assertFalse(metadata.supportsPositionedUpdate());
+        assertTrue(metadata.supportsSelectForUpdate());
+        assertTrue(metadata.supportsStoredProcedures());
+        assertTrue(metadata.supportsSubqueriesInComparisons());
+        assertTrue(metadata.supportsSubqueriesInExists());
+        assertTrue(metadata.supportsSubqueriesInIns());
+        assertTrue(metadata.supportsSubqueriesInQuantifieds());
+        assertTrue(metadata.supportsCorrelatedSubqueries());
+        assertTrue(metadata.supportsUnion());
+        assertTrue(metadata.supportsUnionAll());
+
+        assertFalse(metadata.supportsOpenCursorsAcrossCommit());
+        assertFalse(metadata.supportsOpenCursorsAcrossRollback());
+        assertTrue(metadata.supportsOpenStatementsAcrossCommit());
+        assertTrue(metadata.supportsOpenStatementsAcrossRollback());
+        assertTrue(metadata.supportsTransactionIsolationLevel(Connection.TRANSACTION_NONE));
+        assertTrue(metadata.supportsTransactionIsolationLevel(Connection.TRANSACTION_READ_UNCOMMITTED));
+        assertTrue(metadata.supportsTransactionIsolationLevel(Connection.TRANSACTION_READ_COMMITTED));
+        assertFalse(metadata.supportsTransactionIsolationLevel(3));
+        assertTrue(metadata.supportsTransactionIsolationLevel(Connection.TRANSACTION_REPEATABLE_READ));
+        assertFalse(metadata.supportsTransactionIsolationLevel(5));
+        assertFalse(metadata.supportsTransactionIsolationLevel(6));
+        assertFalse(metadata.supportsTransactionIsolationLevel(7));
+        assertTrue(metadata.supportsTransactionIsolationLevel(Connection.TRANSACTION_SERIALIZABLE));
+        assertTrue(metadata.supportsDataDefinitionAndDataManipulationTransactions());
+        assertFalse(metadata.supportsDataManipulationTransactionsOnly());
+        assertFalse(metadata.dataDefinitionCausesTransactionCommit());
+        assertFalse(metadata.dataDefinitionIgnoredInTransactions());
+    }
+
+    @Test
     void databaseMetadataReportsDroppedColumnOrdinalsAndImplicitNumericPrecisionLikePgjdbc() throws Exception {
         try (var statement = connection.createStatement()) {
             statement.execute("""
