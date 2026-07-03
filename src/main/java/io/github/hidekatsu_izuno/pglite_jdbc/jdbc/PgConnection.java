@@ -1126,10 +1126,13 @@ public final class PgConnection implements InvocationHandler {
             case "timetz", "time with time zone" -> Types.TIME;
             case "timestamp" -> Types.TIMESTAMP;
             case "timestamptz", "timestamp with time zone" -> Types.TIMESTAMP;
-            case "uuid", "json", "jsonb", "inet", "cidr", "macaddr", "macaddr8" -> Types.OTHER;
+            case "refcursor" -> Types.REF_CURSOR;
+            case "uuid", "json", "jsonb", "inet", "cidr", "macaddr", "macaddr8", "point", "box" ->
+                Types.OTHER;
             case "bool[]", "_bool", "int2[]", "_int2", "int4[]", "_int4", "int8[]", "_int8",
                 "text[]", "_text", "varchar[]", "_varchar", "bytea[]", "_bytea", "uuid[]", "_uuid",
-                "json[]", "_json", "jsonb[]", "_jsonb" -> Types.ARRAY;
+                "json[]", "_json", "jsonb[]", "_jsonb", "refcursor[]", "_refcursor",
+                "point[]", "_point", "box[]", "_box" -> Types.ARRAY;
             default -> Types.OTHER;
         };
     }
@@ -1161,6 +1164,9 @@ public final class PgConnection implements InvocationHandler {
             case "bit" -> 1560;
             case "varbit" -> 1562;
             case "bytea" -> 17;
+            case "refcursor" -> 1790;
+            case "point" -> 600;
+            case "box" -> 603;
             case "uuid" -> 2950;
             case "json" -> 114;
             case "jsonb" -> 3802;
@@ -1175,6 +1181,9 @@ public final class PgConnection implements InvocationHandler {
             case "text[]", "_text" -> 1009;
             case "varchar[]", "_varchar" -> 1015;
             case "bytea[]", "_bytea" -> 1001;
+            case "refcursor[]", "_refcursor" -> 2201;
+            case "point[]", "_point" -> 1017;
+            case "box[]", "_box" -> 1020;
             case "bit[]", "_bit" -> 1561;
             case "varbit[]", "_varbit" -> 1563;
             case "uuid[]", "_uuid" -> 2951;
@@ -1208,6 +1217,9 @@ public final class PgConnection implements InvocationHandler {
             case 1560 -> 1561;
             case 1562 -> 1563;
             case 17 -> 1001;
+            case 1790 -> 2201;
+            case 600 -> 1017;
+            case 603 -> 1020;
             case 2950 -> 2951;
             case 114 -> 199;
             case 3802 -> 3807;
@@ -1239,6 +1251,9 @@ public final class PgConnection implements InvocationHandler {
             case 1561 -> 1560;
             case 1563 -> 1562;
             case 1001 -> 17;
+            case 2201 -> 1790;
+            case 1017 -> 600;
+            case 1020 -> 603;
             case 2951 -> 2950;
             case 199 -> 114;
             case 3807 -> 3802;
@@ -1257,6 +1272,15 @@ public final class PgConnection implements InvocationHandler {
         }
         if (oid == 114 || oid == 3802) {
             return org.postgresql.util.PGobject.class.getName();
+        }
+        if (oid == 1790) {
+            return java.sql.ResultSet.class.getName();
+        }
+        if (oid == 600) {
+            return "org.postgresql.geometric.PGpoint";
+        }
+        if (oid == 603) {
+            return "org.postgresql.geometric.PGBox";
         }
         return switch (JdbcCompat.oidToJdbcType(oid)) {
             case Types.BOOLEAN -> Boolean.class.getName();

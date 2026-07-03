@@ -154,6 +154,7 @@ class PgjdbcInspiredDatabaseMetaDataTest {
                     "path",
                     "point",
                     "polygon",
+                    "refcursor",
                     "text",
                     "time",
                     "timestamp",

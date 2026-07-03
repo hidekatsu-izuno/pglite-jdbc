@@ -123,6 +123,15 @@ final class PgResultSetMetaData implements InvocationHandler {
         if (oid == 114 || oid == 3802) {
             return org.postgresql.util.PGobject.class.getName();
         }
+        if (oid == 1790) {
+            return java.sql.ResultSet.class.getName();
+        }
+        if (oid == 600) {
+            return "org.postgresql.geometric.PGpoint";
+        }
+        if (oid == 603) {
+            return "org.postgresql.geometric.PGBox";
+        }
         return switch (JdbcCompat.oidToJdbcType(oid)) {
             case java.sql.Types.BOOLEAN -> Boolean.class.getName();
             case java.sql.Types.SMALLINT -> Short.class.getName();

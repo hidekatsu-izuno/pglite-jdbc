@@ -1024,6 +1024,7 @@ final class PgDatabaseMetaData implements InvocationHandler {
         addType(rows, "pg_lsn", Types.OTHER, 0, true);
         addType(rows, "point", Types.OTHER, 0, true);
         addType(rows, "polygon", Types.OTHER, 0, true);
+        addType(rows, "refcursor", Types.REF_CURSOR, 0, true);
         addType(rows, "text", Types.VARCHAR, Integer.MAX_VALUE, true);
         addType(rows, "time", Types.TIME, 15, true);
         addType(rows, "timestamp", Types.TIMESTAMP, 29, true);

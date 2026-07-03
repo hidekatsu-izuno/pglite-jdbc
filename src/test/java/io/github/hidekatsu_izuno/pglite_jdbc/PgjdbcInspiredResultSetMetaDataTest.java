@@ -100,6 +100,26 @@ class PgjdbcInspiredResultSetMetaDataTest {
     }
 
     @Test
+    void resultSetMetadataReportsCoreObjectClassesLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("""
+                 SELECT
+                   point '(1,2)' AS point_value,
+                   box '((0,0),(1,1))' AS box_value,
+                   'cursor_name'::refcursor AS cursor_value
+                 """)) {
+            var metadata = resultSet.getMetaData();
+
+            assertEquals(Types.OTHER, metadata.getColumnType(1));
+            assertEquals("org.postgresql.geometric.PGpoint", metadata.getColumnClassName(1));
+            assertEquals(Types.OTHER, metadata.getColumnType(2));
+            assertEquals("org.postgresql.geometric.PGBox", metadata.getColumnClassName(2));
+            assertEquals(Types.REF_CURSOR, metadata.getColumnType(3));
+            assertEquals(java.sql.ResultSet.class.getName(), metadata.getColumnClassName(3));
+        }
+    }
+
+    @Test
     void resultSetMetadataReportsBaseNamesLikePgjdbc() throws Exception {
         try (var statement = connection.createStatement()) {
             statement.execute("CREATE TEMP TABLE pgjdbc_rsmd_base(id serial PRIMARY KEY, name text)");
