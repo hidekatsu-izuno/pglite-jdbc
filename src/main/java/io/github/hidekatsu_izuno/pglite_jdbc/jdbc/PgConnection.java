@@ -482,7 +482,7 @@ public final class PgConnection implements InvocationHandler {
                 if (iface.isInstance(proxy)) {
                     yield proxy;
                 }
-                throw new SQLException("Not a wrapper for " + iface.getName());
+                throw new SQLException("Cannot unwrap to " + iface.getName());
             }
             case "isWrapperFor" -> {
                 var iface = (Class<?>) args[0];

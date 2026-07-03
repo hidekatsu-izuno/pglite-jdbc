@@ -40,6 +40,8 @@ class OrgPostgresqlCompatibilityTest {
             )) {
             var pgConnection = connection.unwrap(org.postgresql.PGConnection.class);
             assertNotNull(pgConnection);
+            var connectionError = assertThrows(SQLException.class, () -> connection.unwrap(String.class));
+            assertEquals("Cannot unwrap to java.lang.String", connectionError.getMessage());
             assertEquals(16, pgConnection.getDefaultFetchSize());
             assertEquals(AutoSave.CONSERVATIVE, pgConnection.getAutosave());
             assertEquals(PreferQueryMode.EXTENDED, pgConnection.getPreferQueryMode());
@@ -49,6 +51,8 @@ class OrgPostgresqlCompatibilityTest {
 
             try (var prepared = connection.prepareStatement("SELECT ?::int4 AS value")) {
                 var pgStatement = prepared.unwrap(PGStatement.class);
+                var statementError = assertThrows(SQLException.class, () -> prepared.unwrap(String.class));
+                assertEquals("Cannot unwrap to java.lang.String", statementError.getMessage());
                 pgStatement.setPrepareThreshold(1);
                 assertTrue(pgStatement.isUseServerPrepare());
                 pgStatement.setAdaptiveFetch(true);
@@ -58,6 +62,8 @@ class OrgPostgresqlCompatibilityTest {
                     assertTrue(resultSet.next());
                     var pgResultSet = resultSet.unwrap(org.postgresql.PGRefCursorResultSet.class);
                     assertNull(pgResultSet.getRefCursor());
+                    var resultSetError = assertThrows(SQLException.class, () -> resultSet.unwrap(String.class));
+                    assertEquals("Cannot unwrap to java.lang.String", resultSetError.getMessage());
                     assertEquals(42, resultSet.getInt(1));
                     var metadata = resultSet.getMetaData();
                     assertEquals("int4", metadata.getColumnTypeName(1));

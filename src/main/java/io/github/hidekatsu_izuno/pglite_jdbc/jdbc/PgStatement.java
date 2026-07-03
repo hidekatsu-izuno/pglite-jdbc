@@ -317,7 +317,7 @@ final class PgStatement implements InvocationHandler {
                 if (iface.isInstance(proxy)) {
                     yield proxy;
                 }
-                throw new SQLException("Not a wrapper for " + iface.getName());
+                throw new SQLException("Cannot unwrap to " + iface.getName());
             }
             case "isWrapperFor" -> ((Class<?>) args[0]).isInstance(proxy);
             default -> {
