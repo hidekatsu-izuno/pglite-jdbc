@@ -3,6 +3,7 @@ package io.github.hidekatsu_izuno.pglite_jdbc.jdbc;
 import io.github.hidekatsu_izuno.pglite_jdbc.core.v3.QueryExecutorImpl;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.lang.reflect.Array;
 import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
@@ -386,8 +387,12 @@ final class JdbcCompat {
     }
 
     static BigDecimal toBigDecimal(Object value, int scale) throws SQLException {
+        return toBigDecimal(value, scale, RoundingMode.HALF_EVEN);
+    }
+
+    static BigDecimal toBigDecimal(Object value, int scale, RoundingMode roundingMode) throws SQLException {
         var decimal = toBigDecimal(value);
-        return decimal == null ? null : decimal.setScale(scale, java.math.RoundingMode.HALF_EVEN);
+        return decimal == null ? null : decimal.setScale(scale, roundingMode);
     }
 
     static Number specialFloating(String value) {
