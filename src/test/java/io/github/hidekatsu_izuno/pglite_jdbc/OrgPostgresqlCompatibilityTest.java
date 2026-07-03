@@ -347,6 +347,10 @@ class OrgPostgresqlCompatibilityTest {
                 assertEquals(java.sql.Types.INTEGER, typeInfo.getJavaArrayType("int4"));
                 assertEquals(Integer.class.getName(), typeInfo.getJavaClass(23));
                 assertEquals(10, typeInfo.getMaximumPrecision(23));
+                assertTrue(typeInfo.isSigned(23));
+                assertEquals(false, typeInfo.isCaseSensitive(23));
+                assertEquals(false, typeInfo.isSigned(25));
+                assertTrue(typeInfo.isCaseSensitive(25));
 
                 var queryExecutor = baseConnection.getQueryExecutor();
                 assertEquals("18.3", queryExecutor.getServerVersion());

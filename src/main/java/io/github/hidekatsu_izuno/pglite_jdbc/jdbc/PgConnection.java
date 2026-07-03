@@ -978,7 +978,8 @@ public final class PgConnection implements InvocationHandler {
                     case "getPGTypeNamesWithSQLTypes", "getPGTypeOidsWithSQLTypes" ->
                         java.util.Collections.emptyIterator();
                     case "getPGobject" -> pgObjectClass((String) args[0]);
-                    case "isCaseSensitive", "isSigned" -> true;
+                    case "isCaseSensitive" -> isCaseSensitiveOid((Integer) args[0]);
+                    case "isSigned" -> isSignedOid((Integer) args[0]);
                     case "addDataType" -> {
                         addDataType((String) args[0], args[1]);
                         yield null;
@@ -1290,6 +1291,23 @@ public final class PgConnection implements InvocationHandler {
             case Types.DOUBLE, Types.FLOAT -> 17;
             case Types.NUMERIC, Types.DECIMAL -> 1000;
             default -> 0;
+        };
+    }
+
+    private boolean isSignedOid(int oid) {
+        return switch (JdbcCompat.oidToJdbcType(oid)) {
+            case Types.SMALLINT, Types.INTEGER, Types.BIGINT,
+                Types.REAL, Types.DOUBLE, Types.FLOAT,
+                Types.NUMERIC, Types.DECIMAL -> true;
+            default -> false;
+        };
+    }
+
+    private boolean isCaseSensitiveOid(int oid) {
+        return switch (oid) {
+            case 16, 20, 21, 23, 26, 700, 701, 1082, 1083, 1114, 1184, 1186, 1266, 1560, 1562, 1700 ->
+                false;
+            default -> true;
         };
     }
 }
