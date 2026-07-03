@@ -34,7 +34,13 @@ public class parse {
                     var msg = (messages.RowDescriptionMessage) message;
                     currentFields.clear();
                     for (var field : msg.fields) {
-                        currentFields.add(new interface_.Field(field.name, field.dataTypeID, field.dataTypeModifier));
+                        currentFields.add(new interface_.Field(
+                            field.name,
+                            field.dataTypeID,
+                            field.dataTypeModifier,
+                            field.tableID,
+                            field.columnID
+                        ));
                     }
                 }
                 case "dataRow" -> {

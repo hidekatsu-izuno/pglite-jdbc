@@ -297,7 +297,7 @@ final class PgResultSet implements InvocationHandler {
             }
             case "getMetaData" -> {
                 ensureNotClosed();
-                yield PgResultSetMetaData.create(columns);
+                yield PgResultSetMetaData.create(connection, columns);
             }
             case "getStatement" -> {
                 ensureNotClosed();

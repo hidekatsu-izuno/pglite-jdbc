@@ -57,7 +57,7 @@ class OrgPostgresqlCompatibilityTest {
                     var metadata = resultSet.getMetaData();
                     assertEquals("int4", metadata.getColumnTypeName(1));
                     assertEquals(Integer.class.getName(), metadata.getColumnClassName(1));
-                    assertEquals("value", metadata.unwrap(PGResultSetMetaData.class).getBaseColumnName(1));
+                    assertEquals("", metadata.unwrap(PGResultSetMetaData.class).getBaseColumnName(1));
                 }
             }
         }

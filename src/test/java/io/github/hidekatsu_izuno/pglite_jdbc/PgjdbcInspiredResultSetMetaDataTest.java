@@ -7,6 +7,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Types;
+import org.postgresql.PGResultSetMetaData;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -92,6 +93,29 @@ class PgjdbcInspiredResultSetMetaDataTest {
             assertEquals(String.class.getName(), metadata.getColumnClassName(9));
             assertEquals(3, metadata.getPrecision(9));
             assertEquals(3, metadata.getColumnDisplaySize(9));
+        }
+    }
+
+    @Test
+    void resultSetMetadataReportsBaseNamesLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("CREATE TEMP TABLE pgjdbc_rsmd_base(id int4, name text)");
+            statement.execute("INSERT INTO pgjdbc_rsmd_base VALUES (1, 'alice')");
+
+            try (var resultSet = statement.executeQuery(
+                    "SELECT id AS alias_id, name, id + 1 AS expression_value FROM pgjdbc_rsmd_base"
+                )) {
+                var metadata = resultSet.getMetaData().unwrap(PGResultSetMetaData.class);
+
+                assertEquals("id", metadata.getBaseColumnName(1));
+                assertEquals("pgjdbc_rsmd_base", metadata.getBaseTableName(1));
+                assertEquals("pg_temp", metadata.getBaseSchemaName(1).substring(0, 7));
+                assertEquals("name", metadata.getBaseColumnName(2));
+                assertEquals("pgjdbc_rsmd_base", metadata.getBaseTableName(2));
+                assertEquals("", metadata.getBaseColumnName(3));
+                assertEquals("", metadata.getBaseTableName(3));
+                assertEquals("", metadata.getBaseSchemaName(3));
+            }
         }
     }
 

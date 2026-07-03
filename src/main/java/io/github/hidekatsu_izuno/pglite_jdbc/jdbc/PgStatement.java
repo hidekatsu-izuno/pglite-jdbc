@@ -1251,7 +1251,13 @@ final class PgStatement implements InvocationHandler {
     ) {
         var columns = new ArrayList<Column>(fields.length);
         for (var field : fields) {
-            columns.add(new Column(field.getColumnLabel(), field.getOID(), field.getMod()));
+            columns.add(new Column(
+                field.getColumnLabel(),
+                field.getOID(),
+                field.getMod(),
+                field.getTableOid(),
+                field.getPositionInTable()
+            ));
         }
         var rows = new ArrayList<Map<String, Object>>(tuples.size());
         for (var tuple : tuples) {

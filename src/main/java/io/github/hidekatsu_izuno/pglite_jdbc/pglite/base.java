@@ -299,6 +299,8 @@ public abstract class base {
                         field.name,
                         field.dataTypeID,
                         field.dataTypeModifier,
+                        field.tableID,
+                        field.columnID,
                         parserFor(field.dataTypeID, options)
                     )
                 );

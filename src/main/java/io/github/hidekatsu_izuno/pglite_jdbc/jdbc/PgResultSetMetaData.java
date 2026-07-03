@@ -5,23 +5,32 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 final class PgResultSetMetaData implements InvocationHandler {
+    private final PgConnection connection;
     private final List<Column> columns;
+    private final Map<ColumnKey, FieldInfo> fieldInfo = new HashMap<>();
 
-    private PgResultSetMetaData(List<Column> columns) {
+    private PgResultSetMetaData(PgConnection connection, List<Column> columns) {
+        this.connection = connection;
         this.columns = columns;
     }
 
     static ResultSetMetaData create(List<Column> columns) {
+        return create(null, columns);
+    }
+
+    static ResultSetMetaData create(PgConnection connection, List<Column> columns) {
         return (ResultSetMetaData) Proxy.newProxyInstance(
             PgResultSetMetaData.class.getClassLoader(),
             new Class<?>[] {
                 ResultSetMetaData.class,
                 org.postgresql.PGResultSetMetaData.class,
             },
-            new PgResultSetMetaData(columns)
+            new PgResultSetMetaData(connection, columns)
         );
     }
 
@@ -79,11 +88,9 @@ final class PgResultSetMetaData implements InvocationHandler {
                 yield false;
             }
             case "getColumnClassName" -> columnClassName(column((Integer) args[0]).oid());
-            case "getBaseColumnName" -> column((Integer) args[0]).label();
-            case "getBaseTableName", "getBaseSchemaName" -> {
-                column((Integer) args[0]);
-                yield "";
-            }
+            case "getBaseColumnName" -> baseColumnName(column((Integer) args[0]));
+            case "getBaseTableName" -> baseTableName(column((Integer) args[0]));
+            case "getBaseSchemaName" -> baseSchemaName(column((Integer) args[0]));
             case "getFormat" -> {
                 column((Integer) args[0]);
                 yield 0;
@@ -219,4 +226,66 @@ final class PgResultSetMetaData implements InvocationHandler {
         var scale = (typmod - 4) & 0xffff;
         return 1 + precision + (scale == 0 ? 0 : 1);
     }
+
+    private String baseColumnName(Column column) throws SQLException {
+        var info = fieldInfo(column);
+        return info == null ? "" : info.columnName();
+    }
+
+    private String baseTableName(Column column) throws SQLException {
+        var info = fieldInfo(column);
+        return info == null ? "" : info.tableName();
+    }
+
+    private String baseSchemaName(Column column) throws SQLException {
+        var info = fieldInfo(column);
+        return info == null ? "" : info.schemaName();
+    }
+
+    private FieldInfo fieldInfo(Column column) throws SQLException {
+        if (connection == null || column.tableOid() == 0 || column.positionInTable() == 0) {
+            return null;
+        }
+        var key = new ColumnKey(column.tableOid(), column.positionInTable());
+        if (fieldInfo.containsKey(key)) {
+            return fieldInfo.get(key);
+        }
+        var result = connection.query(
+            """
+            SELECT n.nspname AS schema_name,
+                   c.relname AS table_name,
+                   a.attname AS column_name
+            FROM pg_catalog.pg_attribute a
+            JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE a.attrelid = $1::oid
+              AND a.attnum = $2::int2
+              AND NOT a.attisdropped
+            """,
+            new Object[] { column.tableOid(), column.positionInTable() },
+            notice -> {}
+        );
+        var rows = result.rows();
+        var info = rows.isEmpty()
+            ? null
+            : new FieldInfo(
+                string(rows.get(0), "SCHEMA_NAME"),
+                string(rows.get(0), "TABLE_NAME"),
+                string(rows.get(0), "COLUMN_NAME")
+            );
+        fieldInfo.put(key, info);
+        return info;
+    }
+
+    private String string(Map<String, Object> row, String key) {
+        var value = row.get(key);
+        if (value == null) {
+            value = row.get(key.toLowerCase(java.util.Locale.ROOT));
+        }
+        return value == null ? "" : String.valueOf(value);
+    }
+
+    private record ColumnKey(int tableOid, int positionInTable) {}
+
+    private record FieldInfo(String schemaName, String tableName, String columnName) {}
 }
