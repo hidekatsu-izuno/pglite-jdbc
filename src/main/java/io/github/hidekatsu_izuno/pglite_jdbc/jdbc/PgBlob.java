@@ -74,6 +74,12 @@ final class PgBlob extends org.postgresql.jdbc.PgBlob {
     public int setBytes(long pos, byte[] source, int offset, int length) throws SQLException {
         ensureActive();
         var start = checkedStart(pos);
+        if (source == null) {
+            throw new SQLException("Blob bytes must not be null");
+        }
+        if (offset < 0 || length < 0 || offset > source.length || offset + length > source.length) {
+            throw new SQLException("Blob byte range is out of bounds");
+        }
         var replacement = Arrays.copyOfRange(source, offset, offset + length);
         var required = start + length;
         if (required > bytes.length) {

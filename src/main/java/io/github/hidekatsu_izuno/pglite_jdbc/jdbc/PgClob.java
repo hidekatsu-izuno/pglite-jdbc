@@ -67,6 +67,12 @@ final class PgClob extends org.postgresql.jdbc.PgClob {
     public int setString(long pos, String str, int offset, int len) throws SQLException {
         ensureActive();
         var start = checkedStart(pos);
+        if (str == null) {
+            throw new SQLException("Clob string must not be null");
+        }
+        if (offset < 0 || len < 0 || offset > str.length() || offset + len > str.length()) {
+            throw new SQLException("Clob string range is out of bounds");
+        }
         var replacement = str.substring(offset, offset + len);
         var builder = new StringBuilder(value);
         while (builder.length() < start) {
