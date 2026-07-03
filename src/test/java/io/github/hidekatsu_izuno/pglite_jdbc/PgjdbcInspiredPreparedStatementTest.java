@@ -309,6 +309,40 @@ class PgjdbcInspiredPreparedStatementTest {
     }
 
     @Test
+    void preparedStatementPreservesTrailingSpacesLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("CREATE TEMP TABLE pgjdbc_trailing_spaces(ch char(3), te text, vc varchar(3))");
+        }
+
+        var value = "a  ";
+        try (var prepared = connection.prepareStatement(
+                 "INSERT INTO pgjdbc_trailing_spaces(ch, te, vc) VALUES (?, ?, ?)"
+             )) {
+            prepared.setString(1, value);
+            prepared.setString(2, value);
+            prepared.setString(3, value);
+            assertEquals(1, prepared.executeUpdate());
+        }
+
+        try (var prepared = connection.prepareStatement("""
+                 SELECT ch, te, vc
+                 FROM pgjdbc_trailing_spaces
+                 WHERE ch = ? AND te = ? AND vc = ?
+                 """)) {
+            prepared.setString(1, value);
+            prepared.setString(2, value);
+            prepared.setString(3, value);
+            try (var resultSet = prepared.executeQuery()) {
+                assertTrue(resultSet.next());
+                assertEquals(value, resultSet.getString("ch"));
+                assertEquals(value, resultSet.getString("te"));
+                assertEquals(value, resultSet.getString("vc"));
+                assertFalse(resultSet.next());
+            }
+        }
+    }
+
+    @Test
     void preparedStatementBatchToStringRendersParameterRowsLikePgjdbc() throws Exception {
         try (var statement = connection.createStatement()) {
             statement.execute("CREATE TEMP TABLE IF NOT EXISTS pgjdbc_stream_test(payload bytea, body text)");
