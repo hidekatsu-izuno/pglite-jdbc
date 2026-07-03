@@ -202,6 +202,19 @@ class PgjdbcInspiredStatementTest {
     }
 
     @Test
+    void statementMoreResultsRejectsInvalidCloseFlagLikeJdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            assertTrue(statement.execute("SELECT 1 AS value; SELECT 2 AS value"));
+            assertThrows(SQLException.class, () -> statement.getMoreResults(-1));
+
+            try (var resultSet = statement.getResultSet()) {
+                assertTrue(resultSet.next());
+                assertEquals(1, resultSet.getInt("value"));
+            }
+        }
+    }
+
+    @Test
     void statementCloseOnCompletionClosesAfterResultSetClose() throws Exception {
         var statement = connection.createStatement();
         assertFalse(statement.isCloseOnCompletion());

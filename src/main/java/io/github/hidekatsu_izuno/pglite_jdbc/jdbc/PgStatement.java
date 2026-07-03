@@ -888,6 +888,13 @@ final class PgStatement implements InvocationHandler {
         var behavior = args != null && args.length > 0
             ? (Integer) args[0]
             : Statement.CLOSE_CURRENT_RESULT;
+        if (
+            behavior != Statement.CLOSE_CURRENT_RESULT &&
+            behavior != Statement.KEEP_CURRENT_RESULT &&
+            behavior != Statement.CLOSE_ALL_RESULTS
+        ) {
+            throw new SQLException("Invalid getMoreResults flag: " + behavior);
+        }
         if (behavior == Statement.CLOSE_CURRENT_RESULT || behavior == Statement.CLOSE_ALL_RESULTS) {
             closeCurrentResultSet();
         }
