@@ -103,6 +103,14 @@ final class PgDatabaseMetaData implements InvocationHandler {
             case "getSchemaTerm" -> "schema";
             case "getProcedureTerm" -> "function";
             case "getSearchStringEscape" -> "\\";
+            case "getMaxColumnNameLength", "getMaxCursorNameLength", "getMaxSchemaNameLength",
+                "getMaxProcedureNameLength", "getMaxCatalogNameLength", "getMaxTableNameLength",
+                "getMaxUserNameLength" -> 63;
+            case "getMaxColumnsInIndex" -> 32;
+            case "getMaxColumnsInTable" -> 1600;
+            case "getMaxConnections" -> 8192;
+            case "getMaxRowSize" -> 1073741824;
+            case "doesMaxRowSizeIncludeBlobs" -> false;
             case "getDefaultTransactionIsolation" -> Connection.TRANSACTION_READ_COMMITTED;
             case "isReadOnly" -> connection.readOnly();
             case "getTables" -> getTables(args);

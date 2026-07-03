@@ -241,6 +241,33 @@ class PgjdbcInspiredDatabaseMetaDataTest {
     }
 
     @Test
+    void databaseMetadataMaxValuesMatchPgjdbcForPostgresDefaults() throws Exception {
+        var metadata = connection.getMetaData();
+
+        assertEquals(0, metadata.getMaxCharLiteralLength());
+        assertEquals(0, metadata.getMaxBinaryLiteralLength());
+        assertEquals(63, metadata.getMaxColumnNameLength());
+        assertEquals(0, metadata.getMaxColumnsInGroupBy());
+        assertEquals(32, metadata.getMaxColumnsInIndex());
+        assertEquals(0, metadata.getMaxColumnsInOrderBy());
+        assertEquals(0, metadata.getMaxColumnsInSelect());
+        assertEquals(1600, metadata.getMaxColumnsInTable());
+        assertEquals(8192, metadata.getMaxConnections());
+        assertEquals(63, metadata.getMaxCursorNameLength());
+        assertEquals(0, metadata.getMaxIndexLength());
+        assertEquals(63, metadata.getMaxSchemaNameLength());
+        assertEquals(63, metadata.getMaxProcedureNameLength());
+        assertEquals(63, metadata.getMaxCatalogNameLength());
+        assertEquals(1073741824, metadata.getMaxRowSize());
+        assertFalse(metadata.doesMaxRowSizeIncludeBlobs());
+        assertEquals(0, metadata.getMaxStatementLength());
+        assertEquals(0, metadata.getMaxStatements());
+        assertEquals(63, metadata.getMaxTableNameLength());
+        assertEquals(0, metadata.getMaxTablesInSelect());
+        assertEquals(63, metadata.getMaxUserNameLength());
+    }
+
+    @Test
     void databaseMetadataReportsDroppedColumnOrdinalsAndImplicitNumericPrecisionLikePgjdbc() throws Exception {
         try (var statement = connection.createStatement()) {
             statement.execute("""
