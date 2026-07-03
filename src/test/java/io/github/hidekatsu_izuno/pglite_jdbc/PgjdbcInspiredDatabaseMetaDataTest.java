@@ -241,6 +241,9 @@ class PgjdbcInspiredDatabaseMetaDataTest {
             statement.execute("CREATE INDEX pgjdbc_meta_idx_func_multi ON pgjdbc_meta_index_expr(upper(colour), upper(quest))");
             statement.execute("CREATE INDEX pgjdbc_meta_idx_func_mixed ON pgjdbc_meta_index_expr(colour, upper(quest))");
             statement.execute("CREATE INDEX pgjdbc_meta_idx_partial ON pgjdbc_meta_index_expr(name) WHERE id > 5");
+            statement.execute("CREATE INDEX pgjdbc_meta_idx_a_d ON pgjdbc_meta_index_expr(id ASC, quest DESC)");
+            statement.execute("CREATE INDEX pgjdbc_meta_idx_remark ON pgjdbc_meta_index_expr(name)");
+            statement.execute("COMMENT ON INDEX pgjdbc_meta_idx_remark IS 'index_comment'");
 
             statement.execute("""
                 CREATE TEMP TABLE pgjdbc_meta_unique_parent(
@@ -268,6 +271,9 @@ class PgjdbcInspiredDatabaseMetaDataTest {
             var sawMultiSecondExpression = false;
             var sawSingleExpression = false;
             var sawPartial = false;
+            var sawAscending = false;
+            var sawDescending = false;
+            var sawRemark = false;
             while (indexes.next()) {
                 var indexName = indexes.getString("INDEX_NAME");
                 var position = indexes.getInt("ORDINAL_POSITION");
@@ -295,6 +301,18 @@ class PgjdbcInspiredDatabaseMetaDataTest {
                     assertEquals("(id > 5)", indexes.getString("FILTER_CONDITION"));
                     assertTrue(indexes.getBoolean("NON_UNIQUE"));
                     sawPartial = true;
+                } else if ("pgjdbc_meta_idx_a_d".equals(indexName) && position == 1) {
+                    assertEquals("id", indexes.getString("COLUMN_NAME"));
+                    assertEquals("A", indexes.getString("ASC_OR_DESC"));
+                    sawAscending = true;
+                } else if ("pgjdbc_meta_idx_a_d".equals(indexName) && position == 2) {
+                    assertEquals("quest", indexes.getString("COLUMN_NAME"));
+                    assertEquals("D", indexes.getString("ASC_OR_DESC"));
+                    sawDescending = true;
+                } else if ("pgjdbc_meta_idx_remark".equals(indexName)) {
+                    assertEquals("name", indexes.getString("COLUMN_NAME"));
+                    assertEquals("index_comment", indexes.getString("REMARKS"));
+                    sawRemark = true;
                 }
             }
             assertTrue(sawUnique);
@@ -304,6 +322,9 @@ class PgjdbcInspiredDatabaseMetaDataTest {
             assertTrue(sawMultiSecondExpression);
             assertTrue(sawSingleExpression);
             assertTrue(sawPartial);
+            assertTrue(sawAscending);
+            assertTrue(sawDescending);
+            assertTrue(sawRemark);
         }
 
         try (var importedKeys = metadata.getImportedKeys(null, null, "pgjdbc_meta_unique_child")) {

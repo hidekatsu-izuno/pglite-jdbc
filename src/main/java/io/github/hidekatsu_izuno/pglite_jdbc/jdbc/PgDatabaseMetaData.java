@@ -308,7 +308,8 @@ final class PgDatabaseMetaData implements InvocationHandler {
                    pg_get_indexdef(ix.indexrelid, u.ord::int, true) AS column_name,
                    u.ord::int AS ordinal_position,
                    CASE WHEN o.option & 1 = 1 THEN 'D' ELSE 'A' END AS asc_or_desc,
-                   pg_get_expr(ix.indpred, ix.indrelid) AS filter_condition
+                   pg_get_expr(ix.indpred, ix.indrelid) AS filter_condition,
+                   obj_description(i.oid, 'pg_class') AS remarks
             FROM pg_catalog.pg_index ix
             JOIN pg_catalog.pg_class c ON c.oid = ix.indrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
@@ -342,6 +343,7 @@ final class PgDatabaseMetaData implements InvocationHandler {
             out.put("CARDINALITY", 0L);
             out.put("PAGES", 0L);
             out.put("FILTER_CONDITION", row.get("FILTER_CONDITION"));
+            out.put("REMARKS", row.get("REMARKS"));
             rows.add(out);
         }
         return result(indexColumns(), rows);
@@ -692,7 +694,8 @@ final class PgDatabaseMetaData implements InvocationHandler {
             new Column("ASC_OR_DESC", 19),
             new Column("CARDINALITY", 20),
             new Column("PAGES", 20),
-            new Column("FILTER_CONDITION", 25)
+            new Column("FILTER_CONDITION", 25),
+            new Column("REMARKS", 25)
         );
     }
 
