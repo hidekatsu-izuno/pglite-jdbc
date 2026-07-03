@@ -272,6 +272,10 @@ final class JdbcCompat {
             return number;
         }
         var text = String.valueOf(value);
+        var special = specialFloating(text);
+        if (special != null) {
+            return special;
+        }
         try {
             if (text.contains(".") || text.contains("e") || text.contains("E")) {
                 return Double.parseDouble(text);
@@ -362,7 +366,17 @@ final class JdbcCompat {
             return BigDecimal.valueOf(((Number) value).longValue());
         }
         if (value instanceof Number number) {
+            if (number instanceof Double doubleValue && !Double.isFinite(doubleValue)) {
+                throw new SQLException("Bad value for type BigDecimal: " + value);
+            }
+            if (number instanceof Float floatValue && !Float.isFinite(floatValue)) {
+                throw new SQLException("Bad value for type BigDecimal: " + value);
+            }
             return BigDecimal.valueOf(number.doubleValue());
+        }
+        var special = specialFloating(String.valueOf(value));
+        if (special != null) {
+            throw new SQLException("Bad value for type BigDecimal: " + value);
         }
         try {
             return new BigDecimal(String.valueOf(value));
@@ -374,6 +388,15 @@ final class JdbcCompat {
     static BigDecimal toBigDecimal(Object value, int scale) throws SQLException {
         var decimal = toBigDecimal(value);
         return decimal == null ? null : decimal.setScale(scale, java.math.RoundingMode.HALF_UP);
+    }
+
+    static Number specialFloating(String value) {
+        return switch (value) {
+            case "NaN" -> Double.NaN;
+            case "Infinity" -> Double.POSITIVE_INFINITY;
+            case "-Infinity" -> Double.NEGATIVE_INFINITY;
+            default -> null;
+        };
     }
 
     static byte[] toBytes(Object value) {

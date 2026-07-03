@@ -253,6 +253,48 @@ class PgjdbcInspiredResultSetTest {
     }
 
     @Test
+    void numericSpecialValuesFollowPgjdbcConversions() throws Exception {
+        try (var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("""
+                 SELECT
+                   'NaN'::numeric AS nan_numeric,
+                   'NaN'::real AS nan_real,
+                   'NaN'::double precision AS nan_double,
+                   'Infinity'::numeric AS inf_numeric,
+                   'Infinity'::real AS inf_real,
+                   'Infinity'::double precision AS inf_double,
+                   '-Infinity'::numeric AS neg_inf_numeric,
+                   '-Infinity'::real AS neg_inf_real,
+                   '-Infinity'::double precision AS neg_inf_double
+                 """)) {
+            assertTrue(resultSet.next());
+            assertTrue(Double.isNaN((Double) resultSet.getObject("nan_numeric")));
+            assertTrue(Double.isNaN(resultSet.getDouble("nan_numeric")));
+            assertTrue(Float.isNaN((Float) resultSet.getObject("nan_real")));
+            assertTrue(Float.isNaN(resultSet.getFloat("nan_real")));
+            assertTrue(Double.isNaN((Double) resultSet.getObject("nan_double")));
+            assertTrue(Double.isNaN(resultSet.getDouble("nan_double")));
+            assertThrows(SQLException.class, () -> resultSet.getBigDecimal("nan_numeric"));
+
+            assertEquals(Double.POSITIVE_INFINITY, resultSet.getObject("inf_numeric"));
+            assertEquals(Double.POSITIVE_INFINITY, resultSet.getDouble("inf_numeric"));
+            assertEquals(Float.POSITIVE_INFINITY, resultSet.getObject("inf_real"));
+            assertEquals(Float.POSITIVE_INFINITY, resultSet.getFloat("inf_real"));
+            assertEquals(Double.POSITIVE_INFINITY, resultSet.getObject("inf_double"));
+            assertEquals(Double.POSITIVE_INFINITY, resultSet.getDouble("inf_double"));
+            assertThrows(SQLException.class, () -> resultSet.getBigDecimal("inf_numeric"));
+
+            assertEquals(Double.NEGATIVE_INFINITY, resultSet.getObject("neg_inf_numeric"));
+            assertEquals(Double.NEGATIVE_INFINITY, resultSet.getDouble("neg_inf_numeric"));
+            assertEquals(Float.NEGATIVE_INFINITY, resultSet.getObject("neg_inf_real"));
+            assertEquals(Float.NEGATIVE_INFINITY, resultSet.getFloat("neg_inf_real"));
+            assertEquals(Double.NEGATIVE_INFINITY, resultSet.getObject("neg_inf_double"));
+            assertEquals(Double.NEGATIVE_INFINITY, resultSet.getDouble("neg_inf_double"));
+            assertThrows(SQLException.class, () -> resultSet.getBigDecimal("neg_inf_numeric"));
+        }
+    }
+
+    @Test
     void numericGettersTruncateAndCheckOverflowLikePgjdbc() throws Exception {
         try (var statement = connection.createStatement();
              var resultSet = statement.executeQuery("""

@@ -504,6 +504,16 @@ final class PgResultSet implements InvocationHandler {
             return value;
         }
         var typeName = JdbcCompat.oidToPgType(columns.get(column - 1).oid());
+        var oid = columns.get(column - 1).oid();
+        var special = JdbcCompat.specialFloating(String.valueOf(value));
+        if (special != null) {
+            if (oid == 700) {
+                return special.floatValue();
+            }
+            if (oid == 701 || oid == 1700) {
+                return special.doubleValue();
+            }
+        }
         var objectClass = connection.pgObjectClass(typeName);
         if (objectClass == null) {
             return value;
