@@ -287,6 +287,7 @@ final class PgDatabaseMetaData implements InvocationHandler {
             JOIN unnest(ix.indkey) WITH ORDINALITY AS u(attnum, ord) ON true
             JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum = u.attnum
             WHERE ix.indisprimary
+              AND u.ord <= ix.indnkeyatts
               %s
               %s
             ORDER BY table_schem, table_name, key_seq

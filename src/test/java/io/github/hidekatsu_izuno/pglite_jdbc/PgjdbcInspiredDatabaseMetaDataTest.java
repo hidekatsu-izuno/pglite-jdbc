@@ -226,6 +226,34 @@ class PgjdbcInspiredDatabaseMetaDataTest {
     }
 
     @Test
+    void databaseMetadataPrimaryKeysExcludeIncludedIndexColumnsLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("""
+                CREATE TEMP TABLE pgjdbc_meta_pk_include_column(
+                  a int,
+                  b int,
+                  c int,
+                  d int,
+                  CONSTRAINT pgjdbc_meta_pk_include_column_pkey PRIMARY KEY (b, d) INCLUDE (a)
+                )
+                """);
+        }
+
+        var metadata = connection.getMetaData();
+        try (var primaryKeys = metadata.getPrimaryKeys(null, null, "pgjdbc_meta_pk_include_column")) {
+            assertTrue(primaryKeys.next());
+            assertEquals("pgjdbc_meta_pk_include_column", primaryKeys.getString("TABLE_NAME"));
+            assertEquals("b", primaryKeys.getString("COLUMN_NAME"));
+            assertEquals(1, primaryKeys.getInt("KEY_SEQ"));
+
+            assertTrue(primaryKeys.next());
+            assertEquals("d", primaryKeys.getString("COLUMN_NAME"));
+            assertEquals(2, primaryKeys.getInt("KEY_SEQ"));
+            assertFalse(primaryKeys.next());
+        }
+    }
+
+    @Test
     void databaseMetadataReportsExpressionPartialIndexesAndUniqueFkTargetsLikePgjdbc() throws Exception {
         try (var statement = connection.createStatement()) {
             statement.execute("""
