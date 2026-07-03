@@ -50,14 +50,28 @@ final class PgDatabaseMetaData implements InvocationHandler {
             case "getDriverVersion" -> "0.1";
             case "getDriverMajorVersion" -> 0;
             case "getDriverMinorVersion" -> 1;
+            case "allProceduresAreCallable", "allTablesAreSelectable" -> true;
+            case "nullsAreSortedHigh" -> true;
+            case "nullsAreSortedLow", "nullsAreSortedAtStart", "nullsAreSortedAtEnd" -> false;
             case "supportsTransactions" -> true;
             case "supportsResultSetType" -> (Integer) args[0] != ResultSet.TYPE_SCROLL_SENSITIVE;
             case "supportsResultSetConcurrency" ->
                 (Integer) args[0] != ResultSet.TYPE_SCROLL_SENSITIVE;
             case "ownUpdatesAreVisible", "ownDeletesAreVisible", "ownInsertsAreVisible" -> true;
+            case "usesLocalFiles", "usesLocalFilePerTable" -> false;
+            case "supportsMixedCaseIdentifiers" -> false;
+            case "storesUpperCaseIdentifiers" -> false;
+            case "storesMixedCaseIdentifiers" -> false;
+            case "supportsMixedCaseQuotedIdentifiers" -> true;
+            case "storesUpperCaseQuotedIdentifiers" -> false;
+            case "storesLowerCaseQuotedIdentifiers" -> false;
+            case "storesMixedCaseQuotedIdentifiers" -> false;
+            case "supportsAlterTableWithAddColumn", "supportsAlterTableWithDropColumn",
+                "supportsColumnAliasing", "nullPlusNonNullIsNull" -> true;
             case "supportsSchemasInTableDefinitions", "supportsSchemasInDataManipulation",
                 "supportsCatalogsInTableDefinitions" -> true;
             case "getIdentifierQuoteString" -> "\"";
+            case "getExtraNameCharacters" -> "";
             case "storesLowerCaseIdentifiers" -> true;
             case "getCatalogSeparator" -> ".";
             case "getCatalogTerm" -> "database";

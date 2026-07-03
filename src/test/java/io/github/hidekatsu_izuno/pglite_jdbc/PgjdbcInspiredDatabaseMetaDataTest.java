@@ -138,6 +138,35 @@ class PgjdbcInspiredDatabaseMetaDataTest {
     }
 
     @Test
+    void databaseMetadataIdentifierAndCapabilityFlagsMatchPgjdbc() throws Exception {
+        var metadata = connection.getMetaData();
+
+        assertTrue(metadata.allProceduresAreCallable());
+        assertTrue(metadata.allTablesAreSelectable());
+        assertTrue(metadata.nullsAreSortedHigh());
+        assertFalse(metadata.nullsAreSortedLow());
+        assertFalse(metadata.nullsAreSortedAtStart());
+        assertFalse(metadata.nullsAreSortedAtEnd());
+
+        assertFalse(metadata.usesLocalFiles());
+        assertFalse(metadata.usesLocalFilePerTable());
+        assertFalse(metadata.supportsMixedCaseIdentifiers());
+        assertFalse(metadata.storesUpperCaseIdentifiers());
+        assertTrue(metadata.storesLowerCaseIdentifiers());
+        assertFalse(metadata.storesMixedCaseIdentifiers());
+        assertTrue(metadata.supportsMixedCaseQuotedIdentifiers());
+        assertFalse(metadata.storesUpperCaseQuotedIdentifiers());
+        assertFalse(metadata.storesLowerCaseQuotedIdentifiers());
+        assertFalse(metadata.storesMixedCaseQuotedIdentifiers());
+        assertEquals("", metadata.getExtraNameCharacters());
+
+        assertTrue(metadata.supportsAlterTableWithAddColumn());
+        assertTrue(metadata.supportsAlterTableWithDropColumn());
+        assertTrue(metadata.supportsColumnAliasing());
+        assertTrue(metadata.nullPlusNonNullIsNull());
+    }
+
+    @Test
     void databaseMetadataReportsDroppedColumnOrdinalsAndImplicitNumericPrecisionLikePgjdbc() throws Exception {
         try (var statement = connection.createStatement()) {
             statement.execute("""
