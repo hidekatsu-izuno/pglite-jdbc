@@ -153,7 +153,7 @@ final class PgDatabaseMetaData implements InvocationHandler {
                 if (iface.isInstance(proxy)) {
                     yield proxy;
                 }
-                throw new IllegalArgumentException("Not a wrapper for " + iface.getName());
+                throw new SQLException("Cannot unwrap to " + iface.getName());
             }
             case "isWrapperFor" -> ((Class<?>) args[0]).isInstance(proxy);
             default -> JdbcCompat.defaultReturn(method.getReturnType());

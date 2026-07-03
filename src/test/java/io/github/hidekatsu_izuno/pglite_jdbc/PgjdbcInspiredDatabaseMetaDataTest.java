@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.sql.Connection;
@@ -32,6 +33,17 @@ class PgjdbcInspiredDatabaseMetaDataTest {
     @AfterAll
     void disconnect() throws Exception {
         connection.close();
+    }
+
+    @Test
+    void databaseMetadataWrapperMethodsMatchPgjdbc() throws Exception {
+        var metadata = connection.getMetaData();
+
+        assertTrue(metadata.isWrapperFor(DatabaseMetaData.class));
+        assertEquals(metadata, metadata.unwrap(DatabaseMetaData.class));
+        assertFalse(metadata.isWrapperFor(String.class));
+        var error = assertThrows(java.sql.SQLException.class, () -> metadata.unwrap(String.class));
+        assertEquals("Cannot unwrap to java.lang.String", error.getMessage());
     }
 
     @Test
