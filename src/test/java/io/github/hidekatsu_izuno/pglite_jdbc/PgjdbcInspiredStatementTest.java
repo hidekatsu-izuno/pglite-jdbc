@@ -2,6 +2,7 @@ package io.github.hidekatsu_izuno.pglite_jdbc;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -116,6 +117,18 @@ class PgjdbcInspiredStatementTest {
                 assertEquals(";", resultSet.getString("value"));
                 assertFalse(resultSet.next());
             }
+        }
+    }
+
+    @Test
+    void statementReturnsCurrentResultSetAfterExecuteQueryLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("SELECT {fn abs(-2.3)} AS value")) {
+            assertNotNull(resultSet);
+            assertEquals(resultSet, statement.getResultSet());
+            assertTrue(resultSet.next());
+            assertEquals(2.3d, resultSet.getDouble("value"), 0.00001d);
+            assertFalse(resultSet.next());
         }
     }
 
