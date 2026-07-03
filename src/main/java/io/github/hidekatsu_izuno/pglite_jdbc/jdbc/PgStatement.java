@@ -473,9 +473,10 @@ final class PgStatement implements InvocationHandler {
             case Types.NUMERIC, Types.DECIMAL -> scaleOrLength == null
                 ? JdbcCompat.toBigDecimal(value)
                 : JdbcCompat.toBigDecimal(value, scaleOrLength, java.math.RoundingMode.HALF_UP);
-            case Types.TINYINT, Types.SMALLINT -> JdbcCompat.toNumber(value).shortValue();
-            case Types.INTEGER -> JdbcCompat.toNumber(value).intValue();
-            case Types.BIGINT -> JdbcCompat.toNumber(value).longValue();
+            case Types.TINYINT -> JdbcCompat.toByte(value);
+            case Types.SMALLINT -> JdbcCompat.toShort(value);
+            case Types.INTEGER -> JdbcCompat.toInt(value);
+            case Types.BIGINT -> JdbcCompat.toLong(value);
             case Types.REAL, Types.FLOAT -> JdbcCompat.toNumber(value).floatValue();
             case Types.DOUBLE -> JdbcCompat.toNumber(value).doubleValue();
             case Types.BIT, Types.BOOLEAN -> JdbcCompat.toBoolean(value);

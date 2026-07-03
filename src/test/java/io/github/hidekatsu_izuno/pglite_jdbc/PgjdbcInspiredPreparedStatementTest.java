@@ -432,6 +432,43 @@ class PgjdbcInspiredPreparedStatementTest {
     }
 
     @Test
+    void preparedStatementFloatObjectsTargetIntegralTypesLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("""
+                CREATE TEMP TABLE pgjdbc_integral_targets(
+                  tiny_value int4,
+                  small_value int4,
+                  int_value int4,
+                  bigint_value int8
+                )
+                """);
+        }
+
+        try (var insert = connection.prepareStatement("INSERT INTO pgjdbc_integral_targets VALUES (?, ?, ?, ?)")) {
+            insert.setObject(1, 127.9f, Types.TINYINT);
+            insert.setObject(2, 32767.9f, Types.SMALLINT);
+            insert.setObject(3, 1000.9f, Types.INTEGER);
+            insert.setObject(4, 10000000000.9d, Types.BIGINT);
+            assertEquals(1, insert.executeUpdate());
+
+            assertThrows(SQLException.class, () -> insert.setObject(1, 128f, Types.TINYINT));
+            assertThrows(SQLException.class, () -> insert.setObject(2, 32768f, Types.SMALLINT));
+            assertThrows(SQLException.class, () -> insert.setObject(3, 2147483648d, Types.INTEGER));
+            assertThrows(SQLException.class, () -> insert.setObject(4, new BigDecimal("9223372036854775808"), Types.BIGINT));
+        }
+
+        try (var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("SELECT * FROM pgjdbc_integral_targets")) {
+            assertTrue(resultSet.next());
+            assertEquals(127, resultSet.getInt("tiny_value"));
+            assertEquals(32767, resultSet.getInt("small_value"));
+            assertEquals(1000, resultSet.getInt("int_value"));
+            assertEquals(10000000000L, resultSet.getLong("bigint_value"));
+            assertFalse(resultSet.next());
+        }
+    }
+
+    @Test
     void preparedStatementTimestampBindingIsNotNarrowedAfterDateNullLikePgjdbc() throws Exception {
         try (var prepared = connection.prepareStatement("SELECT ?::timestamp AS value")) {
             var timestamp = Timestamp.valueOf("2016-09-27 16:13:34.836");
