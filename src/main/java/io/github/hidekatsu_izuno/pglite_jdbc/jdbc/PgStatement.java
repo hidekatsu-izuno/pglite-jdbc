@@ -371,6 +371,8 @@ final class PgStatement implements InvocationHandler {
     private void updateParameterTypeOverride(String methodName, Integer index, Object[] args) throws SQLException {
         var oid = switch (methodName) {
             case "setNull" -> nullParameterOid(args);
+            case "setFloat" -> 700;
+            case "setDouble" -> 701;
             case "setDate" -> 1082;
             case "setTime" -> 1083;
             case "setTimestamp" -> 1114;
@@ -392,6 +394,12 @@ final class PgStatement implements InvocationHandler {
 
     private Integer objectParameterOid(Object[] args) throws SQLException {
         if (args.length < 3 || args[2] == null) {
+            if (args.length >= 2 && args[1] instanceof Float) {
+                return 700;
+            }
+            if (args.length >= 2 && args[1] instanceof Double) {
+                return 701;
+            }
             return null;
         }
         var targetType = targetSqlType(args[2]);

@@ -457,4 +457,63 @@ class PgjdbcInspiredPreparedStatementTest {
             }
         }
     }
+
+    @Test
+    void preparedStatementSpecialFloatAndDoubleParametersFollowPgjdbc() throws Exception {
+        var sql = """
+            SELECT
+              ? AS nan_real,
+              ? AS nan_double,
+              ? AS inf_real,
+              ? AS inf_double,
+              ? AS neg_inf_real,
+              ? AS neg_inf_double
+            """;
+
+        try (var prepared = connection.prepareStatement(sql)) {
+            prepared.setFloat(1, Float.NaN);
+            prepared.setDouble(2, Double.NaN);
+            prepared.setFloat(3, Float.POSITIVE_INFINITY);
+            prepared.setDouble(4, Double.POSITIVE_INFINITY);
+            prepared.setFloat(5, Float.NEGATIVE_INFINITY);
+            prepared.setDouble(6, Double.NEGATIVE_INFINITY);
+
+            try (var resultSet = prepared.executeQuery()) {
+                assertTrue(resultSet.next());
+                assertTrue(Float.isNaN((Float) resultSet.getObject(1)));
+                assertTrue(Float.isNaN(resultSet.getFloat(1)));
+                assertTrue(Double.isNaN((Double) resultSet.getObject(2)));
+                assertTrue(Double.isNaN(resultSet.getDouble(2)));
+                assertEquals(Float.POSITIVE_INFINITY, resultSet.getObject(3));
+                assertEquals(Float.POSITIVE_INFINITY, resultSet.getFloat(3));
+                assertEquals(Double.POSITIVE_INFINITY, resultSet.getObject(4));
+                assertEquals(Double.POSITIVE_INFINITY, resultSet.getDouble(4));
+                assertEquals(Float.NEGATIVE_INFINITY, resultSet.getObject(5));
+                assertEquals(Float.NEGATIVE_INFINITY, resultSet.getFloat(5));
+                assertEquals(Double.NEGATIVE_INFINITY, resultSet.getObject(6));
+                assertEquals(Double.NEGATIVE_INFINITY, resultSet.getDouble(6));
+                assertFalse(resultSet.next());
+            }
+        }
+
+        try (var prepared = connection.prepareStatement(sql)) {
+            prepared.setObject(1, Float.NaN);
+            prepared.setObject(2, Double.NaN);
+            prepared.setObject(3, Float.POSITIVE_INFINITY);
+            prepared.setObject(4, Double.POSITIVE_INFINITY);
+            prepared.setObject(5, Float.NEGATIVE_INFINITY);
+            prepared.setObject(6, Double.NEGATIVE_INFINITY);
+
+            try (var resultSet = prepared.executeQuery()) {
+                assertTrue(resultSet.next());
+                assertTrue(Float.isNaN((Float) resultSet.getObject(1)));
+                assertTrue(Double.isNaN((Double) resultSet.getObject(2)));
+                assertEquals(Float.POSITIVE_INFINITY, resultSet.getObject(3));
+                assertEquals(Double.POSITIVE_INFINITY, resultSet.getObject(4));
+                assertEquals(Float.NEGATIVE_INFINITY, resultSet.getObject(5));
+                assertEquals(Double.NEGATIVE_INFINITY, resultSet.getObject(6));
+                assertFalse(resultSet.next());
+            }
+        }
+    }
 }
