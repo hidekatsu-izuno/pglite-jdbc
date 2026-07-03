@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.sql.Statement;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -102,6 +103,54 @@ class PgjdbcInspiredStatementTest {
         try (var statement = connection.createStatement()) {
             assertThrows(SQLException.class, () -> statement.executeUpdate("SELECT 1"));
             assertThrows(SQLException.class, () -> statement.executeUpdate("/* empty */; SELECT 1"));
+        }
+    }
+
+    @Test
+    void statementReexecutionAndMoreResultsCloseCurrentResultSetByDefault() throws Exception {
+        try (var statement = connection.createStatement()) {
+            var first = statement.executeQuery("SELECT 1 AS value");
+            assertTrue(first.next());
+
+            var second = statement.executeQuery("SELECT 2 AS value");
+            assertTrue(first.isClosed());
+            assertTrue(second.next());
+            assertEquals(2, second.getInt("value"));
+        }
+
+        try (var statement = connection.createStatement()) {
+            assertTrue(statement.execute("SELECT 1 AS value; SELECT 2 AS value"));
+            var first = statement.getResultSet();
+            assertTrue(first.next());
+
+            assertTrue(statement.getMoreResults());
+            assertTrue(first.isClosed());
+            try (var second = statement.getResultSet()) {
+                assertTrue(second.next());
+                assertEquals(2, second.getInt("value"));
+            }
+        }
+    }
+
+    @Test
+    void statementMoreResultsCanKeepOrCloseCurrentResultSetLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            assertTrue(statement.execute("SELECT 1 AS value; SELECT 2 AS value; SELECT 3 AS value"));
+            var first = statement.getResultSet();
+            assertTrue(first.next());
+
+            assertTrue(statement.getMoreResults(Statement.KEEP_CURRENT_RESULT));
+            assertFalse(first.isClosed());
+
+            var second = statement.getResultSet();
+            assertTrue(second.next());
+            assertTrue(statement.getMoreResults(Statement.CLOSE_ALL_RESULTS));
+            assertTrue(second.isClosed());
+
+            try (var third = statement.getResultSet()) {
+                assertTrue(third.next());
+                assertEquals(3, third.getInt("value"));
+            }
         }
     }
 }

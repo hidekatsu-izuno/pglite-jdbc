@@ -463,6 +463,7 @@ final class PgStatement implements InvocationHandler {
     }
 
     private ResultSet executeQuery(String sql) throws SQLException {
+        closeCurrentResultSet();
         var params = preparedSql != null ? buildParams() : null;
         var result = connection.query(sql, params);
         currentResults = List.of();
@@ -473,6 +474,7 @@ final class PgStatement implements InvocationHandler {
     }
 
     private int executeUpdate(String sql) throws SQLException {
+        closeCurrentResultSet();
         if (preparedSql != null) {
             var result = connection.query(sql, buildParams());
             if (!result.fields().isEmpty()) {
@@ -498,6 +500,7 @@ final class PgStatement implements InvocationHandler {
     }
 
     private boolean execute(String sql) throws SQLException {
+        closeCurrentResultSet();
         if (preparedSql != null) {
             var result = connection.query(sql, buildParams());
             currentResults = List.of();
@@ -529,6 +532,7 @@ final class PgStatement implements InvocationHandler {
     }
 
     private int[] executeBatch() throws SQLException {
+        closeCurrentResultSet();
         if (preparedSql != null) {
             var out = new int[preparedBatch.size()];
             for (var i = 0; i < preparedBatch.size(); i++) {
@@ -580,11 +584,11 @@ final class PgStatement implements InvocationHandler {
     }
 
     private boolean getMoreResults(Object[] args) throws SQLException {
-        if (args != null && args.length > 0) {
-            var behavior = (Integer) args[0];
-            if (behavior == Statement.CLOSE_CURRENT_RESULT && currentResultSet != null) {
-                currentResultSet.close();
-            }
+        var behavior = args != null && args.length > 0
+            ? (Integer) args[0]
+            : Statement.CLOSE_CURRENT_RESULT;
+        if (behavior == Statement.CLOSE_CURRENT_RESULT || behavior == Statement.CLOSE_ALL_RESULTS) {
+            closeCurrentResultSet();
         }
         return advanceResult();
     }
@@ -625,12 +629,16 @@ final class PgStatement implements InvocationHandler {
         }
     }
 
-    private void closeStatement() throws SQLException {
+    private void closeCurrentResultSet() throws SQLException {
         if (currentResultSet != null) {
             currentResultSet.close();
+            currentResultSet = null;
         }
+    }
+
+    private void closeStatement() throws SQLException {
+        closeCurrentResultSet();
         closed = true;
-        currentResultSet = null;
         currentResults = List.of();
         currentResultIndex = -1;
         parameters.clear();

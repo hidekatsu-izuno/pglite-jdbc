@@ -190,4 +190,34 @@ class PgjdbcInspiredPreparedStatementTest {
             }
         }
     }
+
+    @Test
+    void preparedStatementAsciiStreamAndBigDecimalScaleFollowPgjdbcCases() throws Exception {
+        try (var prepared = connection.prepareStatement("SELECT ?::text AS body, ?::numeric AS amount")) {
+            prepared.setAsciiStream(
+                1,
+                new ByteArrayInputStream("abc".getBytes(StandardCharsets.US_ASCII)),
+                3
+            );
+            prepared.setObject(2, new BigDecimal("123.456"), Types.NUMERIC, 1);
+
+            try (var resultSet = prepared.executeQuery()) {
+                assertTrue(resultSet.next());
+                assertEquals("abc", resultSet.getString("body"));
+                assertEquals(new BigDecimal("123.5"), resultSet.getBigDecimal("amount"));
+                assertFalse(resultSet.next());
+            }
+        }
+
+        try (var prepared = connection.prepareStatement("SELECT ?::text AS body")) {
+            assertThrows(
+                SQLException.class,
+                () -> prepared.setAsciiStream(
+                    1,
+                    new ByteArrayInputStream("xy".getBytes(StandardCharsets.US_ASCII)),
+                    3
+                )
+            );
+        }
+    }
 }

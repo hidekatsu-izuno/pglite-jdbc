@@ -170,4 +170,16 @@ class PgjdbcInspiredResultSetTest {
             Locale.setDefault(previous);
         }
     }
+
+    @Test
+    void resultSetGettersRequireCursorPositionedOnRow() throws Exception {
+        try (var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("SELECT 1 AS value")) {
+            assertThrows(SQLException.class, () -> resultSet.getInt("value"));
+            assertTrue(resultSet.next());
+            assertEquals(1, resultSet.getInt("value"));
+            assertFalse(resultSet.next());
+            assertThrows(SQLException.class, () -> resultSet.getInt("value"));
+        }
+    }
 }
