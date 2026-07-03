@@ -435,6 +435,31 @@ class PgjdbcInspiredStatementTest {
     }
 
     @Test
+    void statementSyntaxErrorsFollowPgjdbcParserCases() throws Exception {
+        try (var statement = connection.createStatement()) {
+            assertThrows(
+                SQLException.class,
+                () -> statement.executeQuery("SELECT 1 WHERE (1 > 0))")
+            );
+        }
+
+        assertSyntaxError("CREATE OR REPLACE FUNCTION update_on_change() RETURNS TRIGGER AS $$\nBEGIN");
+        assertSyntaxError("CREATE OR REPLACE FUNCTION update_on_change() RETURNS TRIGGER AS $ABC$\nBEGIN");
+        assertSyntaxError("CREATE OR REPLACE FUNCTION update_on_change() RETURNS TRIGGER AS /* $$\nBEGIN $$");
+        assertSyntaxError("CREATE OR REPLACE FUNCTION update_on_change() 'RETURNS TRIGGER AS $$\nBEGIN $$");
+        assertSyntaxError("CREATE OR REPLACE FUNCTION \"update_on_change() RETURNS TRIGGER AS $$\nBEGIN $$");
+    }
+
+    private void assertSyntaxError(String sql) throws Exception {
+        var error = assertThrows(SQLException.class, () -> {
+            try (var prepared = connection.prepareStatement(sql)) {
+                prepared.executeUpdate();
+            }
+        });
+        assertEquals("42601", error.getSQLState());
+    }
+
+    @Test
     void statementWarningsFollowPgjdbcNoticeHandling() throws Exception {
         try (var statement = connection.createStatement()) {
             statement.execute("""
