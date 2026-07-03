@@ -592,7 +592,13 @@ final class PgDatabaseMetaData implements InvocationHandler {
     }
 
     private String likeCondition(String expression, String pattern) {
-        return pattern == null ? "" : "AND " + expression + " LIKE " + literal(pattern) + " ESCAPE '\\'";
+        if (pattern == null) {
+            return "";
+        }
+        if (hasDanglingSearchEscape(pattern)) {
+            return "AND false";
+        }
+        return "AND " + expression + " LIKE " + literal(pattern) + " ESCAPE '\\'";
     }
 
     private String equalsCondition(String expression, String value) {
@@ -600,7 +606,15 @@ final class PgDatabaseMetaData implements InvocationHandler {
     }
 
     private String literal(String value) {
-        return "'" + value.replace("\\", "\\\\").replace("'", "''") + "'";
+        return "'" + value.replace("'", "''") + "'";
+    }
+
+    private boolean hasDanglingSearchEscape(String value) {
+        var escapes = 0;
+        for (var i = value.length() - 1; i >= 0 && value.charAt(i) == '\\'; i--) {
+            escapes++;
+        }
+        return escapes % 2 == 1;
     }
 
     private List<Column> tableColumns() {

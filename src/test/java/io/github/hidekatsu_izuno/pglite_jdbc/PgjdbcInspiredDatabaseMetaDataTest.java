@@ -445,6 +445,27 @@ class PgjdbcInspiredDatabaseMetaDataTest {
     }
 
     @Test
+    void databaseMetadataTablePatternsEscapeLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("CREATE TEMP TABLE \"a'\"(id int4)");
+            statement.execute("CREATE TEMP TABLE \"a\\\"(id int4)");
+        }
+
+        var metadata = connection.getMetaData();
+        try (var tables = metadata.getTables(null, null, "a'", new String[] { "TABLE" })) {
+            assertTrue(tables.next());
+            assertEquals("a'", tables.getString("TABLE_NAME"));
+        }
+        try (var tables = metadata.getTables(null, null, "a\\\\", new String[] { "TABLE" })) {
+            assertTrue(tables.next());
+            assertEquals("a\\", tables.getString("TABLE_NAME"));
+        }
+        try (var tables = metadata.getTables(null, null, "a\\", new String[] { "TABLE" })) {
+            assertFalse(tables.next());
+        }
+    }
+
+    @Test
     void databaseMetadataReportsSerialAndCharOctetLengthLikePgjdbc() throws Exception {
         try (var statement = connection.createStatement()) {
             statement.execute("""
