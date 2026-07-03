@@ -143,8 +143,13 @@ final class PgDatabaseMetaData implements InvocationHandler {
                    c.relname AS table_name,
                    a.attname AS column_name,
                    CASE WHEN t.typtype = 'd' THEN t.typbasetype ELSE a.atttypid END::int AS pg_type_oid,
+                   CASE
+                     WHEN t.typtype = 'd' THEN t.typbasetype
+                     WHEN t.typelem <> 0 AND t.typcategory = 'A' THEN t.typelem
+                     ELSE a.atttypid
+                   END::int AS pg_size_type_oid,
                    CASE WHEN t.typtype = 'd' AND t.typtypmod >= 0 THEN t.typtypmod ELSE a.atttypmod END AS pg_type_mod,
-                   format_type(a.atttypid, a.atttypmod) AS type_name,
+                   t.typname AS type_name,
                    pg_get_serial_sequence(format('%%I.%%I', n.nspname, c.relname), a.attname) AS serial_sequence,
                    CASE WHEN a.attnotnull OR t.typnotnull THEN 0 ELSE 1 END AS nullable,
                    pg_get_expr(d.adbin, d.adrelid) AS column_def,
@@ -175,12 +180,13 @@ final class PgDatabaseMetaData implements InvocationHandler {
         var rows = new ArrayList<Map<String, Object>>();
         for (var row : raw) {
             var oid = number(row.get("PG_TYPE_OID")).intValue();
+            var sizeOid = number(row.get("PG_SIZE_TYPE_OID")).intValue();
             var typmod = number(row.get("PG_TYPE_MOD")).intValue();
             var nullable = number(row.get("NULLABLE")).intValue();
             var serial = row.get("SERIAL_SEQUENCE") != null;
-            var columnSize = columnSize(oid, typmod);
-            var decimalDigits = decimalDigits(oid, typmod);
-            var charOctetLength = charOctetLength(oid, columnSize);
+            var columnSize = columnSize(sizeOid, typmod);
+            var decimalDigits = decimalDigits(sizeOid, typmod);
+            var charOctetLength = charOctetLength(sizeOid, columnSize);
             var typeName = serialTypeName(oid, String.valueOf(row.get("TYPE_NAME")), serial);
             var identity = !String.valueOf(row.get("IDENTITY_KIND")).isEmpty();
             var generated = !String.valueOf(row.get("GENERATED_KIND")).isEmpty();

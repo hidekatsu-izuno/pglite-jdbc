@@ -658,6 +658,45 @@ class PgjdbcInspiredDatabaseMetaDataTest {
         }
     }
 
+    @Test
+    void databaseMetadataReportsArrayColumnDetailsLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("""
+                CREATE TEMP TABLE pgjdbc_meta_array_table(
+                  a numeric(5,2)[],
+                  b varchar(100)[],
+                  c int4[],
+                  d int4[][]
+                )
+                """);
+        }
+
+        var metadata = connection.getMetaData();
+        try (var columns = metadata.getColumns(null, null, "pgjdbc_meta_array_table", "%")) {
+            assertTrue(columns.next());
+            assertEquals("a", columns.getString("COLUMN_NAME"));
+            assertEquals(Types.ARRAY, columns.getInt("DATA_TYPE"));
+            assertEquals("_numeric", columns.getString("TYPE_NAME"));
+            assertEquals(5, columns.getInt("COLUMN_SIZE"));
+            assertEquals(2, columns.getInt("DECIMAL_DIGITS"));
+
+            assertTrue(columns.next());
+            assertEquals("b", columns.getString("COLUMN_NAME"));
+            assertEquals(Types.ARRAY, columns.getInt("DATA_TYPE"));
+            assertEquals("_varchar", columns.getString("TYPE_NAME"));
+            assertEquals(100, columns.getInt("COLUMN_SIZE"));
+
+            assertTrue(columns.next());
+            assertEquals("c", columns.getString("COLUMN_NAME"));
+            assertEquals("_int4", columns.getString("TYPE_NAME"));
+
+            assertTrue(columns.next());
+            assertEquals("d", columns.getString("COLUMN_NAME"));
+            assertEquals("_int4", columns.getString("TYPE_NAME"));
+            assertFalse(columns.next());
+        }
+    }
+
     private String currentDatabase() throws Exception {
         try (var statement = connection.createStatement();
              var resultSet = statement.executeQuery("SELECT current_database()")) {
