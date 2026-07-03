@@ -258,6 +258,10 @@ public final class PgConnection implements InvocationHandler {
             };
         }
 
+        if (!"close".equals(name) && !"isClosed".equals(name)) {
+            ensureOpen();
+        }
+
         return switch (name) {
             case "close" -> {
                 closeConnection();
