@@ -281,7 +281,7 @@ public final class PgConnection implements InvocationHandler {
             case "createStatement" -> createStatement(args);
             case "prepareStatement" -> prepareStatement(args);
             case "prepareCall" -> throw JdbcCompat.unsupported(name);
-            case "nativeSQL" -> args[0];
+            case "nativeSQL" -> JdbcCompat.replaceJdbcEscapes((String) args[0], true);
             case "setAutoCommit" -> {
                 setAutoCommit((Boolean) args[0]);
                 yield null;

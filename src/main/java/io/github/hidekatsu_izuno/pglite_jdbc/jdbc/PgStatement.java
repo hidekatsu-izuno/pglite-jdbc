@@ -52,6 +52,7 @@ final class PgStatement implements InvocationHandler {
     private int prepareThreshold;
     private boolean adaptiveFetch;
     private boolean closeOnCompletion;
+    private boolean escapeProcessing = true;
 
     private PgStatement(
         PgConnection connection,
@@ -60,13 +61,13 @@ final class PgStatement implements InvocationHandler {
         int resultSetConcurrency,
         int resultSetHoldability,
         String[] preparedGeneratedColumns
-    ) {
+    ) throws SQLException {
         this.connection = connection;
-        this.preparedSql = preparedSql;
+        this.preparedSql = preparedSql != null ? JdbcCompat.replaceJdbcEscapes(preparedSql, true) : null;
         this.preparedProtocolSql = preparedSql != null
-            ? JdbcCompat.rewriteJdbcParameters(preparedSql)
+            ? JdbcCompat.rewriteJdbcParameters(this.preparedSql)
             : null;
-        this.parameterCount = preparedSql != null ? JdbcCompat.countJdbcParameters(preparedSql) : 0;
+        this.parameterCount = preparedSql != null ? JdbcCompat.countJdbcParameters(this.preparedSql) : 0;
         this.resultSetType = resultSetType;
         this.resultSetConcurrency = resultSetConcurrency;
         this.resultSetHoldability = resultSetHoldability;
@@ -76,7 +77,7 @@ final class PgStatement implements InvocationHandler {
         this.queryTimeout = connection.getQueryTimeoutInternal();
     }
 
-    static Statement create(PgConnection connection, String preparedSql) {
+    static Statement create(PgConnection connection, String preparedSql) throws SQLException {
         return create(
             connection,
             preparedSql,
@@ -93,7 +94,7 @@ final class PgStatement implements InvocationHandler {
         int resultSetType,
         int resultSetConcurrency,
         int resultSetHoldability
-    ) {
+    ) throws SQLException {
         return create(
             connection,
             preparedSql,
@@ -111,7 +112,7 @@ final class PgStatement implements InvocationHandler {
         int resultSetConcurrency,
         int resultSetHoldability,
         String[] preparedGeneratedColumns
-    ) {
+    ) throws SQLException {
         var interfaces = preparedSql == null
             ? new Class<?>[] {
                 org.postgresql.core.BaseStatement.class,
@@ -223,7 +224,11 @@ final class PgStatement implements InvocationHandler {
             }
             case "getQueryTimeout" -> queryTimeout;
             case "cancel" -> null;
-            case "setEscapeProcessing", "setCursorName", "setPoolable" -> null;
+            case "setEscapeProcessing" -> {
+                escapeProcessing = (Boolean) args[0];
+                yield null;
+            }
+            case "setCursorName", "setPoolable" -> null;
             case "closeOnCompletion" -> {
                 closeOnCompletion = true;
                 yield null;
@@ -616,7 +621,7 @@ final class PgStatement implements InvocationHandler {
             throw new SQLException(methodName + " does not accept SQL text on a PreparedStatement");
         }
         if (args != null && args.length > 0 && args[0] instanceof String sql) {
-            return sql;
+            return JdbcCompat.replaceJdbcEscapes(sql, escapeProcessing);
         }
         throw new SQLException(methodName + " requires SQL text");
     }

@@ -381,14 +381,14 @@ final class PgResultSet implements InvocationHandler {
                 if (value == null) {
                     yield null;
                 }
-                yield java.sql.Date.valueOf(LocalDate.parse(String.valueOf(value)));
+                yield toSqlDate(value);
             }
             case "getTime" -> {
                 var value = getValue(args[0]);
                 if (value == null) {
                     yield null;
                 }
-                yield java.sql.Time.valueOf(LocalTime.parse(String.valueOf(value)));
+                yield toSqlTime(value);
             }
             case "getTimestamp" -> {
                 var value = getValue(args[0]);
@@ -595,6 +595,22 @@ final class PgResultSet implements InvocationHandler {
             return value;
         }
         return JdbcCompat.toPgObject(typeName, value, objectClass);
+    }
+
+    private java.sql.Date toSqlDate(Object value) {
+        var text = String.valueOf(value);
+        if (text.contains("T")) {
+            return java.sql.Date.valueOf(java.time.OffsetDateTime.parse(text).toLocalDate());
+        }
+        return java.sql.Date.valueOf(LocalDate.parse(text));
+    }
+
+    private java.sql.Time toSqlTime(Object value) {
+        var text = String.valueOf(value);
+        if (text.contains("T")) {
+            return java.sql.Time.valueOf(java.time.OffsetDateTime.parse(text).toLocalTime());
+        }
+        return java.sql.Time.valueOf(LocalTime.parse(text));
     }
 
     private boolean absolute(int row) throws SQLException {

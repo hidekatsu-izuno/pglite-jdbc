@@ -319,4 +319,29 @@ class PgjdbcInspiredStatementTest {
             assertEquals(ResultSet.FETCH_REVERSE, statement.getFetchDirection());
         }
     }
+
+    @Test
+    void statementJdbcEscapeProcessingFollowsPgjdbc() throws Exception {
+        assertEquals("SELECT ('a'||'b')", connection.nativeSQL("SELECT {fn concat('a','b')}"));
+
+        try (var statement = connection.createStatement()) {
+            try (var resultSet = statement.executeQuery("""
+                SELECT
+                  {d '1900-01-01'} AS d,
+                  {t '00:00:00'} AS t,
+                  {ts '1900-01-01 00:00:00'} AS ts,
+                  {fn log({fn log(3.0)})} AS log_value
+                """)) {
+                assertTrue(resultSet.next());
+                assertEquals("1900-01-01", resultSet.getDate("d").toLocalDate().toString());
+                assertEquals("00:00", resultSet.getTime("t").toLocalTime().toString());
+                assertEquals(1900, resultSet.getTimestamp("ts").toLocalDateTime().getYear());
+                assertEquals(Math.log(Math.log(3.0d)), resultSet.getDouble("log_value"), 0.00001d);
+                assertFalse(resultSet.next());
+            }
+
+            statement.setEscapeProcessing(false);
+            assertThrows(SQLException.class, () -> statement.executeQuery("SELECT {fn version()}"));
+        }
+    }
 }

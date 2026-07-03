@@ -516,4 +516,17 @@ class PgjdbcInspiredPreparedStatementTest {
             }
         }
     }
+
+    @Test
+    void preparedStatementJdbcEscapeFunctionsFollowPgjdbc() throws Exception {
+        try (var prepared = connection.prepareStatement("SELECT {fn concat('a', ?)} AS value")) {
+            prepared.setInt(1, 5);
+
+            try (var resultSet = prepared.executeQuery()) {
+                assertTrue(resultSet.next());
+                assertEquals("a5", resultSet.getString("value"));
+                assertFalse(resultSet.next());
+            }
+        }
+    }
 }

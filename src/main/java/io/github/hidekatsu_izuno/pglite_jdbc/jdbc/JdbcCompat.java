@@ -84,6 +84,10 @@ final class JdbcCompat {
         return rewriteJdbcParametersWithCount(sql).parameterCount();
     }
 
+    static String replaceJdbcEscapes(String sql, boolean replaceProcessing) throws SQLException {
+        return org.postgresql.core.Parser.replaceProcessing(sql, replaceProcessing, true);
+    }
+
     private record RewrittenSql(String sql, int parameterCount) {
     }
 
