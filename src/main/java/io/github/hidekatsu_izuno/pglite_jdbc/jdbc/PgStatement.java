@@ -144,7 +144,7 @@ final class PgStatement implements InvocationHandler {
         var name = method.getName();
         if (method.getDeclaringClass() == Object.class) {
             return switch (name) {
-                case "toString" -> preparedSql == null ? "PgStatement" : "PgPreparedStatement";
+                case "toString" -> preparedSql == null ? "PgStatement" : preparedStatementToString();
                 case "hashCode" -> System.identityHashCode(proxy);
                 case "equals" -> proxy == args[0];
                 default -> method.invoke(this, args);
@@ -647,6 +647,183 @@ final class PgStatement implements InvocationHandler {
             );
         }
         matcher.appendTail(out);
+        return out.toString();
+    }
+
+    private String preparedStatementToString() {
+        if (preparedBatch.isEmpty()) {
+            return renderPreparedSql(parameters);
+        }
+        var out = new StringBuilder();
+        for (var i = 0; i < preparedBatch.size(); i++) {
+            if (i > 0) {
+                out.append(";\n");
+            }
+            out.append(renderPreparedSql(preparedBatchParameters(preparedBatch.get(i))));
+        }
+        return out.toString();
+    }
+
+    private Map<Integer, Object> preparedBatchParameters(Object[] values) {
+        var out = new TreeMap<Integer, Object>();
+        for (var i = 0; i < values.length; i++) {
+            out.put(i + 1, values[i]);
+        }
+        return out;
+    }
+
+    private String renderPreparedSql(Map<Integer, Object> values) {
+        var out = new StringBuilder(preparedSql.length() + 32);
+        var parameterIndex = 0;
+        var inSingleQuote = false;
+        var inDoubleQuote = false;
+        var inLineComment = false;
+        var blockCommentDepth = 0;
+        String dollarQuoteTag = null;
+
+        for (var i = 0; i < preparedSql.length(); i++) {
+            var ch = preparedSql.charAt(i);
+            var next = i + 1 < preparedSql.length() ? preparedSql.charAt(i + 1) : '\0';
+
+            if (inLineComment) {
+                out.append(ch);
+                if (ch == '\n' || ch == '\r') {
+                    inLineComment = false;
+                }
+                continue;
+            }
+            if (blockCommentDepth > 0) {
+                out.append(ch);
+                if (ch == '/' && next == '*') {
+                    out.append(next);
+                    blockCommentDepth++;
+                    i++;
+                    continue;
+                }
+                if (ch == '*' && next == '/') {
+                    out.append(next);
+                    blockCommentDepth--;
+                    i++;
+                }
+                continue;
+            }
+            if (dollarQuoteTag != null) {
+                if (preparedSql.startsWith(dollarQuoteTag, i)) {
+                    out.append(dollarQuoteTag);
+                    i += dollarQuoteTag.length() - 1;
+                    dollarQuoteTag = null;
+                    continue;
+                }
+                out.append(ch);
+                continue;
+            }
+            if (inSingleQuote) {
+                out.append(ch);
+                if (ch == '\'' && next == '\'') {
+                    out.append(next);
+                    i++;
+                    continue;
+                }
+                if (ch == '\'') {
+                    inSingleQuote = false;
+                }
+                continue;
+            }
+            if (inDoubleQuote) {
+                out.append(ch);
+                if (ch == '"' && next == '"') {
+                    out.append(next);
+                    i++;
+                    continue;
+                }
+                if (ch == '"') {
+                    inDoubleQuote = false;
+                }
+                continue;
+            }
+
+            if (ch == '\'') {
+                inSingleQuote = true;
+                out.append(ch);
+                continue;
+            }
+            if (ch == '"') {
+                inDoubleQuote = true;
+                out.append(ch);
+                continue;
+            }
+            if (ch == '-' && next == '-') {
+                inLineComment = true;
+                out.append(ch).append(next);
+                i++;
+                continue;
+            }
+            if (ch == '/' && next == '*') {
+                blockCommentDepth = 1;
+                out.append(ch).append(next);
+                i++;
+                continue;
+            }
+            if (ch == '$') {
+                var closing = preparedSql.indexOf('$', i + 1);
+                if (closing > i && isDollarQuoteTag(preparedSql, i, closing)) {
+                    dollarQuoteTag = preparedSql.substring(i, closing + 1);
+                    out.append(dollarQuoteTag);
+                    i = closing;
+                    continue;
+                }
+                out.append(ch);
+                continue;
+            }
+            if (ch == '?') {
+                if (next == '?') {
+                    out.append('?');
+                    i++;
+                    continue;
+                }
+                parameterIndex++;
+                out.append(renderParameter(values, parameterIndex));
+                continue;
+            }
+            out.append(ch);
+        }
+        return out.toString();
+    }
+
+    private boolean isDollarQuoteTag(String sql, int start, int closing) {
+        for (var i = start + 1; i < closing; i++) {
+            var ch = sql.charAt(i);
+            if (!Character.isLetterOrDigit(ch) && ch != '_') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private String renderParameter(Map<Integer, Object> values, int index) {
+        if (!values.containsKey(index)) {
+            return "?";
+        }
+        var value = values.get(index);
+        if (value == null) {
+            return "NULL";
+        }
+        if (value instanceof byte[] bytes) {
+            return "'\\x" + hex(bytes) + "'::bytea";
+        }
+        if (value instanceof Number || value instanceof Boolean) {
+            return String.valueOf(value);
+        }
+        return "('" + String.valueOf(value).replace("'", "''") + "')";
+    }
+
+    private String hex(byte[] bytes) {
+        var digits = "0123456789abcdef";
+        var out = new StringBuilder(bytes.length * 2);
+        for (var b : bytes) {
+            out.append(digits.charAt((b >> 4) & 0x0f));
+            out.append(digits.charAt(b & 0x0f));
+        }
         return out.toString();
     }
 

@@ -257,6 +257,56 @@ class PgjdbcInspiredPreparedStatementTest {
     }
 
     @Test
+    void preparedStatementToStringRendersParametersLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("CREATE TEMP TABLE IF NOT EXISTS pgjdbc_stream_test(payload bytea, body text)");
+        }
+
+        try (var prepared = connection.prepareStatement("INSERT INTO pgjdbc_stream_test VALUES (?, ?)")) {
+            var bytes = new byte[] { 0, 1, 2, 3 };
+            prepared.setBytes(1, bytes);
+            assertEquals("INSERT INTO pgjdbc_stream_test VALUES ('\\x00010203'::bytea, ?)", prepared.toString());
+
+            prepared.setString(2, "a'b");
+            var expected = "INSERT INTO pgjdbc_stream_test VALUES ('\\x00010203'::bytea, ('a''b'))";
+            assertEquals(expected, prepared.toString());
+            assertEquals(1, prepared.executeUpdate());
+            assertEquals(expected, prepared.toString());
+        }
+    }
+
+    @Test
+    void preparedStatementBatchToStringRendersParameterRowsLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("CREATE TEMP TABLE IF NOT EXISTS pgjdbc_stream_test(payload bytea, body text)");
+        }
+
+        try (var prepared = connection.prepareStatement("INSERT INTO pgjdbc_stream_test VALUES (?, ?)")) {
+            prepared.setBytes(1, new byte[] { 0, 1 });
+            prepared.setString(2, "line1");
+            prepared.addBatch();
+
+            prepared.setBytes(1, new byte[] { 0, 1, 2 });
+            prepared.setString(2, "line2");
+            prepared.addBatch();
+
+            assertEquals(
+                """
+                INSERT INTO pgjdbc_stream_test VALUES ('\\x0001'::bytea, ('line1'));
+                INSERT INTO pgjdbc_stream_test VALUES ('\\x000102'::bytea, ('line2'))\
+                """,
+                prepared.toString()
+            );
+
+            org.junit.jupiter.api.Assertions.assertArrayEquals(new int[] { 1, 1 }, prepared.executeBatch());
+            assertEquals(
+                "INSERT INTO pgjdbc_stream_test VALUES ('\\x000102'::bytea, ('line2'))",
+                prepared.toString()
+            );
+        }
+    }
+
+    @Test
     void preparedStatementQuestionMarksInsideSqlLiteralsCommentsAndIdentifiersAreNotParameters() throws Exception {
         try (var prepared = connection.prepareStatement("""
             SELECT
