@@ -93,6 +93,52 @@ class PgjdbcInspiredDatabaseMetaDataTest {
     }
 
     @Test
+    void databaseMetadataReportsDroppedColumnOrdinalsAndImplicitNumericPrecisionLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("""
+                CREATE TEMP TABLE pgjdbc_meta_dropped_columns(
+                  id int4,
+                  name text,
+                  updated timestamp,
+                  colour text,
+                  quest text,
+                  implicit_precision numeric
+                )
+                """);
+            statement.execute("ALTER TABLE pgjdbc_meta_dropped_columns DROP COLUMN name");
+            statement.execute("ALTER TABLE pgjdbc_meta_dropped_columns DROP COLUMN colour");
+        }
+
+        var metadata = connection.getMetaData();
+        try (var columns = metadata.getColumns(null, null, "pgjdbc_meta_dropped_columns", null)) {
+            assertTrue(columns.next());
+            assertEquals("id", columns.getString("COLUMN_NAME"));
+            assertEquals(1, columns.getInt("ORDINAL_POSITION"));
+
+            assertTrue(columns.next());
+            assertEquals("updated", columns.getString("COLUMN_NAME"));
+            assertEquals(2, columns.getInt("ORDINAL_POSITION"));
+
+            assertTrue(columns.next());
+            assertEquals("quest", columns.getString("COLUMN_NAME"));
+            assertEquals(3, columns.getInt("ORDINAL_POSITION"));
+
+            assertTrue(columns.next());
+            assertEquals("implicit_precision", columns.getString("COLUMN_NAME"));
+            assertEquals(4, columns.getInt("ORDINAL_POSITION"));
+            assertEquals(0, columns.getInt("COLUMN_SIZE"));
+            assertFalse(columns.next());
+        }
+
+        try (var columns = metadata.getColumns(null, null, "pgjdbc_meta_dropped_columns", "quest")) {
+            assertTrue(columns.next());
+            assertEquals("quest", columns.getString("COLUMN_NAME"));
+            assertEquals(3, columns.getInt("ORDINAL_POSITION"));
+            assertFalse(columns.next());
+        }
+    }
+
+    @Test
     void databaseMetadataReportsPrimaryKeysForeignKeysAndIndexes() throws Exception {
         try (var statement = connection.createStatement()) {
             statement.execute("""

@@ -179,16 +179,22 @@ final class PgDatabaseMetaData implements InvocationHandler {
               AND n.nspname NOT LIKE 'pg_toast%%'
               %s
               %s
-              %s
             ORDER BY table_schem, table_name, ordinal_position
             """.formatted(
                 likeCondition("n.nspname", schemaPattern),
-                likeCondition("c.relname", tablePattern),
-                likeCondition("a.attname", columnPattern)
+                likeCondition("c.relname", tablePattern)
             );
         var raw = query(sql);
         var rows = new ArrayList<Map<String, Object>>();
+        var ordinal = 0;
+        var currentTable = "";
         for (var row : raw) {
+            var tableKey = row.get("TABLE_SCHEM") + "." + row.get("TABLE_NAME");
+            if (!tableKey.equals(currentTable)) {
+                currentTable = tableKey;
+                ordinal = 0;
+            }
+            ordinal++;
             var oid = number(row.get("PG_TYPE_OID")).intValue();
             var sizeOid = number(row.get("PG_SIZE_TYPE_OID")).intValue();
             var typmod = number(row.get("PG_TYPE_MOD")).intValue();
@@ -217,7 +223,7 @@ final class PgDatabaseMetaData implements InvocationHandler {
             out.put("SQL_DATA_TYPE", null);
             out.put("SQL_DATETIME_SUB", null);
             out.put("CHAR_OCTET_LENGTH", charOctetLength);
-            out.put("ORDINAL_POSITION", row.get("ORDINAL_POSITION"));
+            out.put("ORDINAL_POSITION", ordinal);
             out.put("IS_NULLABLE", nullable == DatabaseMetaData.columnNullable ? "YES" : "NO");
             out.put("SCOPE_CATALOG", null);
             out.put("SCOPE_SCHEMA", null);
@@ -226,6 +232,9 @@ final class PgDatabaseMetaData implements InvocationHandler {
             out.put("IS_AUTOINCREMENT", serial || identity ? "YES" : "NO");
             out.put("IS_GENERATEDCOLUMN", generated ? "YES" : "NO");
             rows.add(out);
+        }
+        if (columnPattern != null) {
+            rows.removeIf(row -> !like(String.valueOf(row.get("COLUMN_NAME")), columnPattern));
         }
         return result(columnColumns(), rows);
     }
@@ -245,7 +254,7 @@ final class PgDatabaseMetaData implements InvocationHandler {
     private Integer columnSize(int oid, int typmod) {
         var jdbcType = JdbcCompat.oidToJdbcType(oid);
         return switch (jdbcType) {
-            case Types.NUMERIC, Types.DECIMAL -> typmod >= 4 ? ((typmod - 4) >> 16) & 0xffff : null;
+            case Types.NUMERIC, Types.DECIMAL -> typmod >= 4 ? ((typmod - 4) >> 16) & 0xffff : 0;
             case Types.BIT -> typmod >= 0 ? typmod : null;
             case Types.CHAR, Types.VARCHAR -> typmod >= 4 ? typmod - 4 : Integer.MAX_VALUE;
             case Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY -> Integer.MAX_VALUE;
