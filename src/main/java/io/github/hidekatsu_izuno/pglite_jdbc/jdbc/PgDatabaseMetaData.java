@@ -90,6 +90,9 @@ final class PgDatabaseMetaData implements InvocationHandler {
     }
 
     private ResultSet getTables(Object[] args) throws SQLException {
+        if (!catalogMatches(value(args, 0))) {
+            return result(tableColumns(), List.of());
+        }
         var schemaPattern = pattern(args, 1);
         var tablePattern = pattern(args, 2);
         var types = args != null && args.length > 3 && args[3] instanceof String[] values
@@ -128,6 +131,9 @@ final class PgDatabaseMetaData implements InvocationHandler {
     }
 
     private ResultSet getColumns(Object[] args) throws SQLException {
+        if (!catalogMatches(value(args, 0))) {
+            return result(columnColumns(), List.of());
+        }
         var schemaPattern = pattern(args, 1);
         var tablePattern = pattern(args, 2);
         var columnPattern = pattern(args, 3);
@@ -250,6 +256,9 @@ final class PgDatabaseMetaData implements InvocationHandler {
     }
 
     private ResultSet getPrimaryKeys(Object[] args) throws SQLException {
+        if (!catalogMatches(value(args, 0))) {
+            return result(primaryKeyColumns(), List.of());
+        }
         var schema = value(args, 1);
         var table = value(args, 2);
         var sql = """
@@ -277,6 +286,9 @@ final class PgDatabaseMetaData implements InvocationHandler {
     }
 
     private ResultSet getIndexInfo(Object[] args) throws SQLException {
+        if (!catalogMatches(value(args, 0))) {
+            return result(indexColumns(), List.of());
+        }
         var schema = value(args, 1);
         var table = value(args, 2);
         var unique = args != null && args.length > 3 && Boolean.TRUE.equals(args[3]);
@@ -330,14 +342,23 @@ final class PgDatabaseMetaData implements InvocationHandler {
     }
 
     private ResultSet getImportedKeys(Object[] args) throws SQLException {
+        if (!catalogMatches(value(args, 0))) {
+            return result(importedKeyColumns(), List.of());
+        }
         return getForeignKeys(null, null, null, value(args, 1), value(args, 2));
     }
 
     private ResultSet getExportedKeys(Object[] args) throws SQLException {
+        if (!catalogMatches(value(args, 0))) {
+            return result(importedKeyColumns(), List.of());
+        }
         return getForeignKeys(value(args, 1), value(args, 2), null, null, null);
     }
 
     private ResultSet getCrossReference(Object[] args) throws SQLException {
+        if (!catalogMatches(value(args, 0)) || !catalogMatches(value(args, 3))) {
+            return result(importedKeyColumns(), List.of());
+        }
         return getForeignKeys(
             value(args, 1),
             value(args, 2),
@@ -540,6 +561,10 @@ final class PgDatabaseMetaData implements InvocationHandler {
             return null;
         }
         return String.valueOf(args[index]);
+    }
+
+    private boolean catalogMatches(String catalog) {
+        return catalog == null || catalog.equals(connection.database());
     }
 
     private Number number(Object value) {

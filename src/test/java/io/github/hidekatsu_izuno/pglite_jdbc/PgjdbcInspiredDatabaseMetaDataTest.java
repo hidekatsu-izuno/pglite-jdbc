@@ -296,6 +296,63 @@ class PgjdbcInspiredDatabaseMetaDataTest {
     }
 
     @Test
+    void databaseMetadataNonMatchingCatalogReturnsNoRowsLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("""
+                CREATE TEMP TABLE pgjdbc_meta_fake_catalog_parent(
+                  id int4 PRIMARY KEY,
+                  code int4 UNIQUE
+                )
+                """);
+            statement.execute("""
+                CREATE TEMP TABLE pgjdbc_meta_fake_catalog_child(
+                  code int4 REFERENCES pgjdbc_meta_fake_catalog_parent(code)
+                )
+                """);
+        }
+
+        var metadata = connection.getMetaData();
+        try (var tables = metadata.getTables("FakeCatalog", null, "pgjdbc_meta_fake_catalog_parent", null)) {
+            assertFalse(tables.next());
+        }
+        try (var columns = metadata.getColumns("FakeCatalog", null, "pgjdbc_meta_fake_catalog_parent", "%")) {
+            assertFalse(columns.next());
+        }
+        try (var primaryKeys = metadata.getPrimaryKeys("FakeCatalog", null, "pgjdbc_meta_fake_catalog_parent")) {
+            assertFalse(primaryKeys.next());
+        }
+        try (var indexes = metadata.getIndexInfo("FakeCatalog", null, "pgjdbc_meta_fake_catalog_parent", false, false)) {
+            assertFalse(indexes.next());
+        }
+        try (var importedKeys = metadata.getImportedKeys("FakeCatalog", null, "pgjdbc_meta_fake_catalog_child")) {
+            assertFalse(importedKeys.next());
+        }
+        try (var exportedKeys = metadata.getExportedKeys("FakeCatalog", null, "pgjdbc_meta_fake_catalog_parent")) {
+            assertFalse(exportedKeys.next());
+        }
+        try (var crossReference = metadata.getCrossReference(
+            "FakeCatalog",
+            null,
+            "pgjdbc_meta_fake_catalog_parent",
+            null,
+            null,
+            "pgjdbc_meta_fake_catalog_child"
+        )) {
+            assertFalse(crossReference.next());
+        }
+        try (var crossReference = metadata.getCrossReference(
+            null,
+            null,
+            "pgjdbc_meta_fake_catalog_parent",
+            "FakeCatalog",
+            null,
+            "pgjdbc_meta_fake_catalog_child"
+        )) {
+            assertFalse(crossReference.next());
+        }
+    }
+
+    @Test
     void databaseMetadataResultSetLabelsAreUpperCaseLikePgjdbc() throws Exception {
         var metadata = connection.getMetaData();
 
