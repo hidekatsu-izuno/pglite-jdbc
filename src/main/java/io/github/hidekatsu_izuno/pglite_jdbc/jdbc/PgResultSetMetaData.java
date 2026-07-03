@@ -50,10 +50,11 @@ final class PgResultSetMetaData implements InvocationHandler {
                 column((Integer) args[0]);
                 yield false;
             }
-            case "isCaseSensitive", "isSearchable", "isSigned" -> {
+            case "isCaseSensitive", "isSearchable" -> {
                 column((Integer) args[0]);
                 yield true;
             }
+            case "isSigned" -> isSigned(column((Integer) args[0]).oid());
             case "isCurrency" -> {
                 column((Integer) args[0]);
                 yield false;
@@ -68,9 +69,13 @@ final class PgResultSetMetaData implements InvocationHandler {
             }
             case "isReadOnly" -> {
                 column((Integer) args[0]);
+                yield false;
+            }
+            case "isWritable" -> {
+                column((Integer) args[0]);
                 yield true;
             }
-            case "isWritable", "isDefinitelyWritable" -> {
+            case "isDefinitelyWritable" -> {
                 column((Integer) args[0]);
                 yield false;
             }
@@ -120,6 +125,15 @@ final class PgResultSetMetaData implements InvocationHandler {
                 java.sql.Timestamp.class.getName();
             case java.sql.Types.ARRAY -> java.sql.Array.class.getName();
             default -> String.class.getName();
+        };
+    }
+
+    private boolean isSigned(int oid) {
+        return switch (JdbcCompat.oidToJdbcType(oid)) {
+            case java.sql.Types.SMALLINT, java.sql.Types.INTEGER, java.sql.Types.BIGINT,
+                java.sql.Types.REAL, java.sql.Types.DOUBLE, java.sql.Types.FLOAT,
+                java.sql.Types.NUMERIC, java.sql.Types.DECIMAL -> true;
+            default -> false;
         };
     }
 }
