@@ -437,11 +437,11 @@ final class PgStatement implements InvocationHandler {
     private Object objectParameter(Object[] args) throws SQLException {
         var value = args[1];
         if (args.length < 3 || value == null) {
-            return unwrapPgObject(value);
+            return value;
         }
         var targetType = targetSqlType(args[2]);
         if (targetType == null) {
-            return unwrapPgObject(value);
+            return value;
         }
         var scaleOrLength = args.length >= 4 && args[3] instanceof Number number
             ? number.intValue()
@@ -500,7 +500,28 @@ final class PgStatement implements InvocationHandler {
     }
 
     private Object unwrapPgObject(Object value) {
-        return value instanceof org.postgresql.util.PGobject object ? object.getValue() : value;
+        if (value instanceof org.postgresql.util.PGobject object) {
+            if ("bytea".equalsIgnoreCase(object.getType())) {
+                return pgObjectByteaValue(object.getValue());
+            }
+            return object.getValue();
+        }
+        return value;
+    }
+
+    private byte[] pgObjectByteaValue(String value) {
+        if (value == null) {
+            return null;
+        }
+        if (value.startsWith("\\x")) {
+            var hex = value.substring(2);
+            var out = new byte[hex.length() / 2];
+            for (var i = 0; i < out.length; i++) {
+                out[i] = (byte) Integer.parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+            }
+            return out;
+        }
+        return value.getBytes(StandardCharsets.UTF_8);
     }
 
     private Object timestampParameter(Object value) {
@@ -811,10 +832,26 @@ final class PgStatement implements InvocationHandler {
         if (value instanceof byte[] bytes) {
             return "'\\x" + hex(bytes) + "'::bytea";
         }
+        if (value instanceof org.postgresql.util.PGobject object) {
+            return renderPgObjectParameter(object);
+        }
         if (value instanceof Number || value instanceof Boolean) {
             return String.valueOf(value);
         }
         return "('" + String.valueOf(value).replace("'", "''") + "')";
+    }
+
+    private String renderPgObjectParameter(org.postgresql.util.PGobject object) {
+        var value = object.getValue();
+        if ("bytea".equalsIgnoreCase(object.getType()) && value != null) {
+            if (value.startsWith("\\x")) {
+                return "'" + value.replace("'", "''") + "'::bytea";
+            }
+            return "('" + value.replace("'", "''") + "'::bytea)";
+        }
+        return value == null
+            ? "NULL"
+            : "('" + value.replace("'", "''") + "')";
     }
 
     private String hex(byte[] bytes) {
@@ -893,7 +930,7 @@ final class PgStatement implements InvocationHandler {
         var max = parameters.lastKey();
         var values = new Object[max];
         for (var entry : parameters.entrySet()) {
-            values[entry.getKey() - 1] = entry.getValue();
+            values[entry.getKey() - 1] = unwrapPgObject(entry.getValue());
         }
         return values;
     }

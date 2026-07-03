@@ -24,6 +24,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.postgresql.util.PGobject;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class PgjdbcInspiredPreparedStatementTest {
@@ -272,6 +273,38 @@ class PgjdbcInspiredPreparedStatementTest {
             assertEquals(expected, prepared.toString());
             assertEquals(1, prepared.executeUpdate());
             assertEquals(expected, prepared.toString());
+        }
+    }
+
+    @Test
+    void preparedStatementToStringRendersByteaPgObjectsLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("CREATE TEMP TABLE IF NOT EXISTS pgjdbc_stream_test(payload bytea, body text)");
+        }
+
+        var hexBytea = new PGobject();
+        hexBytea.setType("bytea");
+        hexBytea.setValue("\\x00010203");
+        try (var prepared = connection.prepareStatement("INSERT INTO pgjdbc_stream_test VALUES (?, ?)")) {
+            prepared.setObject(1, hexBytea);
+            prepared.setString(2, "hex");
+            var expected = "INSERT INTO pgjdbc_stream_test VALUES ('\\x00010203'::bytea, ('hex'))";
+            assertEquals(expected, prepared.toString());
+            assertEquals(1, prepared.executeUpdate());
+            assertEquals(expected, prepared.toString());
+        }
+
+        var escapedBytea = new PGobject();
+        escapedBytea.setType("bytea");
+        escapedBytea.setValue("a'b");
+        try (var prepared = connection.prepareStatement("INSERT INTO pgjdbc_stream_test VALUES (?, ?)")) {
+            prepared.setObject(1, escapedBytea);
+            prepared.setString(2, "escaped");
+            assertEquals(
+                "INSERT INTO pgjdbc_stream_test VALUES (('a''b'::bytea), ('escaped'))",
+                prepared.toString()
+            );
+            assertEquals(1, prepared.executeUpdate());
         }
     }
 
