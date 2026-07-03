@@ -149,6 +149,8 @@ final class PgDatabaseMetaData implements InvocationHandler {
                    CASE WHEN a.attnotnull THEN 0 ELSE 1 END AS nullable,
                    pg_get_expr(d.adbin, d.adrelid) AS column_def,
                    a.attnum AS ordinal_position,
+                   a.attidentity AS identity_kind,
+                   a.attgenerated AS generated_kind,
                    col_description(a.attrelid, a.attnum) AS remarks
             FROM pg_catalog.pg_attribute a
             JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
@@ -179,6 +181,8 @@ final class PgDatabaseMetaData implements InvocationHandler {
             var decimalDigits = decimalDigits(oid, typmod);
             var charOctetLength = charOctetLength(oid, columnSize);
             var typeName = serialTypeName(oid, String.valueOf(row.get("TYPE_NAME")), serial);
+            var identity = !String.valueOf(row.get("IDENTITY_KIND")).isEmpty();
+            var generated = !String.valueOf(row.get("GENERATED_KIND")).isEmpty();
             var out = new LinkedHashMap<String, Object>();
             out.put("TABLE_CAT", row.get("TABLE_CAT"));
             out.put("TABLE_SCHEM", row.get("TABLE_SCHEM"));
@@ -202,8 +206,8 @@ final class PgDatabaseMetaData implements InvocationHandler {
             out.put("SCOPE_SCHEMA", null);
             out.put("SCOPE_TABLE", null);
             out.put("SOURCE_DATA_TYPE", null);
-            out.put("IS_AUTOINCREMENT", serial ? "YES" : "NO");
-            out.put("IS_GENERATEDCOLUMN", "NO");
+            out.put("IS_AUTOINCREMENT", serial || identity ? "YES" : "NO");
+            out.put("IS_GENERATEDCOLUMN", generated ? "YES" : "NO");
             rows.add(out);
         }
         return result(columnColumns(), rows);
