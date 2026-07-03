@@ -263,8 +263,8 @@ public final class PgConnection implements InvocationHandler {
                 yield null;
             }
             case "isClosed" -> closed;
-            case "createStatement" -> PgStatement.create(this, null);
-            case "prepareStatement" -> (java.sql.PreparedStatement) PgStatement.create(this, (String) args[0]);
+            case "createStatement" -> createStatement(args);
+            case "prepareStatement" -> prepareStatement(args);
             case "prepareCall" -> throw JdbcCompat.unsupported(name);
             case "nativeSQL" -> args[0];
             case "setAutoCommit" -> {
@@ -751,6 +751,68 @@ public final class PgConnection implements InvocationHandler {
             largeObjectApi = PgLargeObjectManagerAdapter.create(this);
         }
         return largeObjectApi;
+    }
+
+    private java.sql.Statement createStatement(Object[] args) throws SQLException {
+        var options = statementOptions(args, 0);
+        return PgStatement.create(this, null, options.type(), options.concurrency(), options.holdability());
+    }
+
+    private java.sql.PreparedStatement prepareStatement(Object[] args) throws SQLException {
+        var options = statementOptions(args, 1);
+        return (java.sql.PreparedStatement) PgStatement.create(
+            this,
+            (String) args[0],
+            options.type(),
+            options.concurrency(),
+            options.holdability()
+        );
+    }
+
+    private StatementOptions statementOptions(Object[] args, int offset) throws SQLException {
+        if (args == null || args.length <= offset) {
+            return defaultStatementOptions();
+        }
+        if (args.length - offset == 2 || args.length - offset == 3) {
+            var type = (Integer) args[offset];
+            var concurrency = (Integer) args[offset + 1];
+            var holdability = args.length - offset == 3
+                ? (Integer) args[offset + 2]
+                : ResultSet.CLOSE_CURSORS_AT_COMMIT;
+            validateStatementOptions(type, concurrency, holdability);
+            return new StatementOptions(type, concurrency, holdability);
+        }
+        return defaultStatementOptions();
+    }
+
+    private StatementOptions defaultStatementOptions() {
+        return new StatementOptions(
+            ResultSet.TYPE_FORWARD_ONLY,
+            ResultSet.CONCUR_READ_ONLY,
+            ResultSet.CLOSE_CURSORS_AT_COMMIT
+        );
+    }
+
+    private void validateStatementOptions(int type, int concurrency, int holdability) throws SQLException {
+        if (
+            type != ResultSet.TYPE_FORWARD_ONLY &&
+            type != ResultSet.TYPE_SCROLL_INSENSITIVE &&
+            type != ResultSet.TYPE_SCROLL_SENSITIVE
+        ) {
+            throw new SQLException("Invalid result set type: " + type);
+        }
+        if (concurrency != ResultSet.CONCUR_READ_ONLY && concurrency != ResultSet.CONCUR_UPDATABLE) {
+            throw new SQLException("Invalid result set concurrency: " + concurrency);
+        }
+        if (
+            holdability != ResultSet.CLOSE_CURSORS_AT_COMMIT &&
+            holdability != ResultSet.HOLD_CURSORS_OVER_COMMIT
+        ) {
+            throw new SQLException("Invalid result set holdability: " + holdability);
+        }
+    }
+
+    private record StatementOptions(int type, int concurrency, int holdability) {
     }
 
     private java.sql.Array createArrayOf(String typeName, Object elements) throws SQLException {

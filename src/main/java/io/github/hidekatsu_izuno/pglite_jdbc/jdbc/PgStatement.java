@@ -28,6 +28,9 @@ final class PgStatement implements InvocationHandler {
     private final String preparedSql;
     private final String preparedProtocolSql;
     private final int parameterCount;
+    private final int resultSetType;
+    private final int resultSetConcurrency;
+    private final int resultSetHoldability;
     private final TreeMap<Integer, Object> parameters = new TreeMap<>();
     private final List<String> sqlBatch = new ArrayList<>();
     private final List<Object[]> preparedBatch = new ArrayList<>();
@@ -44,19 +47,44 @@ final class PgStatement implements InvocationHandler {
     private int prepareThreshold;
     private boolean adaptiveFetch;
 
-    private PgStatement(PgConnection connection, String preparedSql) {
+    private PgStatement(
+        PgConnection connection,
+        String preparedSql,
+        int resultSetType,
+        int resultSetConcurrency,
+        int resultSetHoldability
+    ) {
         this.connection = connection;
         this.preparedSql = preparedSql;
         this.preparedProtocolSql = preparedSql != null
             ? JdbcCompat.rewriteJdbcParameters(preparedSql)
             : null;
         this.parameterCount = preparedSql != null ? JdbcCompat.countJdbcParameters(preparedSql) : 0;
+        this.resultSetType = resultSetType;
+        this.resultSetConcurrency = resultSetConcurrency;
+        this.resultSetHoldability = resultSetHoldability;
         this.prepareThreshold = connection.getPrepareThresholdInternal();
         this.fetchSize = connection.getDefaultFetchSizeInternal();
         this.queryTimeout = connection.getQueryTimeoutInternal();
     }
 
     static Statement create(PgConnection connection, String preparedSql) {
+        return create(
+            connection,
+            preparedSql,
+            ResultSet.TYPE_FORWARD_ONLY,
+            ResultSet.CONCUR_READ_ONLY,
+            ResultSet.CLOSE_CURSORS_AT_COMMIT
+        );
+    }
+
+    static Statement create(
+        PgConnection connection,
+        String preparedSql,
+        int resultSetType,
+        int resultSetConcurrency,
+        int resultSetHoldability
+    ) {
         var interfaces = preparedSql == null
             ? new Class<?>[] {
                 org.postgresql.core.BaseStatement.class,
@@ -65,7 +93,13 @@ final class PgStatement implements InvocationHandler {
                 PreparedStatement.class,
                 org.postgresql.core.BaseStatement.class,
             };
-        var handler = new PgStatement(connection, preparedSql);
+        var handler = new PgStatement(
+            connection,
+            preparedSql,
+            resultSetType,
+            resultSetConcurrency,
+            resultSetHoldability
+        );
         var proxy = (Statement) Proxy.newProxyInstance(
             PgStatement.class.getClassLoader(),
             interfaces,
@@ -157,9 +191,9 @@ final class PgStatement implements InvocationHandler {
             case "cancel" -> null;
             case "setEscapeProcessing", "setCursorName", "setFetchDirection", "setPoolable", "closeOnCompletion" -> null;
             case "getFetchDirection" -> ResultSet.FETCH_FORWARD;
-            case "getResultSetConcurrency" -> ResultSet.CONCUR_READ_ONLY;
-            case "getResultSetType" -> ResultSet.TYPE_FORWARD_ONLY;
-            case "getResultSetHoldability" -> ResultSet.CLOSE_CURSORS_AT_COMMIT;
+            case "getResultSetConcurrency" -> resultSetConcurrency;
+            case "getResultSetType" -> resultSetType;
+            case "getResultSetHoldability" -> resultSetHoldability;
             case "isPoolable" -> false;
             case "isCloseOnCompletion" -> false;
             case "getLargeUpdateCount" -> (long) Math.max(updateCount, 0);

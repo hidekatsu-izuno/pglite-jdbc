@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import org.junit.jupiter.api.AfterAll;
@@ -151,6 +152,30 @@ class PgjdbcInspiredStatementTest {
                 assertTrue(third.next());
                 assertEquals(3, third.getInt("value"));
             }
+        }
+    }
+
+    @Test
+    void statementRetainsRequestedResultSetOptions() throws Exception {
+        try (var statement = connection.createStatement(
+                 ResultSet.TYPE_SCROLL_INSENSITIVE,
+                 ResultSet.CONCUR_UPDATABLE,
+                 ResultSet.HOLD_CURSORS_OVER_COMMIT
+             )) {
+            assertEquals(ResultSet.TYPE_SCROLL_INSENSITIVE, statement.getResultSetType());
+            assertEquals(ResultSet.CONCUR_UPDATABLE, statement.getResultSetConcurrency());
+            assertEquals(ResultSet.HOLD_CURSORS_OVER_COMMIT, statement.getResultSetHoldability());
+        }
+
+        try (var prepared = connection.prepareStatement(
+                 "SELECT 1",
+                 ResultSet.TYPE_SCROLL_SENSITIVE,
+                 ResultSet.CONCUR_READ_ONLY,
+                 ResultSet.CLOSE_CURSORS_AT_COMMIT
+             )) {
+            assertEquals(ResultSet.TYPE_SCROLL_SENSITIVE, prepared.getResultSetType());
+            assertEquals(ResultSet.CONCUR_READ_ONLY, prepared.getResultSetConcurrency());
+            assertEquals(ResultSet.CLOSE_CURSORS_AT_COMMIT, prepared.getResultSetHoldability());
         }
     }
 }

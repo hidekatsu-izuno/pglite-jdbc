@@ -182,4 +182,36 @@ class PgjdbcInspiredResultSetTest {
             assertThrows(SQLException.class, () -> resultSet.getInt("value"));
         }
     }
+
+    @Test
+    void connectionRejectsInvalidResultSetOptionsLikePgjdbc() throws Exception {
+        assertThrows(SQLException.class, () -> connection.createStatement(-1, -1, -1));
+        assertThrows(
+            SQLException.class,
+            () -> connection.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, -1)
+        );
+        assertThrows(
+            SQLException.class,
+            () -> connection.createStatement(
+                ResultSet.TYPE_SCROLL_INSENSITIVE,
+                ResultSet.CONCUR_READ_ONLY,
+                -1
+            )
+        );
+
+        assertThrows(SQLException.class, () -> connection.prepareStatement("SELECT 1", -1, -1, -1));
+        assertThrows(
+            SQLException.class,
+            () -> connection.prepareStatement("SELECT 1", ResultSet.TYPE_SCROLL_INSENSITIVE, -1)
+        );
+        assertThrows(
+            SQLException.class,
+            () -> connection.prepareStatement(
+                "SELECT 1",
+                ResultSet.TYPE_SCROLL_INSENSITIVE,
+                ResultSet.CONCUR_READ_ONLY,
+                -1
+            )
+        );
+    }
 }
