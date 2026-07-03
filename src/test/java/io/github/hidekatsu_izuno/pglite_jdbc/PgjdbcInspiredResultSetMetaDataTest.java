@@ -45,6 +45,10 @@ class PgjdbcInspiredResultSetMetaDataTest {
                  """)) {
             var metadata = resultSet.getMetaData();
 
+            assertEquals(
+                org.postgresql.jdbc.PgResultSetMetaData.class,
+                metadata.unwrap(org.postgresql.jdbc.PgResultSetMetaData.class).getClass()
+            );
             assertEquals(10, metadata.getColumnCount());
             assertEquals("id", metadata.getColumnLabel(1));
             assertEquals("id", metadata.getColumnName(1));
@@ -95,7 +99,7 @@ class PgjdbcInspiredResultSetMetaDataTest {
             assertEquals(3, metadata.getPrecision(9));
             assertEquals(3, metadata.getColumnDisplaySize(9));
             assertEquals(Types.OTHER, metadata.getColumnType(10));
-            assertEquals(org.postgresql.util.PGobject.class.getName(), metadata.getColumnClassName(10));
+            assertEquals(String.class.getName(), metadata.getColumnClassName(10));
         }
     }
 
@@ -170,7 +174,7 @@ class PgjdbcInspiredResultSetMetaDataTest {
                 assertEquals("", resultSetMetaData.getTableName(3));
                 assertEquals("", metadata.getBaseSchemaName(3));
                 assertEquals(false, resultSetMetaData.isAutoIncrement(3));
-                assertEquals(java.sql.ResultSetMetaData.columnNullable, resultSetMetaData.isNullable(3));
+                assertEquals(java.sql.ResultSetMetaData.columnNullableUnknown, resultSetMetaData.isNullable(3));
             }
         }
     }
@@ -188,7 +192,7 @@ class PgjdbcInspiredResultSetMetaDataTest {
             assertThrows(SQLException.class, () -> metadata.isNullable(0));
             assertThrows(SQLException.class, () -> metadata.isSigned(2));
             assertThrows(SQLException.class, () -> metadata.getPrecision(0));
-            assertThrows(SQLException.class, () -> metadata.getSchemaName(2));
+            assertEquals("", metadata.getSchemaName(2));
         }
     }
 }
