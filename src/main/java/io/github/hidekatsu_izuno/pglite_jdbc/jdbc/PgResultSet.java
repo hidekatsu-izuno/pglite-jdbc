@@ -373,7 +373,20 @@ final class PgResultSet implements InvocationHandler {
                 warnings = null;
                 yield null;
             }
+            case "rowUpdated", "rowInserted", "rowDeleted" -> {
+                ensureNotClosed();
+                yield false;
+            }
+            case "updateRow", "insertRow", "deleteRow", "refreshRow", "cancelRowUpdates",
+                "moveToInsertRow", "moveToCurrentRow" -> {
+                ensureNotClosed();
+                throw new SQLException("ResultSet is not updatable");
+            }
             default -> {
+                if (name.startsWith("update")) {
+                    ensureNotClosed();
+                    throw new SQLException("ResultSet is not updatable");
+                }
                 if (method.getReturnType() == void.class) {
                     yield null;
                 }

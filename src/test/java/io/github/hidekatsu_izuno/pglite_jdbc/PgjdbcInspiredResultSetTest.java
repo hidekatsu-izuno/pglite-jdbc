@@ -96,6 +96,22 @@ class PgjdbcInspiredResultSetTest {
             assertThrows(SQLException.class, resultSet::clearWarnings);
             assertThrows(SQLException.class, () -> resultSet.setFetchSize(1));
             assertThrows(SQLException.class, () -> resultSet.setFetchDirection(ResultSet.FETCH_FORWARD));
+            assertThrows(SQLException.class, resultSet::rowUpdated);
+            assertThrows(SQLException.class, () -> resultSet.updateInt(1, 1));
+            assertThrows(SQLException.class, resultSet::moveToInsertRow);
+        }
+    }
+
+    @Test
+    void resultSetUpdateStatusDefaultsAndReadOnlyUpdatesAreRejectedLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("SELECT 1 AS value")) {
+            assertTrue(resultSet.next());
+            assertFalse(resultSet.rowUpdated());
+            assertFalse(resultSet.rowInserted());
+            assertFalse(resultSet.rowDeleted());
+            assertThrows(SQLException.class, () -> resultSet.updateInt(1, 2));
+            assertThrows(SQLException.class, resultSet::moveToInsertRow);
         }
     }
 
