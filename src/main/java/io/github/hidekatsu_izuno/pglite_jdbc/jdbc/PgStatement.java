@@ -220,8 +220,11 @@ final class PgStatement implements InvocationHandler {
             case "getResultSetHoldability" -> resultSetHoldability;
             case "isPoolable" -> false;
             case "isCloseOnCompletion" -> false;
-            case "getLargeUpdateCount" -> (long) Math.max(updateCount, 0);
-            case "setLargeMaxRows" -> null;
+            case "getLargeUpdateCount" -> (long) updateCount;
+            case "setLargeMaxRows" -> {
+                maxRows = Math.toIntExact((Long) args[0]);
+                yield null;
+            }
             case "getLargeMaxRows" -> (long) maxRows;
             case "executeLargeBatch" -> {
                 var batch = executeBatch();

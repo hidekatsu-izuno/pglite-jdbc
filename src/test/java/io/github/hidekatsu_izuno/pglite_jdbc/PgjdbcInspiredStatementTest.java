@@ -80,11 +80,22 @@ class PgjdbcInspiredStatementTest {
             assertEquals(1, statement.executeUpdate("INSERT INTO pgjdbc_update_test VALUES (1)"));
             assertEquals(1, statement.executeUpdate("INSERT INTO pgjdbc_update_test VALUES (2)"));
             assertEquals(2, statement.executeUpdate("UPDATE pgjdbc_update_test SET i = i + 10"));
+            assertEquals(2L, statement.getLargeUpdateCount());
 
             statement.setMaxRows(1);
             try (var resultSet = statement.executeQuery("SELECT i FROM pgjdbc_update_test ORDER BY i")) {
                 assertTrue(resultSet.next());
                 assertEquals(11, resultSet.getInt(1));
+                assertFalse(resultSet.next());
+            }
+            assertEquals(-1, statement.getUpdateCount());
+            assertEquals(-1L, statement.getLargeUpdateCount());
+
+            statement.setLargeMaxRows(2);
+            assertEquals(2L, statement.getLargeMaxRows());
+            try (var resultSet = statement.executeQuery("SELECT i FROM pgjdbc_update_test ORDER BY i")) {
+                assertTrue(resultSet.next());
+                assertTrue(resultSet.next());
                 assertFalse(resultSet.next());
             }
         }
