@@ -33,6 +33,7 @@ final class PgStatement implements InvocationHandler {
     private final int resultSetHoldability;
     private final String[] preparedGeneratedColumns;
     private final TreeMap<Integer, Object> parameters = new TreeMap<>();
+    private final TreeMap<Integer, Integer> parameterTypeOverrides = new TreeMap<>();
     private final List<String> sqlBatch = new ArrayList<>();
     private final List<Object[]> preparedBatch = new ArrayList<>();
     private Statement self;
@@ -167,6 +168,7 @@ final class PgStatement implements InvocationHandler {
         return switch (name) {
             case "clearParameters" -> {
                 parameters.clear();
+                parameterTypeOverrides.clear();
                 yield null;
             }
             case "addBatch" -> {
@@ -250,7 +252,7 @@ final class PgStatement implements InvocationHandler {
                     throw JdbcCompat.unsupported(name);
                 }
                 var described = connection.describe(preparedProtocolSql);
-                ParameterMetaData metadata = PgParameterMetaData.create(described.queryParams());
+                ParameterMetaData metadata = PgParameterMetaData.create(parameterTypes(described.queryParams()));
                 yield metadata;
             }
             case "createDriverResultSet" -> createDriverResultSet(
@@ -334,7 +336,53 @@ final class PgStatement implements InvocationHandler {
             default -> args[1];
         };
         parameters.put(index, value);
+        updateParameterTypeOverride(methodName, index, args);
         return null;
+    }
+
+    private int[] parameterTypes(List<interface_.QueryParamField> params) {
+        var types = new int[params != null ? params.size() : 0];
+        for (var i = 0; i < types.length; i++) {
+            types[i] = params.get(i).dataTypeID();
+            var override = parameterTypeOverrides.get(i + 1);
+            if (override != null) {
+                types[i] = override;
+            }
+        }
+        return types;
+    }
+
+    private void updateParameterTypeOverride(String methodName, Integer index, Object[] args) throws SQLException {
+        var oid = switch (methodName) {
+            case "setNull" -> args.length >= 2 && args[1] != null ? jdbcTypeToOid(targetSqlType(args[1])) : null;
+            case "setDate" -> 1082;
+            case "setTime" -> 1083;
+            case "setTimestamp" -> 1114;
+            case "setObject" -> args.length >= 3 && args[2] != null ? jdbcTypeToOid(targetSqlType(args[2])) : null;
+            default -> null;
+        };
+        if (oid != null) {
+            parameterTypeOverrides.put(index, oid);
+        }
+    }
+
+    private Integer jdbcTypeToOid(int type) {
+        return switch (type) {
+            case Types.BOOLEAN, Types.BIT -> 16;
+            case Types.TINYINT, Types.SMALLINT -> 21;
+            case Types.INTEGER -> 23;
+            case Types.BIGINT -> 20;
+            case Types.REAL, Types.FLOAT -> 700;
+            case Types.DOUBLE -> 701;
+            case Types.NUMERIC, Types.DECIMAL -> 1700;
+            case Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY, Types.BLOB -> 17;
+            case Types.CHAR, Types.VARCHAR, Types.LONGVARCHAR,
+                Types.NCHAR, Types.NVARCHAR, Types.LONGNVARCHAR, Types.CLOB, Types.NCLOB -> 25;
+            case Types.DATE -> 1082;
+            case Types.TIME, Types.TIME_WITH_TIMEZONE -> 1083;
+            case Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE -> 1114;
+            default -> null;
+        };
     }
 
     private Object objectParameter(Object[] args) throws SQLException {

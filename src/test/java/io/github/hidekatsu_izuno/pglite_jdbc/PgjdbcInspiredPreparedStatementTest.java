@@ -384,8 +384,10 @@ class PgjdbcInspiredPreparedStatementTest {
     void preparedStatementTimestampBindingIsNotNarrowedAfterDateNullLikePgjdbc() throws Exception {
         try (var prepared = connection.prepareStatement("SELECT ?::timestamp AS value")) {
             var timestamp = Timestamp.valueOf("2016-09-27 16:13:34.836");
+            assertEquals("timestamp", prepared.getParameterMetaData().getParameterTypeName(1));
             for (var i = 0; i < 3; i++) {
                 prepared.setNull(1, Types.DATE);
+                assertEquals("date", prepared.getParameterMetaData().getParameterTypeName(1));
                 try (var resultSet = prepared.executeQuery()) {
                     assertTrue(resultSet.next());
                     assertNull(resultSet.getObject("value"));
@@ -394,6 +396,7 @@ class PgjdbcInspiredPreparedStatementTest {
                 }
 
                 prepared.setTimestamp(1, timestamp);
+                assertEquals("timestamp", prepared.getParameterMetaData().getParameterTypeName(1));
                 try (var resultSet = prepared.executeQuery()) {
                     assertTrue(resultSet.next());
                     assertEquals(timestamp, resultSet.getTimestamp("value"));

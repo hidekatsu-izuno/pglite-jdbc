@@ -21,10 +21,14 @@ final class PgParameterMetaData implements InvocationHandler {
         for (var i = 0; i < types.length; i++) {
             types[i] = params.get(i).dataTypeID();
         }
+        return create(types);
+    }
+
+    static ParameterMetaData create(int[] types) {
         return (ParameterMetaData) Proxy.newProxyInstance(
             PgParameterMetaData.class.getClassLoader(),
             new Class<?>[] { ParameterMetaData.class },
-            new PgParameterMetaData(types)
+            new PgParameterMetaData(types.clone())
         );
     }
 
