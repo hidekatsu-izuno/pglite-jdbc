@@ -616,7 +616,7 @@ final class JdbcCompat {
         if (targetType == java.sql.Timestamp.class) {
             var text = String.valueOf(value).replace('T', ' ');
             if (text.endsWith("Z") || text.matches(".*[+-][0-9]{2}:[0-9]{2}$")) {
-                return java.sql.Timestamp.from(OffsetDateTime.parse(text.replace(' ', 'T')).toInstant());
+                return java.sql.Timestamp.valueOf(OffsetDateTime.parse(text.replace(' ', 'T')).toLocalDateTime());
             }
             return java.sql.Timestamp.valueOf(LocalDateTime.parse(text.replace(' ', 'T')));
         }

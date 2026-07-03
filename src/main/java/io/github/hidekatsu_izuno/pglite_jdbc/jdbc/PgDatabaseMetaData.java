@@ -139,6 +139,7 @@ final class PgDatabaseMetaData implements InvocationHandler {
                    a.atttypid::int AS pg_type_oid,
                    a.atttypmod AS pg_type_mod,
                    format_type(a.atttypid, a.atttypmod) AS type_name,
+                   pg_get_serial_sequence(format('%%I.%%I', n.nspname, c.relname), a.attname) AS serial_sequence,
                    CASE WHEN a.attnotnull THEN 0 ELSE 1 END AS nullable,
                    pg_get_expr(d.adbin, d.adrelid) AS column_def,
                    a.attnum AS ordinal_position,
@@ -167,16 +168,18 @@ final class PgDatabaseMetaData implements InvocationHandler {
             var oid = number(row.get("PG_TYPE_OID")).intValue();
             var typmod = number(row.get("PG_TYPE_MOD")).intValue();
             var nullable = number(row.get("NULLABLE")).intValue();
+            var serial = row.get("SERIAL_SEQUENCE") != null;
             var columnSize = columnSize(oid, typmod);
             var decimalDigits = decimalDigits(oid, typmod);
             var charOctetLength = charOctetLength(oid, columnSize);
+            var typeName = serialTypeName(oid, String.valueOf(row.get("TYPE_NAME")), serial);
             var out = new LinkedHashMap<String, Object>();
             out.put("TABLE_CAT", row.get("TABLE_CAT"));
             out.put("TABLE_SCHEM", row.get("TABLE_SCHEM"));
             out.put("TABLE_NAME", row.get("TABLE_NAME"));
             out.put("COLUMN_NAME", row.get("COLUMN_NAME"));
             out.put("DATA_TYPE", JdbcCompat.oidToJdbcType(oid));
-            out.put("TYPE_NAME", row.get("TYPE_NAME"));
+            out.put("TYPE_NAME", typeName);
             out.put("COLUMN_SIZE", columnSize);
             out.put("BUFFER_LENGTH", null);
             out.put("DECIMAL_DIGITS", decimalDigits);
@@ -193,18 +196,31 @@ final class PgDatabaseMetaData implements InvocationHandler {
             out.put("SCOPE_SCHEMA", null);
             out.put("SCOPE_TABLE", null);
             out.put("SOURCE_DATA_TYPE", null);
-            out.put("IS_AUTOINCREMENT", "NO");
+            out.put("IS_AUTOINCREMENT", serial ? "YES" : "NO");
             out.put("IS_GENERATEDCOLUMN", "NO");
             rows.add(out);
         }
         return result(columnColumns(), rows);
     }
 
+    private String serialTypeName(int oid, String typeName, boolean serial) {
+        if (!serial) {
+            return typeName;
+        }
+        return switch (oid) {
+            case 20 -> "bigserial";
+            case 21 -> "smallserial";
+            case 23 -> "serial";
+            default -> typeName;
+        };
+    }
+
     private Integer columnSize(int oid, int typmod) {
         var jdbcType = JdbcCompat.oidToJdbcType(oid);
         return switch (jdbcType) {
             case Types.NUMERIC, Types.DECIMAL -> typmod >= 4 ? ((typmod - 4) >> 16) & 0xffff : null;
-            case Types.CHAR, Types.VARCHAR -> typmod >= 4 ? typmod - 4 : null;
+            case Types.CHAR, Types.VARCHAR -> typmod >= 4 ? typmod - 4 : Integer.MAX_VALUE;
+            case Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY -> Integer.MAX_VALUE;
             case Types.INTEGER -> 10;
             case Types.SMALLINT -> 5;
             case Types.BIGINT -> 19;

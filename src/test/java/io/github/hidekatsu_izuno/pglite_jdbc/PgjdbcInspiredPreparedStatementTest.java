@@ -15,6 +15,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Timestamp;
 import java.sql.Types;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.AfterAll;
@@ -350,6 +351,30 @@ class PgjdbcInspiredPreparedStatementTest {
                 assertEquals(0, new BigDecimal("733").compareTo(resultSet.getBigDecimal("big_integer")));
                 assertEquals(0, new BigDecimal("733").compareTo(resultSet.getBigDecimal("atomic_long")));
                 assertFalse(resultSet.next());
+            }
+        }
+    }
+
+    @Test
+    void preparedStatementTimestampBindingIsNotNarrowedAfterDateNullLikePgjdbc() throws Exception {
+        try (var prepared = connection.prepareStatement("SELECT ?::timestamp AS value")) {
+            var timestamp = Timestamp.valueOf("2016-09-27 16:13:34.836");
+            for (var i = 0; i < 3; i++) {
+                prepared.setNull(1, Types.DATE);
+                try (var resultSet = prepared.executeQuery()) {
+                    assertTrue(resultSet.next());
+                    assertNull(resultSet.getObject("value"));
+                    assertNull(resultSet.getTimestamp("value"));
+                    assertFalse(resultSet.next());
+                }
+
+                prepared.setTimestamp(1, timestamp);
+                try (var resultSet = prepared.executeQuery()) {
+                    assertTrue(resultSet.next());
+                    assertEquals(timestamp, resultSet.getTimestamp("value"));
+                    assertEquals(timestamp, resultSet.getObject("value", Timestamp.class));
+                    assertFalse(resultSet.next());
+                }
             }
         }
     }

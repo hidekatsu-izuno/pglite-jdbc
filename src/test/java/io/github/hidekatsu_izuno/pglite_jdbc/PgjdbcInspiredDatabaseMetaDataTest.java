@@ -295,6 +295,59 @@ class PgjdbcInspiredDatabaseMetaDataTest {
         assertEquals("\\", metadata.getSearchStringEscape());
     }
 
+    @Test
+    void databaseMetadataReportsSerialAndCharOctetLengthLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("""
+                CREATE TEMP TABLE pgjdbc_meta_column_details(
+                  small_id smallserial,
+                  id serial,
+                  big_id bigserial,
+                  c_varchar varchar(100),
+                  c_char char(10),
+                  c_text text,
+                  c_bytea bytea,
+                  c_int int4,
+                  c_numeric numeric(8,3)
+                )
+                """);
+        }
+
+        var metadata = connection.getMetaData();
+        try (var columns = metadata.getColumns(null, null, "pgjdbc_meta_column_details", "%")) {
+            while (columns.next()) {
+                var column = columns.getString("COLUMN_NAME");
+                if ("small_id".equals(column)) {
+                    assertEquals(Types.SMALLINT, columns.getInt("DATA_TYPE"));
+                    assertEquals("smallserial", columns.getString("TYPE_NAME"));
+                    assertEquals("YES", columns.getString("IS_AUTOINCREMENT"));
+                    assertTrue(columns.getString("COLUMN_DEF").startsWith("nextval("));
+                } else if ("id".equals(column)) {
+                    assertEquals(Types.INTEGER, columns.getInt("DATA_TYPE"));
+                    assertEquals("serial", columns.getString("TYPE_NAME"));
+                    assertEquals("YES", columns.getString("IS_AUTOINCREMENT"));
+                } else if ("big_id".equals(column)) {
+                    assertEquals(Types.BIGINT, columns.getInt("DATA_TYPE"));
+                    assertEquals("bigserial", columns.getString("TYPE_NAME"));
+                    assertEquals("YES", columns.getString("IS_AUTOINCREMENT"));
+                } else if ("c_varchar".equals(column)) {
+                    assertEquals(100, columns.getInt("COLUMN_SIZE"));
+                    assertEquals(100, columns.getInt("CHAR_OCTET_LENGTH"));
+                } else if ("c_char".equals(column)) {
+                    assertEquals(10, columns.getInt("COLUMN_SIZE"));
+                    assertEquals(10, columns.getInt("CHAR_OCTET_LENGTH"));
+                } else if ("c_text".equals(column) || "c_bytea".equals(column)) {
+                    var columnSize = columns.getInt("COLUMN_SIZE");
+                    assertFalse(columns.wasNull());
+                    assertEquals(columnSize, columns.getInt("CHAR_OCTET_LENGTH"));
+                } else if ("c_int".equals(column) || "c_numeric".equals(column)) {
+                    columns.getInt("CHAR_OCTET_LENGTH");
+                    assertTrue(columns.wasNull());
+                }
+            }
+        }
+    }
+
     private String currentDatabase() throws Exception {
         try (var statement = connection.createStatement();
              var resultSet = statement.executeQuery("SELECT current_database()")) {

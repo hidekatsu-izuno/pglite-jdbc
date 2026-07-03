@@ -222,8 +222,7 @@ final class PgResultSet implements InvocationHandler {
                 if (value == null) {
                     yield null;
                 }
-                var text = String.valueOf(value).replace('T', ' ');
-                yield java.sql.Timestamp.valueOf(LocalDateTime.parse(text.replace(' ', 'T')));
+                yield JdbcCompat.coerce(value, java.sql.Timestamp.class);
             }
             case "unwrap" -> {
                 var iface = (Class<?>) args[0];
