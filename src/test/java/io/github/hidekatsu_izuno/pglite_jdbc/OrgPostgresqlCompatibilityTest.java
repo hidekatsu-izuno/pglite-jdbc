@@ -417,10 +417,12 @@ class OrgPostgresqlCompatibilityTest {
 
                 var typeInfo = connection.unwrap(org.postgresql.core.BaseConnection.class).getTypeInfo();
                 assertEquals(CompatJsonObject.class, typeInfo.getPGobject("jsonb"));
+                assertEquals(CompatJsonObject.class.getName(), typeInfo.getJavaClass(3802));
 
                 try (var statement = connection.createStatement();
                      var resultSet = statement.executeQuery("SELECT '{\"ok\":true}'::jsonb AS payload")) {
                     assertTrue(resultSet.next());
+                    assertEquals(CompatJsonObject.class.getName(), resultSet.getMetaData().getColumnClassName(1));
                     var object = resultSet.getObject("payload");
                     assertEquals(CompatJsonObject.class, object.getClass());
                     assertEquals("jsonb", ((PGobject) object).getType());

@@ -1250,6 +1250,14 @@ public final class PgConnection implements InvocationHandler {
         if (oid == 16 || oid == 1560) {
             return Boolean.class.getName();
         }
+        var typeName = JdbcCompat.oidToPgType(oid);
+        var objectClass = pgObjectClass(typeName);
+        if (objectClass != null) {
+            return objectClass.getName();
+        }
+        if (oid == 114 || oid == 3802) {
+            return org.postgresql.util.PGobject.class.getName();
+        }
         return switch (JdbcCompat.oidToJdbcType(oid)) {
             case Types.BOOLEAN -> Boolean.class.getName();
             case Types.SMALLINT -> Short.class.getName();

@@ -65,10 +65,11 @@ final class PgResultSetMetaData implements InvocationHandler {
             case "getColumnDisplaySize" -> displaySize(column((Integer) args[0]));
             case "getPrecision" -> precision(column((Integer) args[0]));
             case "getScale" -> scale(column((Integer) args[0]));
-            case "getSchemaName", "getTableName", "getCatalogName" -> {
+            case "getSchemaName", "getCatalogName" -> {
                 column((Integer) args[0]);
                 yield "";
             }
+            case "getTableName" -> baseTableName(column((Integer) args[0]));
             case "isReadOnly" -> {
                 column((Integer) args[0]);
                 yield false;
@@ -111,6 +112,16 @@ final class PgResultSetMetaData implements InvocationHandler {
     private String columnClassName(int oid) {
         if (oid == 16 || oid == 1560) {
             return Boolean.class.getName();
+        }
+        var typeName = JdbcCompat.oidToPgType(oid);
+        if (connection != null) {
+            var objectClass = connection.pgObjectClass(typeName);
+            if (objectClass != null) {
+                return objectClass.getName();
+            }
+        }
+        if (oid == 114 || oid == 3802) {
+            return org.postgresql.util.PGobject.class.getName();
         }
         return switch (JdbcCompat.oidToJdbcType(oid)) {
             case java.sql.Types.BOOLEAN -> Boolean.class.getName();

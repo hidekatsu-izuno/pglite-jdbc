@@ -40,11 +40,12 @@ class PgjdbcInspiredResultSetMetaDataTest {
                    42::oid AS object_id,
                    12.34::money AS price,
                    B'1'::bit(1) AS flag_bit,
-                   B'101'::varbit(3) AS bits
+                   B'101'::varbit(3) AS bits,
+                   '{"ok": true}'::jsonb AS payload_json
                  """)) {
             var metadata = resultSet.getMetaData();
 
-            assertEquals(9, metadata.getColumnCount());
+            assertEquals(10, metadata.getColumnCount());
             assertEquals("id", metadata.getColumnLabel(1));
             assertEquals("id", metadata.getColumnName(1));
             assertEquals(Types.INTEGER, metadata.getColumnType(1));
@@ -93,6 +94,8 @@ class PgjdbcInspiredResultSetMetaDataTest {
             assertEquals(String.class.getName(), metadata.getColumnClassName(9));
             assertEquals(3, metadata.getPrecision(9));
             assertEquals(3, metadata.getColumnDisplaySize(9));
+            assertEquals(Types.OTHER, metadata.getColumnType(10));
+            assertEquals(org.postgresql.util.PGobject.class.getName(), metadata.getColumnClassName(10));
         }
     }
 
@@ -110,6 +113,7 @@ class PgjdbcInspiredResultSetMetaDataTest {
 
                 assertEquals("id", metadata.getBaseColumnName(1));
                 assertEquals("pgjdbc_rsmd_base", metadata.getBaseTableName(1));
+                assertEquals("pgjdbc_rsmd_base", resultSetMetaData.getTableName(1));
                 assertEquals("pg_temp", metadata.getBaseSchemaName(1).substring(0, 7));
                 assertEquals(true, resultSetMetaData.isAutoIncrement(1));
                 assertEquals("serial", resultSetMetaData.getColumnTypeName(1));
@@ -120,6 +124,7 @@ class PgjdbcInspiredResultSetMetaDataTest {
                 assertEquals(java.sql.ResultSetMetaData.columnNullable, resultSetMetaData.isNullable(2));
                 assertEquals("", metadata.getBaseColumnName(3));
                 assertEquals("", metadata.getBaseTableName(3));
+                assertEquals("", resultSetMetaData.getTableName(3));
                 assertEquals("", metadata.getBaseSchemaName(3));
                 assertEquals(false, resultSetMetaData.isAutoIncrement(3));
                 assertEquals(java.sql.ResultSetMetaData.columnNullable, resultSetMetaData.isNullable(3));
