@@ -149,8 +149,12 @@ class PgjdbcInspiredStatementTest {
     @Test
     void executeUpdateRejectsQueriesThatReturnRows() throws Exception {
         try (var statement = connection.createStatement()) {
+            statement.execute("CREATE TEMP TABLE pgjdbc_execute_update_state(i int4)");
+            assertEquals(1, statement.executeUpdate("INSERT INTO pgjdbc_execute_update_state VALUES (1)"));
             assertThrows(SQLException.class, () -> statement.executeUpdate("SELECT 1"));
             assertThrows(SQLException.class, () -> statement.executeUpdate("/* empty */; SELECT 1"));
+            assertNull(statement.getResultSet());
+            assertEquals(-1, statement.getUpdateCount());
         }
     }
 

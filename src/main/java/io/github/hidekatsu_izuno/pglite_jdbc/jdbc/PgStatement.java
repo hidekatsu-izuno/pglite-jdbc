@@ -764,6 +764,7 @@ final class PgStatement implements InvocationHandler {
         if (preparedSql != null) {
             var result = connection.query(withGeneratedKeys(sql, generatedColumns), buildParams());
             if (!result.fields().isEmpty() && generatedColumns == null) {
+                clearResultState();
                 throw new SQLException("A result was returned when none was expected");
             }
             if (generatedColumns != null) {
@@ -780,6 +781,7 @@ final class PgStatement implements InvocationHandler {
         var results = connection.exec(withGeneratedKeys(sql, generatedColumns));
         for (var result : results) {
             if (!result.fields().isEmpty() && generatedColumns == null) {
+                clearResultState();
                 throw new SQLException("A result was returned when none was expected");
             }
         }
@@ -959,6 +961,14 @@ final class PgStatement implements InvocationHandler {
             currentResultSet.close();
             currentResultSet = null;
         }
+    }
+
+    private void clearResultState() {
+        currentResults = List.of();
+        currentResultIndex = -1;
+        currentResultSet = null;
+        updateCount = -1;
+        generatedKeys = null;
     }
 
     private void closeStatement() throws SQLException {
