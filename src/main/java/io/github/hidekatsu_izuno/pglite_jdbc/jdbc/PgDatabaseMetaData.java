@@ -80,14 +80,21 @@ final class PgDatabaseMetaData implements InvocationHandler {
                 "supportsSubqueriesInIns", "supportsSubqueriesInQuantifieds",
                 "supportsCorrelatedSubqueries", "supportsUnion", "supportsUnionAll",
                 "supportsOpenStatementsAcrossCommit", "supportsOpenStatementsAcrossRollback",
-                "supportsDataDefinitionAndDataManipulationTransactions" -> true;
+                "supportsDataDefinitionAndDataManipulationTransactions",
+                "supportsBatchUpdates", "supportsStoredFunctionsUsingCallSyntax",
+                "generatedKeyAlwaysReturned", "supportsSavepoints", "supportsGetGeneratedKeys",
+                "supportsResultSetHoldability", "locatorsUpdateCopy" -> true;
             case "supportsDifferentTableCorrelationNames", "supportsCoreSQLGrammar",
                 "supportsExtendedSQLGrammar", "supportsANSI92IntermediateSQL",
                 "supportsANSI92FullSQL", "supportsPositionedDelete", "supportsPositionedUpdate",
                 "supportsOpenCursorsAcrossCommit", "supportsOpenCursorsAcrossRollback",
                 "supportsDataManipulationTransactionsOnly", "dataDefinitionCausesTransactionCommit",
-                "dataDefinitionIgnoredInTransactions" -> false;
+                "dataDefinitionIgnoredInTransactions", "supportsConvert", "supportsNamedParameters",
+                "supportsMultipleOpenResults", "supportsStatementPooling",
+                "autoCommitFailureClosesAllResultSets" -> false;
             case "supportsTransactionIsolationLevel" -> supportsTransactionIsolationLevel((Integer) args[0]);
+            case "getResultSetHoldability" -> ResultSet.HOLD_CURSORS_OVER_COMMIT;
+            case "getSQLStateType" -> DatabaseMetaData.sqlStateSQL;
             case "isCatalogAtStart" -> true;
             case "supportsSchemasInTableDefinitions", "supportsSchemasInDataManipulation",
                 "supportsSchemasInProcedureCalls", "supportsSchemasInIndexDefinitions",

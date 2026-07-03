@@ -287,6 +287,28 @@ class PgjdbcInspiredDatabaseMetaDataTest {
     }
 
     @Test
+    void databaseMetadataJdbc30CapabilityFlagsMatchPgjdbc() throws Exception {
+        var metadata = connection.getMetaData();
+
+        assertFalse(metadata.supportsConvert());
+        assertFalse(metadata.supportsConvert(Types.INTEGER, Types.VARCHAR));
+        assertTrue(metadata.supportsBatchUpdates());
+        assertTrue(metadata.supportsStoredFunctionsUsingCallSyntax());
+        assertFalse(metadata.autoCommitFailureClosesAllResultSets());
+        assertTrue(metadata.generatedKeyAlwaysReturned());
+        assertTrue(metadata.supportsSavepoints());
+        assertFalse(metadata.supportsNamedParameters());
+        assertFalse(metadata.supportsMultipleOpenResults());
+        assertTrue(metadata.supportsGetGeneratedKeys());
+        assertTrue(metadata.supportsResultSetHoldability(ResultSet.CLOSE_CURSORS_AT_COMMIT));
+        assertTrue(metadata.supportsResultSetHoldability(ResultSet.HOLD_CURSORS_OVER_COMMIT));
+        assertEquals(ResultSet.HOLD_CURSORS_OVER_COMMIT, metadata.getResultSetHoldability());
+        assertEquals(DatabaseMetaData.sqlStateSQL, metadata.getSQLStateType());
+        assertTrue(metadata.locatorsUpdateCopy());
+        assertFalse(metadata.supportsStatementPooling());
+    }
+
+    @Test
     void databaseMetadataReportsDroppedColumnOrdinalsAndImplicitNumericPrecisionLikePgjdbc() throws Exception {
         try (var statement = connection.createStatement()) {
             statement.execute("""
