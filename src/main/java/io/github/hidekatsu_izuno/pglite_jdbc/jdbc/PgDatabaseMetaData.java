@@ -81,6 +81,8 @@ final class PgDatabaseMetaData implements InvocationHandler {
             case "getVersionColumns" -> result(bestRowIdentifierColumns(), List.of());
             case "getBestRowIdentifier" -> getBestRowIdentifier(args);
             case "getUDTs" -> getUDTs(args);
+            case "getFunctionColumns" -> getRoutineColumns(args, true);
+            case "getProcedureColumns" -> getRoutineColumns(args, false);
             case "unwrap" -> {
                 var iface = (Class<?>) args[0];
                 if (iface.isInstance(proxy)) {
@@ -474,6 +476,125 @@ final class PgDatabaseMetaData implements InvocationHandler {
         return result(udtColumns(), rows);
     }
 
+    private ResultSet getRoutineColumns(Object[] args, boolean functions) throws SQLException {
+        if (!catalogMatches(value(args, 0))) {
+            return result(functions ? functionColumnColumns() : procedureColumnColumns(), List.of());
+        }
+        var schemaPattern = pattern(args, 1);
+        var routinePattern = pattern(args, 2);
+        var columnPattern = pattern(args, 3);
+        var sql = """
+            SELECT current_database() AS routine_cat,
+                   n.nspname AS routine_schem,
+                   p.proname AS routine_name,
+                   p.oid::text AS specific_name,
+                   p.prorettype::int AS return_type_oid,
+                   rt.typname AS return_type_name,
+                   COALESCE(array_to_string(p.proargnames, ','), '') AS arg_names,
+                   COALESCE(array_to_string(p.proargmodes, ','), '') AS arg_modes,
+                   CASE
+                     WHEN p.proallargtypes IS NULL THEN p.proargtypes::text
+                     ELSE array_to_string(p.proallargtypes, ' ')
+                   END AS arg_type_oids
+            FROM pg_catalog.pg_proc p
+            JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+            JOIN pg_catalog.pg_type rt ON rt.oid = p.prorettype
+            WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+              %s
+              %s
+            ORDER BY routine_schem, routine_name, specific_name
+            """.formatted(
+                likeCondition("n.nspname", schemaPattern),
+                likeCondition("p.proname", routinePattern)
+            );
+        var raw = query(sql);
+        var rows = new ArrayList<Map<String, Object>>();
+        for (var routine : raw) {
+            var returnOid = number(routine.get("RETURN_TYPE_OID")).intValue();
+            var argNames = split(String.valueOf(routine.get("ARG_NAMES")), ",");
+            var argModes = split(String.valueOf(routine.get("ARG_MODES")), ",");
+            var argOids = splitInts(String.valueOf(routine.get("ARG_TYPE_OIDS")));
+            if (functions || argModes.stream().noneMatch(mode -> "o".equals(mode) || "b".equals(mode))) {
+                addRoutineColumn(rows, routine, "returnValue", functions, true, returnOid, 0);
+            }
+            for (var i = 0; i < argOids.size(); i++) {
+                var mode = i < argModes.size() ? argModes.get(i) : "i";
+                var name = i < argNames.size() && !argNames.get(i).isEmpty() ? argNames.get(i) : "$" + (i + 1);
+                var columnType = routineColumnType(mode, functions);
+                if (columnType == null) {
+                    continue;
+                }
+                addRoutineColumn(rows, routine, name, functions, columnType, argOids.get(i), i + 1);
+            }
+        }
+        if (columnPattern != null) {
+            rows.removeIf(row -> !like(String.valueOf(row.get("COLUMN_NAME")), columnPattern));
+        }
+        return result(functions ? functionColumnColumns() : procedureColumnColumns(), rows);
+    }
+
+    private void addRoutineColumn(
+        List<Map<String, Object>> rows,
+        Map<String, Object> routine,
+        String columnName,
+        boolean functions,
+        boolean returnValue,
+        int oid,
+        int ordinal
+    ) {
+        addRoutineColumn(
+            rows,
+            routine,
+            columnName,
+            functions,
+            returnValue
+                ? (functions ? DatabaseMetaData.functionReturn : DatabaseMetaData.procedureColumnReturn)
+                : (functions ? DatabaseMetaData.functionColumnIn : DatabaseMetaData.procedureColumnIn),
+            oid,
+            ordinal
+        );
+    }
+
+    private void addRoutineColumn(
+        List<Map<String, Object>> rows,
+        Map<String, Object> routine,
+        String columnName,
+        boolean functions,
+        int columnType,
+        int oid,
+        int ordinal
+    ) {
+        var out = new LinkedHashMap<String, Object>();
+        out.put(functions ? "FUNCTION_CAT" : "PROCEDURE_CAT", routine.get("ROUTINE_CAT"));
+        out.put(functions ? "FUNCTION_SCHEM" : "PROCEDURE_SCHEM", routine.get("ROUTINE_SCHEM"));
+        out.put(functions ? "FUNCTION_NAME" : "PROCEDURE_NAME", routine.get("ROUTINE_NAME"));
+        out.put("COLUMN_NAME", columnName);
+        out.put("COLUMN_TYPE", columnType);
+        out.put("DATA_TYPE", JdbcCompat.oidToJdbcType(oid));
+        out.put("TYPE_NAME", JdbcCompat.oidToPgType(oid));
+        out.put("PRECISION", columnSize(oid, -1));
+        out.put("LENGTH", null);
+        out.put("SCALE", decimalDigits(oid, -1));
+        out.put("RADIX", 10);
+        out.put("NULLABLE", DatabaseMetaData.functionNullableUnknown);
+        out.put("REMARKS", null);
+        out.put("CHAR_OCTET_LENGTH", charOctetLength(oid, columnSize(oid, -1)));
+        out.put("ORDINAL_POSITION", ordinal);
+        out.put("IS_NULLABLE", "");
+        out.put("SPECIFIC_NAME", routine.get("SPECIFIC_NAME"));
+        rows.add(out);
+    }
+
+    private Integer routineColumnType(String mode, boolean functions) {
+        return switch (mode) {
+            case "i" -> functions ? DatabaseMetaData.functionColumnIn : DatabaseMetaData.procedureColumnIn;
+            case "o" -> functions ? DatabaseMetaData.functionColumnOut : DatabaseMetaData.procedureColumnOut;
+            case "b" -> functions ? DatabaseMetaData.functionColumnInOut : DatabaseMetaData.procedureColumnInOut;
+            case "t" -> functions ? DatabaseMetaData.functionReturn : DatabaseMetaData.procedureColumnReturn;
+            default -> null;
+        };
+    }
+
     private ResultSet getImportedKeys(Object[] args) throws SQLException {
         if (!catalogMatches(value(args, 0))) {
             return result(importedKeyColumns(), List.of());
@@ -750,6 +871,51 @@ final class PgDatabaseMetaData implements InvocationHandler {
         return escapes % 2 == 1;
     }
 
+    private boolean like(String value, String pattern) {
+        if (pattern == null) {
+            return true;
+        }
+        if (hasDanglingSearchEscape(pattern)) {
+            return false;
+        }
+        var regex = new StringBuilder();
+        var escaping = false;
+        for (var i = 0; i < pattern.length(); i++) {
+            var c = pattern.charAt(i);
+            if (escaping) {
+                regex.append(java.util.regex.Pattern.quote(String.valueOf(c)));
+                escaping = false;
+            } else if (c == '\\') {
+                escaping = true;
+            } else if (c == '%') {
+                regex.append(".*");
+            } else if (c == '_') {
+                regex.append('.');
+            } else {
+                regex.append(java.util.regex.Pattern.quote(String.valueOf(c)));
+            }
+        }
+        return value.matches(regex.toString());
+    }
+
+    private List<String> split(String value, String delimiter) {
+        if (value == null || value.isEmpty()) {
+            return List.of();
+        }
+        return java.util.Arrays.asList(value.split(java.util.regex.Pattern.quote(delimiter), -1));
+    }
+
+    private List<Integer> splitInts(String value) {
+        if (value == null || value.isBlank()) {
+            return List.of();
+        }
+        var out = new ArrayList<Integer>();
+        for (var part : value.trim().split("\\s+")) {
+            out.add(Integer.parseInt(part));
+        }
+        return out;
+    }
+
     private List<Column> tableColumns() {
         return List.of(
             new Column("TABLE_CAT", 19),
@@ -846,6 +1012,46 @@ final class PgDatabaseMetaData implements InvocationHandler {
             new Column("DATA_TYPE", 23),
             new Column("REMARKS", 25),
             new Column("BASE_TYPE", 21)
+        );
+    }
+
+    private List<Column> functionColumnColumns() {
+        return List.of(
+            new Column("FUNCTION_CAT", 19),
+            new Column("FUNCTION_SCHEM", 19),
+            new Column("FUNCTION_NAME", 19),
+            new Column("COLUMN_NAME", 19),
+            new Column("COLUMN_TYPE", 21),
+            new Column("DATA_TYPE", 23),
+            new Column("TYPE_NAME", 19),
+            new Column("PRECISION", 23),
+            new Column("LENGTH", 23),
+            new Column("SCALE", 21),
+            new Column("RADIX", 21),
+            new Column("NULLABLE", 21),
+            new Column("REMARKS", 25),
+            new Column("CHAR_OCTET_LENGTH", 23),
+            new Column("ORDINAL_POSITION", 23),
+            new Column("IS_NULLABLE", 19),
+            new Column("SPECIFIC_NAME", 19)
+        );
+    }
+
+    private List<Column> procedureColumnColumns() {
+        return List.of(
+            new Column("PROCEDURE_CAT", 19),
+            new Column("PROCEDURE_SCHEM", 19),
+            new Column("PROCEDURE_NAME", 19),
+            new Column("COLUMN_NAME", 19),
+            new Column("COLUMN_TYPE", 21),
+            new Column("DATA_TYPE", 23),
+            new Column("TYPE_NAME", 19),
+            new Column("PRECISION", 23),
+            new Column("LENGTH", 23),
+            new Column("SCALE", 21),
+            new Column("RADIX", 21),
+            new Column("NULLABLE", 21),
+            new Column("REMARKS", 25)
         );
     }
 

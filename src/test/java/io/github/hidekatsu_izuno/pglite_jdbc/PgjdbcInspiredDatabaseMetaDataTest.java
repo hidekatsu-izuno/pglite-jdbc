@@ -824,6 +824,68 @@ class PgjdbcInspiredDatabaseMetaDataTest {
         }
     }
 
+    @Test
+    void databaseMetadataReportsFunctionColumnsLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("""
+                CREATE OR REPLACE FUNCTION pgjdbc_meta_f1(int, varchar)
+                RETURNS int AS 'SELECT 1;' LANGUAGE SQL
+                """);
+            statement.execute("""
+                CREATE OR REPLACE FUNCTION pgjdbc_meta_f3(IN a int, INOUT b varchar, OUT c timestamptz)
+                AS $f$ BEGIN b := 'a'; c := now(); return; END; $f$ LANGUAGE plpgsql
+                """);
+        }
+
+        var metadata = connection.getMetaData();
+        try (var columns = metadata.getFunctionColumns(null, null, "pgjdbc_meta_f1", null)) {
+            var resultSetMetaData = columns.getMetaData();
+            assertEquals(17, resultSetMetaData.getColumnCount());
+            assertEquals("FUNCTION_CAT", resultSetMetaData.getColumnName(1));
+            assertEquals("SPECIFIC_NAME", resultSetMetaData.getColumnName(17));
+
+            assertTrue(columns.next());
+            assertEquals("public", columns.getString("FUNCTION_SCHEM"));
+            assertEquals("pgjdbc_meta_f1", columns.getString("FUNCTION_NAME"));
+            assertEquals("returnValue", columns.getString("COLUMN_NAME"));
+            assertEquals(DatabaseMetaData.functionReturn, columns.getInt("COLUMN_TYPE"));
+            assertEquals(Types.INTEGER, columns.getInt("DATA_TYPE"));
+            assertEquals("int4", columns.getString("TYPE_NAME"));
+            assertEquals(0, columns.getInt("ORDINAL_POSITION"));
+
+            assertTrue(columns.next());
+            assertEquals("$1", columns.getString("COLUMN_NAME"));
+            assertEquals(DatabaseMetaData.functionColumnIn, columns.getInt("COLUMN_TYPE"));
+            assertEquals(Types.INTEGER, columns.getInt("DATA_TYPE"));
+            assertEquals(1, columns.getInt("ORDINAL_POSITION"));
+
+            assertTrue(columns.next());
+            assertEquals("$2", columns.getString("COLUMN_NAME"));
+            assertEquals(DatabaseMetaData.functionColumnIn, columns.getInt("COLUMN_TYPE"));
+            assertEquals(Types.VARCHAR, columns.getInt("DATA_TYPE"));
+            assertEquals(2, columns.getInt("ORDINAL_POSITION"));
+            assertFalse(columns.next());
+        }
+
+        try (var columns = metadata.getProcedureColumns(null, null, "pgjdbc_meta_f3", null)) {
+            assertTrue(columns.next());
+            assertEquals("a", columns.getString("COLUMN_NAME"));
+            assertEquals(DatabaseMetaData.procedureColumnIn, columns.getInt("COLUMN_TYPE"));
+            assertEquals(Types.INTEGER, columns.getInt("DATA_TYPE"));
+
+            assertTrue(columns.next());
+            assertEquals("b", columns.getString("COLUMN_NAME"));
+            assertEquals(DatabaseMetaData.procedureColumnInOut, columns.getInt("COLUMN_TYPE"));
+            assertEquals(Types.VARCHAR, columns.getInt("DATA_TYPE"));
+
+            assertTrue(columns.next());
+            assertEquals("c", columns.getString("COLUMN_NAME"));
+            assertEquals(DatabaseMetaData.procedureColumnOut, columns.getInt("COLUMN_TYPE"));
+            assertEquals(Types.TIMESTAMP_WITH_TIMEZONE, columns.getInt("DATA_TYPE"));
+            assertFalse(columns.next());
+        }
+    }
+
     private String currentDatabase() throws Exception {
         try (var statement = connection.createStatement();
              var resultSet = statement.executeQuery("SELECT current_database()")) {
