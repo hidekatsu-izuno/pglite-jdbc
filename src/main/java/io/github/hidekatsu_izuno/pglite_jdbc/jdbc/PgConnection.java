@@ -41,6 +41,7 @@ public final class PgConnection implements InvocationHandler {
         new org.postgresql.PGNotification[0];
     private static final org.postgresql.jdbc.TimestampUtils TIMESTAMP_UTILS =
         new org.postgresql.jdbc.TimestampUtils(false, TimeZone::getDefault);
+    private static final int UNKNOWN_LENGTH = Integer.MAX_VALUE;
 
     private final QueryExecutor queryExecutor;
     private final String url;
@@ -1320,12 +1321,12 @@ public final class PgConnection implements InvocationHandler {
             case 20 -> 19;
             case 700 -> 8;
             case 701, 790 -> 17;
-            case 1042, 1043 -> typmod == -1 ? 0 : typmod - 4;
+            case 1042, 1043 -> typmod == -1 ? UNKNOWN_LENGTH : typmod - 4;
             case 1082, 1083, 1114, 1184, 1186, 1266 -> displaySize(oid, typmod);
             case 1560 -> typmod;
-            case 1562 -> typmod == -1 ? 0 : typmod;
+            case 1562 -> typmod == -1 ? UNKNOWN_LENGTH : typmod;
             case 1700 -> typmod == -1 ? 0 : ((typmod - 4) & 0xffff0000) >> 16;
-            default -> 0;
+            default -> UNKNOWN_LENGTH;
         };
     }
 
@@ -1357,11 +1358,11 @@ public final class PgConnection implements InvocationHandler {
             case 1114 -> 22 + timeSecondSize(typmod);
             case 1184 -> 22 + timeSecondSize(typmod) + 6;
             case 1186 -> 49;
-            case 1042, 1043 -> typmod == -1 ? 0 : typmod - 4;
+            case 1042, 1043 -> typmod == -1 ? UNKNOWN_LENGTH : typmod - 4;
             case 1560 -> typmod;
-            case 1562 -> typmod == -1 ? 0 : typmod;
+            case 1562 -> typmod == -1 ? UNKNOWN_LENGTH : typmod;
             case 1700 -> numericDisplaySize(typmod);
-            default -> 0;
+            default -> UNKNOWN_LENGTH;
         };
     }
 

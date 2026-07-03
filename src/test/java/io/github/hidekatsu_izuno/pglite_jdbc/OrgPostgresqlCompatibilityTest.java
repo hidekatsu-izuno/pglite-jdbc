@@ -397,6 +397,14 @@ class OrgPostgresqlCompatibilityTest {
                 assertEquals(0, typeInfo.getMaximumPrecision(23));
                 assertEquals(10, typeInfo.getPrecision(1043, 14));
                 assertEquals(10, typeInfo.getDisplaySize(1043, 14));
+                assertEquals(Integer.MAX_VALUE, typeInfo.getPrecision(1043, -1));
+                assertEquals(Integer.MAX_VALUE, typeInfo.getDisplaySize(1043, -1));
+                assertEquals(Integer.MAX_VALUE, typeInfo.getPrecision(25, -1));
+                assertEquals(Integer.MAX_VALUE, typeInfo.getDisplaySize(25, -1));
+                assertEquals(Integer.MAX_VALUE, typeInfo.getPrecision(17, -1));
+                assertEquals(Integer.MAX_VALUE, typeInfo.getDisplaySize(17, -1));
+                assertEquals(Integer.MAX_VALUE, typeInfo.getPrecision(1562, -1));
+                assertEquals(Integer.MAX_VALUE, typeInfo.getDisplaySize(1562, -1));
                 assertEquals(10485760, typeInfo.getMaximumPrecision(1043));
                 assertEquals(12, typeInfo.getPrecision(1700, 786438));
                 assertEquals(2, typeInfo.getScale(1700, 786438));

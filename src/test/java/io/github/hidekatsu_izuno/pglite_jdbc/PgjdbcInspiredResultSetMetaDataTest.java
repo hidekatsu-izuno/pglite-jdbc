@@ -100,6 +100,29 @@ class PgjdbcInspiredResultSetMetaDataTest {
     }
 
     @Test
+    void resultSetMetadataUsesPgjdbcUnknownLengthForUnboundedTypes() throws Exception {
+        try (var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("""
+                 SELECT
+                   'body'::text AS text_value,
+                   'body'::varchar AS varchar_value,
+                   decode('0102', 'hex')::bytea AS bytea_value,
+                   B'101'::varbit AS varbit_value
+                 """)) {
+            var metadata = resultSet.getMetaData();
+
+            assertEquals(Integer.MAX_VALUE, metadata.getPrecision(1));
+            assertEquals(Integer.MAX_VALUE, metadata.getColumnDisplaySize(1));
+            assertEquals(Integer.MAX_VALUE, metadata.getPrecision(2));
+            assertEquals(Integer.MAX_VALUE, metadata.getColumnDisplaySize(2));
+            assertEquals(Integer.MAX_VALUE, metadata.getPrecision(3));
+            assertEquals(Integer.MAX_VALUE, metadata.getColumnDisplaySize(3));
+            assertEquals(Integer.MAX_VALUE, metadata.getPrecision(4));
+            assertEquals(Integer.MAX_VALUE, metadata.getColumnDisplaySize(4));
+        }
+    }
+
+    @Test
     void resultSetMetadataReportsCoreObjectClassesLikePgjdbc() throws Exception {
         try (var statement = connection.createStatement();
              var resultSet = statement.executeQuery("""
