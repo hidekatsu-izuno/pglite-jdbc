@@ -408,7 +408,7 @@ class PgjdbcInspiredPreparedStatementTest {
 
                 try (var resultSet = select.executeQuery()) {
                     assertTrue(resultSet.next());
-                    var scaled = value.setScale(scale, java.math.RoundingMode.HALF_UP);
+                    var scaled = value.setScale(scale, java.math.RoundingMode.HALF_EVEN);
                     assertEquals(0, scaled.compareTo(resultSet.getBigDecimal(1)));
                     assertEquals(0, scaled.compareTo(resultSet.getBigDecimal(2)));
                     assertEquals(0, scaled.compareTo(resultSet.getBigDecimal(3)));

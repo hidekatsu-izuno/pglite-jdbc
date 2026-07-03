@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -249,6 +250,16 @@ class PgjdbcInspiredResultSetTest {
             assertThrows(SQLException.class, () -> resultSet.getInt("value"));
             assertThrows(SQLException.class, () -> resultSet.getLong("value"));
             assertThrows(SQLException.class, () -> resultSet.getBigDecimal("value"));
+        }
+    }
+
+    @Test
+    void bigDecimalScaleUsesHalfEvenRoundingLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("SELECT 1.125::numeric AS value")) {
+            assertTrue(resultSet.next());
+            assertEquals(new BigDecimal("1.12"), resultSet.getBigDecimal(1, 2));
+            assertFalse(resultSet.next());
         }
     }
 

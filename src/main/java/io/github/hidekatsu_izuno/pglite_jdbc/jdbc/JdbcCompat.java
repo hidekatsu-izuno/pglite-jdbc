@@ -387,7 +387,7 @@ final class JdbcCompat {
 
     static BigDecimal toBigDecimal(Object value, int scale) throws SQLException {
         var decimal = toBigDecimal(value);
-        return decimal == null ? null : decimal.setScale(scale, java.math.RoundingMode.HALF_UP);
+        return decimal == null ? null : decimal.setScale(scale, java.math.RoundingMode.HALF_EVEN);
     }
 
     static Number specialFloating(String value) {
