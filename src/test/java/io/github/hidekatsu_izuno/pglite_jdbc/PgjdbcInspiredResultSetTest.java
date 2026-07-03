@@ -90,6 +90,7 @@ class PgjdbcInspiredResultSetTest {
             assertThrows(SQLException.class, resultSet::getType);
             assertThrows(SQLException.class, resultSet::getConcurrency);
             assertThrows(SQLException.class, resultSet::getHoldability);
+            assertThrows(SQLException.class, resultSet::getRow);
             assertThrows(SQLException.class, () -> resultSet.findColumn("value"));
             assertThrows(SQLException.class, () -> resultSet.getObject("value"));
             assertThrows(SQLException.class, resultSet::getStatement);

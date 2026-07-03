@@ -181,7 +181,10 @@ final class PgResultSet implements InvocationHandler {
                 ensureNotClosed();
                 yield wasNull;
             }
-            case "getRow" -> cursor >= 0 && cursor < rows.size() ? cursor + 1 : 0;
+            case "getRow" -> {
+                ensureNotClosed();
+                yield cursor >= 0 && cursor < rows.size() ? cursor + 1 : 0;
+            }
             case "beforeFirst" -> {
                 ensureNotClosed();
                 ensureScrollable();
