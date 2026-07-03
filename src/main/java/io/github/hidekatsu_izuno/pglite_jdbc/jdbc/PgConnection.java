@@ -13,7 +13,6 @@ import java.sql.ResultSet;
 import java.sql.Savepoint;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.sql.Types;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -73,7 +72,7 @@ public final class PgConnection implements InvocationHandler {
     private Set<Integer> binarySendOids = new HashSet<>();
     private final Map<String, Class<? extends org.postgresql.util.PGobject>> dataTypeObjects =
         new HashMap<>();
-    private final org.postgresql.core.TypeInfo typeInfo = createTypeInfo();
+    private org.postgresql.core.TypeInfo typeInfo;
     private final LruCache<org.postgresql.jdbc.FieldMetadata.Key, org.postgresql.jdbc.FieldMetadata>
         fieldMetadataCache = new LruCache<>(0, 0, false);
     private final Timer sharedTimer = new Timer(true);
@@ -112,6 +111,7 @@ public final class PgConnection implements InvocationHandler {
             handler
         );
         handler.self = proxy;
+        handler.typeInfo = handler.createTypeInfo();
         handler.initializeSession();
         return proxy;
     }
@@ -747,6 +747,9 @@ public final class PgConnection implements InvocationHandler {
                 normalizeTypeName(typeName),
                 clazz.asSubclass(org.postgresql.util.PGobject.class)
             );
+            if (typeInfo != null) {
+                typeInfo.addDataType(typeName, clazz.asSubclass(org.postgresql.util.PGobject.class));
+            }
             return;
         }
         if (objectClass instanceof String className) {
@@ -935,60 +938,9 @@ public final class PgConnection implements InvocationHandler {
     }
 
     private org.postgresql.core.TypeInfo createTypeInfo() {
-        return (org.postgresql.core.TypeInfo) Proxy.newProxyInstance(
-            PgConnection.class.getClassLoader(),
-            new Class<?>[] { org.postgresql.core.TypeInfo.class },
-            (proxy, method, args) -> {
-                var name = method.getName();
-                if (method.getDeclaringClass() == Object.class) {
-                    return switch (name) {
-                        case "toString" -> "PgTypeInfo";
-                        case "hashCode" -> System.identityHashCode(proxy);
-                        case "equals" -> proxy == args[0];
-                        default -> null;
-                    };
-                }
-                return switch (name) {
-                    case "getSQLType" -> {
-                        if (args[0] instanceof Integer oid) {
-                            yield JdbcCompat.oidToJdbcType(oid);
-                        }
-                        yield pgTypeToSqlType((String) args[0]);
-                    }
-            case "getPGType" -> {
-                        if (args[0] instanceof String typeName) {
-                            yield pgTypeToOid(typeName);
-                        }
-                        var type = JdbcCompat.oidToPgType((Integer) args[0]);
-                        yield type.startsWith("oid:") ? null : type;
-                    }
-                    case "getPGArrayElement" -> arrayOidToElementOid((Integer) args[0]);
-                    case "getPGArrayType" -> elementOidToArrayOid(pgTypeToOid((String) args[0]));
-                    case "getArrayDelimiter" -> ',';
-                    case "getTypeForAlias" -> args[0];
-                    case "getJavaArrayType" -> pgTypeToSqlType((String) args[0]);
-                    case "getJavaClass" -> javaClassForOid((Integer) args[0]);
-                    case "getPrecision" -> precision((Integer) args[0], (Integer) args[1]);
-                    case "getScale" -> scale((Integer) args[0], (Integer) args[1]);
-                    case "getDisplaySize" -> displaySize((Integer) args[0], (Integer) args[1]);
-                    case "getMaximumPrecision" -> maximumPrecision((Integer) args[0]);
-                    case "requiresQuoting" -> requiresQuotingOid((Integer) args[0]);
-                    case "requiresQuotingSqlType" -> requiresQuotingSqlType((Integer) args[0]);
-                    case "longOidToInt" -> (int) (long) (Long) args[0];
-                    case "intOidToLong" -> ((Integer) args[0]) & 0xFFFFFFFFL;
-                    case "getPGTypeNamesWithSQLTypes", "getPGTypeOidsWithSQLTypes" ->
-                        java.util.Collections.emptyIterator();
-                    case "getPGobject" -> pgObjectClass((String) args[0]);
-                    case "isCaseSensitive" -> isCaseSensitiveOid((Integer) args[0]);
-                    case "isSigned" -> isSignedOid((Integer) args[0]);
-                    case "addDataType" -> {
-                        addDataType((String) args[0], args[1]);
-                        yield null;
-                    }
-                    case "addCoreType" -> null;
-                    default -> JdbcCompat.defaultReturn(method.getReturnType());
-                };
-            }
+        return new org.postgresql.jdbc.TypeInfoCache(
+            (org.postgresql.core.BaseConnection) self,
+            UNKNOWN_LENGTH
         );
     }
 
@@ -1101,41 +1053,6 @@ public final class PgConnection implements InvocationHandler {
                 };
             }
         );
-    }
-
-    private int pgTypeToSqlType(String typeName) {
-        if (typeName == null) {
-            return Types.OTHER;
-        }
-        return switch (typeName.toLowerCase()) {
-            case "bool", "boolean" -> Types.BIT;
-            case "int2", "smallint" -> Types.SMALLINT;
-            case "int4", "integer", "int" -> Types.INTEGER;
-            case "int8", "bigint" -> Types.BIGINT;
-            case "oid" -> Types.BIGINT;
-            case "float4", "real" -> Types.REAL;
-            case "float8", "double", "double precision" -> Types.DOUBLE;
-            case "money" -> Types.DOUBLE;
-            case "numeric", "decimal" -> Types.NUMERIC;
-            case "char", "bpchar", "character" -> Types.CHAR;
-            case "name", "text", "varchar", "character varying" -> Types.VARCHAR;
-            case "bit" -> Types.BIT;
-            case "varbit" -> Types.OTHER;
-            case "bytea" -> Types.BINARY;
-            case "date" -> Types.DATE;
-            case "time" -> Types.TIME;
-            case "timetz", "time with time zone" -> Types.TIME;
-            case "timestamp" -> Types.TIMESTAMP;
-            case "timestamptz", "timestamp with time zone" -> Types.TIMESTAMP;
-            case "refcursor" -> Types.REF_CURSOR;
-            case "uuid", "json", "jsonb", "inet", "cidr", "macaddr", "macaddr8", "point", "box" ->
-                Types.OTHER;
-            case "bool[]", "_bool", "int2[]", "_int2", "int4[]", "_int4", "int8[]", "_int8",
-                "text[]", "_text", "varchar[]", "_varchar", "bytea[]", "_bytea", "uuid[]", "_uuid",
-                "json[]", "_json", "jsonb[]", "_jsonb", "refcursor[]", "_refcursor",
-                "point[]", "_point", "box[]", "_box" -> Types.ARRAY;
-            default -> Types.OTHER;
-        };
     }
 
     int pgTypeToOid(String typeName) {
@@ -1262,158 +1179,4 @@ public final class PgConnection implements InvocationHandler {
         };
     }
 
-    private String javaClassForOid(int oid) {
-        if (oid == 16 || oid == 1560) {
-            return Boolean.class.getName();
-        }
-        var typeName = JdbcCompat.oidToPgType(oid);
-        var objectClass = pgObjectClass(typeName);
-        if (objectClass != null) {
-            return objectClass.getName();
-        }
-        if (oid == 114 || oid == 3802) {
-            return org.postgresql.util.PGobject.class.getName();
-        }
-        if (oid == 1790) {
-            return java.sql.ResultSet.class.getName();
-        }
-        if (oid == 600) {
-            return "org.postgresql.geometric.PGpoint";
-        }
-        if (oid == 603) {
-            return "org.postgresql.geometric.PGBox";
-        }
-        return switch (JdbcCompat.oidToJdbcType(oid)) {
-            case Types.BOOLEAN -> Boolean.class.getName();
-            case Types.SMALLINT -> Short.class.getName();
-            case Types.INTEGER -> Integer.class.getName();
-            case Types.BIGINT -> Long.class.getName();
-            case Types.REAL -> Float.class.getName();
-            case Types.DOUBLE, Types.FLOAT -> Double.class.getName();
-            case Types.NUMERIC, Types.DECIMAL -> java.math.BigDecimal.class.getName();
-            case Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY -> byte[].class.getName();
-            case Types.DATE -> java.sql.Date.class.getName();
-            case Types.TIME, Types.TIME_WITH_TIMEZONE -> java.sql.Time.class.getName();
-            case Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE -> java.sql.Timestamp.class.getName();
-            case Types.ARRAY -> java.sql.Array.class.getName();
-            default -> String.class.getName();
-        };
-    }
-
-    private boolean requiresQuotingOid(int oid) {
-        return requiresQuotingSqlType(JdbcCompat.oidToJdbcType(oid));
-    }
-
-    private boolean requiresQuotingSqlType(int sqlType) {
-        return switch (sqlType) {
-            case Types.INTEGER, Types.SMALLINT, Types.BIGINT, Types.DECIMAL, Types.NUMERIC,
-                Types.REAL, Types.DOUBLE, Types.FLOAT, Types.BOOLEAN, Types.BIT -> false;
-            default -> true;
-        };
-    }
-
-    private int precision(int oid, int typmod) {
-        oid = arrayOidToElementOidOrSelf(oid);
-        return switch (oid) {
-            case 16, 18 -> 1;
-            case 21 -> 5;
-            case 23, 26 -> 10;
-            case 20 -> 19;
-            case 700 -> 8;
-            case 701, 790 -> 17;
-            case 1042, 1043 -> typmod == -1 ? UNKNOWN_LENGTH : typmod - 4;
-            case 1082, 1083, 1114, 1184, 1186, 1266 -> displaySize(oid, typmod);
-            case 1560 -> typmod;
-            case 1562 -> typmod == -1 ? UNKNOWN_LENGTH : typmod;
-            case 1700 -> typmod == -1 ? 0 : ((typmod - 4) & 0xffff0000) >> 16;
-            default -> UNKNOWN_LENGTH;
-        };
-    }
-
-    private int scale(int oid, int typmod) {
-        oid = arrayOidToElementOidOrSelf(oid);
-        return switch (oid) {
-            case 700 -> 8;
-            case 701, 790 -> 17;
-            case 1083, 1114, 1184, 1266 -> typmod == -1 ? 6 : typmod;
-            case 1186 -> typmod == -1 ? 6 : typmod & 0xffff;
-            case 1700 -> typmod == -1 ? 0 : (typmod - 4) & 0xffff;
-            default -> 0;
-        };
-    }
-
-    private int displaySize(int oid, int typmod) {
-        oid = arrayOidToElementOidOrSelf(oid);
-        return switch (oid) {
-            case 16, 18 -> 1;
-            case 21 -> 6;
-            case 23 -> 11;
-            case 26 -> 10;
-            case 20 -> 20;
-            case 700 -> 15;
-            case 701, 790 -> 25;
-            case 1082 -> 13;
-            case 1083 -> 8 + timeSecondSize(typmod);
-            case 1266 -> 8 + timeSecondSize(typmod) + 6;
-            case 1114 -> 22 + timeSecondSize(typmod);
-            case 1184 -> 22 + timeSecondSize(typmod) + 6;
-            case 1186 -> 49;
-            case 1042, 1043 -> typmod == -1 ? UNKNOWN_LENGTH : typmod - 4;
-            case 1560 -> typmod;
-            case 1562 -> typmod == -1 ? UNKNOWN_LENGTH : typmod;
-            case 1700 -> numericDisplaySize(typmod);
-            default -> UNKNOWN_LENGTH;
-        };
-    }
-
-    private int maximumPrecision(int oid) {
-        oid = arrayOidToElementOidOrSelf(oid);
-        return switch (oid) {
-            case 1042, 1043 -> 10485760;
-            case 1083, 1266 -> 6;
-            case 1114, 1184, 1186 -> 6;
-            case 1560, 1562 -> 83886080;
-            case 1700 -> 1000;
-            default -> 0;
-        };
-    }
-
-    private int arrayOidToElementOidOrSelf(int oid) {
-        var elementOid = arrayOidToElementOid(oid);
-        return elementOid == 0 ? oid : elementOid;
-    }
-
-    private int timeSecondSize(int typmod) {
-        return switch (typmod) {
-            case -1 -> 7;
-            case 0 -> 0;
-            case 1 -> 3;
-            default -> typmod + 1;
-        };
-    }
-
-    private int numericDisplaySize(int typmod) {
-        if (typmod == -1) {
-            return 131089;
-        }
-        var precision = ((typmod - 4) >> 16) & 0xffff;
-        var scale = (typmod - 4) & 0xffff;
-        return 1 + precision + (scale == 0 ? 0 : 1);
-    }
-
-    private boolean isSignedOid(int oid) {
-        oid = arrayOidToElementOidOrSelf(oid);
-        return switch (oid) {
-            case 20, 21, 23, 700, 701, 1700 -> true;
-            default -> false;
-        };
-    }
-
-    private boolean isCaseSensitiveOid(int oid) {
-        return switch (oid) {
-            case 16, 20, 21, 23, 26, 700, 701, 1082, 1083, 1114, 1184, 1186, 1266, 1560, 1562, 1700 ->
-                false;
-            default -> true;
-        };
-    }
 }

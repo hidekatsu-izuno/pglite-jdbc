@@ -344,7 +344,8 @@ class OrgPostgresqlCompatibilityTest {
                 var typeInfo = baseConnection.getTypeInfo();
                 assertEquals(23, typeInfo.getPGType("int4"));
                 assertEquals("int4", typeInfo.getPGType(23));
-                assertEquals(java.sql.Types.INTEGER, typeInfo.getJavaArrayType("int4"));
+                assertEquals(0, typeInfo.getJavaArrayType("int4"));
+                assertEquals(1007, typeInfo.getJavaArrayType(Integer.class.getName()));
                 assertEquals(18, typeInfo.getPGType("char"));
                 assertEquals("char", typeInfo.getPGType(18));
                 assertEquals(java.sql.Types.CHAR, typeInfo.getSQLType(18));
