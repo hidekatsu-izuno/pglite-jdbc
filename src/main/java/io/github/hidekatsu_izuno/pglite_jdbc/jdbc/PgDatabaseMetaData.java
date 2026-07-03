@@ -83,6 +83,7 @@ final class PgDatabaseMetaData implements InvocationHandler {
             case "getUDTs" -> getUDTs(args);
             case "getFunctionColumns" -> getRoutineColumns(args, true);
             case "getProcedureColumns" -> getRoutineColumns(args, false);
+            case "getFunctions" -> getFunctions(args);
             case "getProcedures" -> getProcedures(args);
             case "getTablePrivileges" -> getTablePrivileges(args);
             case "getColumnPrivileges" -> getColumnPrivileges(args);
@@ -531,8 +532,8 @@ final class PgDatabaseMetaData implements InvocationHandler {
                 }
                 addRoutineColumn(rows, routine, name, functions, columnType, argOids.get(i), i + 1);
             }
-            if (!functions && compositeReturn) {
-                addCompositeReturnColumns(rows, routine, returnOid);
+            if (compositeReturn) {
+                addCompositeReturnColumns(rows, routine, returnOid, functions);
             }
         }
         if (columnPattern != null) {
@@ -673,7 +674,8 @@ final class PgDatabaseMetaData implements InvocationHandler {
     private void addCompositeReturnColumns(
         List<Map<String, Object>> rows,
         Map<String, Object> routine,
-        int returnOid
+        int returnOid,
+        boolean functions
     ) throws SQLException {
         var sql = """
             SELECT a.attname AS column_name,
@@ -697,12 +699,48 @@ final class PgDatabaseMetaData implements InvocationHandler {
                 rows,
                 routine,
                 String.valueOf(row.get("COLUMN_NAME")),
-                false,
-                DatabaseMetaData.procedureColumnResult,
+                functions,
+                functions ? DatabaseMetaData.functionColumnResult : DatabaseMetaData.procedureColumnResult,
                 oid,
                 ordinal
             );
         }
+    }
+
+    private ResultSet getFunctions(Object[] args) throws SQLException {
+        if (!catalogMatches(value(args, 0))) {
+            return result(functionColumns(), List.of());
+        }
+        var schemaPattern = pattern(args, 1);
+        var functionPattern = pattern(args, 2);
+        var sql = """
+            SELECT current_database() AS function_cat,
+                   n.nspname AS function_schem,
+                   p.proname AS function_name,
+                   obj_description(p.oid, 'pg_proc') AS remarks,
+                   p.oid::text AS specific_name
+            FROM pg_catalog.pg_proc p
+            JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+              %s
+              %s
+            ORDER BY function_schem, function_name, specific_name
+            """.formatted(
+                likeCondition("n.nspname", schemaPattern),
+                likeCondition("p.proname", functionPattern)
+            );
+        var rows = new ArrayList<Map<String, Object>>();
+        for (var row : query(sql)) {
+            var out = new LinkedHashMap<String, Object>();
+            out.put("FUNCTION_CAT", row.get("FUNCTION_CAT"));
+            out.put("FUNCTION_SCHEM", row.get("FUNCTION_SCHEM"));
+            out.put("FUNCTION_NAME", row.get("FUNCTION_NAME"));
+            out.put("REMARKS", row.get("REMARKS"));
+            out.put("FUNCTION_TYPE", DatabaseMetaData.functionReturnsTable);
+            out.put("SPECIFIC_NAME", row.get("SPECIFIC_NAME"));
+            rows.add(out);
+        }
+        return result(functionColumns(), rows);
     }
 
     private void addRoutineColumn(
@@ -1205,6 +1243,17 @@ final class PgDatabaseMetaData implements InvocationHandler {
             new Column("CHAR_OCTET_LENGTH", 23),
             new Column("ORDINAL_POSITION", 23),
             new Column("IS_NULLABLE", 19),
+            new Column("SPECIFIC_NAME", 19)
+        );
+    }
+
+    private List<Column> functionColumns() {
+        return List.of(
+            new Column("FUNCTION_CAT", 19),
+            new Column("FUNCTION_SCHEM", 19),
+            new Column("FUNCTION_NAME", 19),
+            new Column("REMARKS", 25),
+            new Column("FUNCTION_TYPE", 21),
             new Column("SPECIFIC_NAME", 19)
         );
     }

@@ -962,6 +962,41 @@ class PgjdbcInspiredDatabaseMetaDataTest {
             assertEquals(DatabaseMetaData.procedureReturnsResult, procedures.getInt("PROCEDURE_TYPE"));
             assertFalse(procedures.next());
         }
+
+        try (var functions = metadata.getFunctions(null, null, "pgjdbc_meta_f1")) {
+            var resultSetMetaData = functions.getMetaData();
+            assertEquals("FUNCTION_CAT", resultSetMetaData.getColumnLabel(1));
+            assertEquals("SPECIFIC_NAME", resultSetMetaData.getColumnLabel(6));
+            assertTrue(functions.next());
+            assertEquals("public", functions.getString("FUNCTION_SCHEM"));
+            assertEquals("pgjdbc_meta_f1", functions.getString("FUNCTION_NAME"));
+            assertEquals(DatabaseMetaData.functionReturnsTable, functions.getInt("FUNCTION_TYPE"));
+            assertFalse(functions.next());
+        }
+
+        try (var statement = connection.createStatement()) {
+            statement.execute("ALTER TABLE pgjdbc_meta_func_composite DROP COLUMN name");
+            statement.execute("ALTER TABLE pgjdbc_meta_func_composite DROP COLUMN colour");
+        }
+
+        try (var columns = metadata.getFunctionColumns(null, null, "pgjdbc_meta_f4", null)) {
+            assertTrue(columns.next());
+            assertEquals("$1", columns.getString("COLUMN_NAME"));
+            assertEquals(DatabaseMetaData.functionColumnIn, columns.getInt("COLUMN_TYPE"));
+
+            assertTrue(columns.next());
+            assertEquals("id", columns.getString("COLUMN_NAME"));
+            assertEquals(DatabaseMetaData.functionColumnResult, columns.getInt("COLUMN_TYPE"));
+
+            assertTrue(columns.next());
+            assertEquals("updated", columns.getString("COLUMN_NAME"));
+            assertEquals(DatabaseMetaData.functionColumnResult, columns.getInt("COLUMN_TYPE"));
+
+            assertTrue(columns.next());
+            assertEquals("quest", columns.getString("COLUMN_NAME"));
+            assertEquals(DatabaseMetaData.functionColumnResult, columns.getInt("COLUMN_TYPE"));
+            assertFalse(columns.next());
+        }
     }
 
     @Test
