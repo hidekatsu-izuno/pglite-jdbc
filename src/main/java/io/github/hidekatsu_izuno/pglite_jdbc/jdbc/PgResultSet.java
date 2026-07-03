@@ -9,6 +9,7 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.SQLWarning;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -29,6 +30,8 @@ final class PgResultSet implements InvocationHandler {
     private int cursor = -1;
     private boolean closed;
     private boolean wasNull;
+    private int fetchSize;
+    private SQLWarning warnings;
 
     private PgResultSet(
         PgConnection connection,
@@ -283,6 +286,28 @@ final class PgResultSet implements InvocationHandler {
             case "getHoldability" -> {
                 ensureNotClosed();
                 yield holdability;
+            }
+            case "setFetchSize" -> {
+                ensureNotClosed();
+                var value = (Integer) args[0];
+                if (value < 0) {
+                    throw new SQLException("Invalid fetch size: " + value);
+                }
+                fetchSize = value;
+                yield null;
+            }
+            case "getFetchSize" -> {
+                ensureNotClosed();
+                yield fetchSize;
+            }
+            case "getWarnings" -> {
+                ensureNotClosed();
+                yield warnings;
+            }
+            case "clearWarnings" -> {
+                ensureNotClosed();
+                warnings = null;
+                yield null;
             }
             default -> {
                 if (method.getReturnType() == void.class) {

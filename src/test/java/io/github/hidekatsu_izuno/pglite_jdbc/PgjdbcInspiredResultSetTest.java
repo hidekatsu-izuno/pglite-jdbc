@@ -93,6 +93,18 @@ class PgjdbcInspiredResultSetTest {
             assertThrows(SQLException.class, () -> resultSet.findColumn("value"));
             assertThrows(SQLException.class, () -> resultSet.getObject("value"));
             assertThrows(SQLException.class, resultSet::getStatement);
+            assertThrows(SQLException.class, resultSet::clearWarnings);
+            assertThrows(SQLException.class, () -> resultSet.setFetchSize(1));
+        }
+    }
+
+    @Test
+    void resultSetFetchSizeRejectsNegativeValuesLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("SELECT 1 AS value")) {
+            assertThrows(SQLException.class, () -> resultSet.setFetchSize(-1));
+            resultSet.setFetchSize(2);
+            assertEquals(2, resultSet.getFetchSize());
         }
     }
 
