@@ -7,6 +7,8 @@ import java.io.StringWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
+import org.postgresql.util.PSQLException;
+import org.postgresql.util.PSQLState;
 
 final class PgClob extends org.postgresql.jdbc.PgClob {
     private String value;
@@ -27,10 +29,13 @@ final class PgClob extends org.postgresql.jdbc.PgClob {
     public String getSubString(long pos, int length) throws SQLException {
         ensureActive();
         var start = checkedStart(pos);
-        if (length < 0 || start + length > value.length()) {
-            throw new SQLException("Clob slice is out of bounds");
+        if (length < 0) {
+            throw new PSQLException(
+                "Invalid byte count: " + length + ".",
+                PSQLState.INVALID_PARAMETER_VALUE
+            );
         }
-        return value.substring(start, start + length);
+        return value.substring(start, Math.min(start + length, value.length()));
     }
 
     @Override
@@ -68,10 +73,10 @@ final class PgClob extends org.postgresql.jdbc.PgClob {
         ensureActive();
         var start = checkedStart(pos);
         if (str == null) {
-            throw new SQLException("Clob string must not be null");
+            throw new PSQLException("Clob string must not be null", PSQLState.INVALID_PARAMETER_VALUE);
         }
         if (offset < 0 || len < 0 || offset > str.length() || offset + len > str.length()) {
-            throw new SQLException("Clob string range is out of bounds");
+            throw new PSQLException("Clob string range is out of bounds", PSQLState.INVALID_PARAMETER_VALUE);
         }
         var replacement = str.substring(offset, offset + len);
         var builder = new StringBuilder(value);
@@ -115,7 +120,7 @@ final class PgClob extends org.postgresql.jdbc.PgClob {
     public void truncate(long len) throws SQLException {
         ensureActive();
         if (len < 0 || len > Integer.MAX_VALUE) {
-            throw new SQLException("Invalid Clob length: " + len);
+            throw new PSQLException("Cannot truncate LOB to a negative length.", PSQLState.INVALID_PARAMETER_VALUE);
         }
         if (len < value.length()) {
             value = value.substring(0, (int) len);
@@ -131,14 +136,14 @@ final class PgClob extends org.postgresql.jdbc.PgClob {
     @Override
     public Reader getCharacterStream(long pos, long length) throws SQLException {
         if (length < 0 || length > Integer.MAX_VALUE) {
-            throw new SQLException("Invalid Clob stream length: " + length);
+            throw new PSQLException("Invalid byte count: " + length + ".", PSQLState.INVALID_PARAMETER_VALUE);
         }
         return new StringReader(getSubString(pos, (int) length));
     }
 
     private int checkedStart(long pos) throws SQLException {
         if (pos < 1 || pos > Integer.MAX_VALUE) {
-            throw new SQLException("Clob position is out of bounds: " + pos);
+            throw new PSQLException("LOB positioning offsets start at 1.", PSQLState.INVALID_PARAMETER_VALUE);
         }
         return (int) pos - 1;
     }
@@ -158,7 +163,7 @@ final class PgClob extends org.postgresql.jdbc.PgClob {
 
     private void ensureActive() throws SQLException {
         if (freed) {
-            throw new SQLException("Clob has been freed");
+            throw new PSQLException("free() was called on this LOB previously", PSQLState.OBJECT_NOT_IN_STATE);
         }
     }
 }

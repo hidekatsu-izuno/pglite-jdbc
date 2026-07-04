@@ -6,6 +6,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.sql.SQLException;
 import java.util.Arrays;
+import org.postgresql.util.PSQLException;
+import org.postgresql.util.PSQLState;
 
 final class PgBlob extends org.postgresql.jdbc.PgBlob {
     private byte[] bytes;
@@ -26,10 +28,13 @@ final class PgBlob extends org.postgresql.jdbc.PgBlob {
     public byte[] getBytes(long pos, int length) throws SQLException {
         ensureActive();
         var start = checkedStart(pos);
-        if (length < 0 || start + length > bytes.length) {
-            throw new SQLException("Blob slice is out of bounds");
+        if (length < 0) {
+            throw new PSQLException(
+                "Invalid byte count: " + length + ".",
+                PSQLState.INVALID_PARAMETER_VALUE
+            );
         }
-        return Arrays.copyOfRange(bytes, start, start + length);
+        return Arrays.copyOfRange(bytes, start, Math.min(start + length, bytes.length));
     }
 
     @Override
@@ -75,10 +80,10 @@ final class PgBlob extends org.postgresql.jdbc.PgBlob {
         ensureActive();
         var start = checkedStart(pos);
         if (source == null) {
-            throw new SQLException("Blob bytes must not be null");
+            throw new PSQLException("Blob bytes must not be null", PSQLState.INVALID_PARAMETER_VALUE);
         }
         if (offset < 0 || length < 0 || offset > source.length || offset + length > source.length) {
-            throw new SQLException("Blob byte range is out of bounds");
+            throw new PSQLException("Blob byte range is out of bounds", PSQLState.INVALID_PARAMETER_VALUE);
         }
         var replacement = Arrays.copyOfRange(source, offset, offset + length);
         var required = start + length;
@@ -110,7 +115,7 @@ final class PgBlob extends org.postgresql.jdbc.PgBlob {
     public void truncate(long len) throws SQLException {
         ensureActive();
         if (len < 0 || len > Integer.MAX_VALUE) {
-            throw new SQLException("Invalid Blob length: " + len);
+            throw new PSQLException("Cannot truncate LOB to a negative length.", PSQLState.INVALID_PARAMETER_VALUE);
         }
         bytes = Arrays.copyOf(bytes, (int) len);
     }
@@ -124,21 +129,21 @@ final class PgBlob extends org.postgresql.jdbc.PgBlob {
     @Override
     public InputStream getBinaryStream(long pos, long length) throws SQLException {
         if (length < 0 || length > Integer.MAX_VALUE) {
-            throw new SQLException("Invalid Blob stream length: " + length);
+            throw new PSQLException("Invalid byte count: " + length + ".", PSQLState.INVALID_PARAMETER_VALUE);
         }
         return new ByteArrayInputStream(getBytes(pos, (int) length));
     }
 
     private int checkedStart(long pos) throws SQLException {
         if (pos < 1 || pos > Integer.MAX_VALUE) {
-            throw new SQLException("Blob position is out of bounds: " + pos);
+            throw new PSQLException("LOB positioning offsets start at 1.", PSQLState.INVALID_PARAMETER_VALUE);
         }
         return (int) pos - 1;
     }
 
     private void ensureActive() throws SQLException {
         if (freed) {
-            throw new SQLException("Blob has been freed");
+            throw new PSQLException("free() was called on this LOB previously", PSQLState.OBJECT_NOT_IN_STATE);
         }
     }
 }

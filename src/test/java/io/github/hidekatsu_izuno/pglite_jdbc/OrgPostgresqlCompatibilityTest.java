@@ -201,9 +201,24 @@ class OrgPostgresqlCompatibilityTest {
                             "blob-bytes".getBytes(StandardCharsets.UTF_8),
                             readBlob.getBytes(1, (int) readBlob.length())
                         );
+                        var blobPositionError = assertThrows(SQLException.class, () -> readBlob.getBytes(0, 1));
+                        assertEquals("LOB positioning offsets start at 1.", blobPositionError.getMessage());
+                        assertEquals("22023", blobPositionError.getSQLState());
+                        readBlob.free();
+                        var blobFreedError = assertThrows(SQLException.class, readBlob::length);
+                        assertEquals("free() was called on this LOB previously", blobFreedError.getMessage());
+                        assertEquals("55000", blobFreedError.getSQLState());
+
                         var readClob = resultSet.getClob("body");
                         assertTrue(readClob instanceof org.postgresql.jdbc.PgClob);
                         assertEquals("clob text", readClob.getSubString(1, (int) readClob.length()));
+                        var clobPositionError = assertThrows(SQLException.class, () -> readClob.getSubString(0, 1));
+                        assertEquals("LOB positioning offsets start at 1.", clobPositionError.getMessage());
+                        assertEquals("22023", clobPositionError.getSQLState());
+                        readClob.free();
+                        var clobFreedError = assertThrows(SQLException.class, readClob::length);
+                        assertEquals("free() was called on this LOB previously", clobFreedError.getMessage());
+                        assertEquals("55000", clobFreedError.getSQLState());
                     }
                 }
             }
