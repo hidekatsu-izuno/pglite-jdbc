@@ -1072,13 +1072,7 @@ public final class PgConnectionHandler implements InvocationHandler {
     }
 
     private String escapeString(String value) throws SQLException {
-        if (value == null) {
-            return null;
-        }
-        if (value.indexOf('\0') >= 0) {
-            throw new PSQLException("Zero bytes are not allowed in strings", PSQLState.INVALID_PARAMETER_VALUE);
-        }
-        return value.replace("\\", "\\\\").replace("'", "''");
+        return Utils.escapeLiteral(null, value, true).toString();
     }
 
     private org.postgresql.core.TypeInfo createTypeInfo() {
