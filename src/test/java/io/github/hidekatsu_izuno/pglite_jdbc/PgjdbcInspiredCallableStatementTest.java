@@ -102,6 +102,33 @@ class PgjdbcInspiredCallableStatementTest {
         }
     }
 
+    @Test
+    void callableStatementFunctionOutParameterCanBeReadAfterExecute() throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000");
+             var callable = connection.prepareCall("{ ? = call abs(?) }")) {
+            callable.registerOutParameter(1, Types.INTEGER);
+
+            var beforeExecute = assertThrows(SQLException.class, () -> callable.getInt(1));
+            assertEquals(
+                "Results cannot be retrieved from a CallableStatement before it is executed.",
+                beforeExecute.getMessage()
+            );
+            assertEquals("02000", beforeExecute.getSQLState());
+
+            callable.setInt(2, -7);
+            assertTrue(callable.execute());
+            assertEquals(7, callable.getInt(1));
+            assertFalse(callable.wasNull());
+
+            var mismatch = assertThrows(SQLException.class, () -> callable.getString(1));
+            assertEquals(
+                "Parameter of type java.sql.Types=4 was registered, but call to getString (sqltype=java.sql.Types=12) was made.",
+                mismatch.getMessage()
+            );
+            assertEquals("2200G", mismatch.getSQLState());
+        }
+    }
+
     private void assertPgjdbcCallableNotImplemented(String method, ThrowingSqlCall call) {
         var error = assertThrows(SQLFeatureNotSupportedException.class, call::run);
         assertEquals(

@@ -40,8 +40,11 @@ final class PgStatementHandler implements InvocationHandler {
     private final int resultSetHoldability;
     private final String[] preparedGeneratedColumns;
     private final boolean callable;
+    private final boolean callableFunction;
     private final TreeMap<Integer, Object> parameters = new TreeMap<>();
     private final TreeMap<Integer, Integer> parameterTypeOverrides = new TreeMap<>();
+    private final TreeMap<Integer, Integer> callableReturnTypes = new TreeMap<>();
+    private final TreeMap<Integer, Integer> callableTestReturnTypes = new TreeMap<>();
     private final List<String> sqlBatch = new ArrayList<>();
     private final List<Object[]> preparedBatch = new ArrayList<>();
     private Statement self;
@@ -62,6 +65,9 @@ final class PgStatementHandler implements InvocationHandler {
     private boolean closeOnCompletion;
     private boolean poolable;
     private boolean escapeProcessing = true;
+    private boolean callableReturnTypeSet;
+    private Object[] callableResult;
+    private int callableLastIndex;
 
     private PgStatementHandler(
         PgConnectionHandler connection,
@@ -73,16 +79,34 @@ final class PgStatementHandler implements InvocationHandler {
         boolean callable
     ) throws SQLException {
         this.connection = connection;
-        this.preparedSql = preparedSql != null ? JdbcCompat.replaceJdbcEscapes(preparedSql, true) : null;
+        var callableInfo = callable && preparedSql != null
+            ? org.postgresql.core.Parser.modifyJdbcCall(
+                preparedSql,
+                true,
+                180000,
+                org.postgresql.jdbc.EscapeSyntaxCallMode.SELECT
+            )
+            : null;
+        var parsedSql = callableInfo != null ? callableInfo.getSql() : null;
+        this.preparedSql = preparedSql != null
+            ? callableInfo != null
+                ? removeCallableReturnPlaceholder(parsedSql)
+                : JdbcCompat.replaceJdbcEscapes(preparedSql, true)
+            : null;
         this.preparedProtocolSql = preparedSql != null
             ? JdbcCompat.rewriteJdbcParameters(this.preparedSql)
             : null;
-        this.parameterCount = preparedSql != null ? JdbcCompat.countJdbcParameters(this.preparedSql) : 0;
+        this.parameterCount = preparedSql != null
+            ? callableInfo != null
+                ? JdbcCompat.countJdbcParameters(parsedSql)
+                : JdbcCompat.countJdbcParameters(this.preparedSql)
+            : 0;
         this.resultSetType = resultSetType;
         this.resultSetConcurrency = resultSetConcurrency;
         this.resultSetHoldability = resultSetHoldability;
         this.preparedGeneratedColumns = preparedGeneratedColumns;
         this.callable = callable;
+        this.callableFunction = callableInfo != null && callableInfo.isFunction();
         this.prepareThreshold = connection.getPrepareThresholdInternal();
         this.fetchSize = connection.getDefaultFetchSizeInternal();
         this.queryTimeout = connection.getQueryTimeoutInternal();
@@ -216,11 +240,16 @@ final class PgStatementHandler implements InvocationHandler {
         ensureOpen();
 
         if (callable) {
+            if ("registerOutParameter".equals(name) && isCallableOutRegistration(method)) {
+                registerCallableOutParameter((Integer) args[0], (Integer) args[1]);
+                return null;
+            }
             if ("wasNull".equals(name)) {
-                throw new PSQLException(
-                    "wasNull cannot be call before fetching a result.",
-                    PSQLState.OBJECT_NOT_IN_STATE
-                );
+                return callableWasNull();
+            }
+            var callableValue = callableGetter(method, args);
+            if (callableValue.handled()) {
+                return callableValue.value();
             }
             var notImplemented = callableNotImplemented(method);
             if (notImplemented != null) {
@@ -1153,7 +1182,7 @@ final class PgStatementHandler implements InvocationHandler {
     }
 
     private Object[] buildParams() {
-        return executionParameters(buildDisplayParams());
+        return executionParameters(callableInputParams(buildDisplayParams()));
     }
 
     private Object[] buildDisplayParams() {
@@ -1174,6 +1203,19 @@ final class PgStatementHandler implements InvocationHandler {
             out[i] = executionParameter(out[i]);
         }
         return out;
+    }
+
+    private Object[] callableInputParams(Object[] values) {
+        if (!callable || callableReturnTypes.isEmpty()) {
+            return values;
+        }
+        var out = new ArrayList<Object>(values.length);
+        for (var i = 0; i < values.length; i++) {
+            if (!callableReturnTypes.containsKey(i + 1)) {
+                out.add(values[i]);
+            }
+        }
+        return out.toArray();
     }
 
     private Object executionParameter(Object value) {
@@ -1255,6 +1297,182 @@ final class PgStatementHandler implements InvocationHandler {
             "Method org.postgresql.jdbc.PgCallableStatement." + methodName + " is not yet implemented.",
             PSQLState.NOT_IMPLEMENTED.getState()
         );
+    }
+
+    private record CallableValue(boolean handled, Object value) {
+    }
+
+    private boolean isCallableOutRegistration(Method method) {
+        var types = method.getParameterTypes();
+        return types.length >= 2
+            && types[0] == int.class
+            && types[1] == int.class
+            && (types.length == 2 || types[2] == int.class);
+    }
+
+    private void registerCallableOutParameter(int parameterIndex, int sqlType) throws SQLException {
+        if (!callableFunction) {
+            throw new PSQLException(
+                "This statement does not declare an OUT parameter.  Use '{' ?= call ... '}' to declare one.",
+                PSQLState.STATEMENT_NOT_ALLOWED_IN_FUNCTION_CALL
+            );
+        }
+        var normalized = normalizeCallableSqlType(sqlType);
+        callableReturnTypes.put(parameterIndex, normalized);
+        callableTestReturnTypes.put(parameterIndex, callableTestSqlType(normalized));
+        callableReturnTypeSet = true;
+    }
+
+    private int normalizeCallableSqlType(int sqlType) {
+        return switch (sqlType) {
+            case Types.TINYINT -> Types.SMALLINT;
+            case Types.LONGVARCHAR -> Types.VARCHAR;
+            case Types.DECIMAL -> Types.NUMERIC;
+            case Types.FLOAT -> Types.DOUBLE;
+            case Types.VARBINARY, Types.LONGVARBINARY -> Types.BINARY;
+            case Types.BOOLEAN -> Types.BIT;
+            default -> sqlType;
+        };
+    }
+
+    private int callableTestSqlType(int sqlType) {
+        return switch (sqlType) {
+            case Types.CHAR, Types.LONGVARCHAR -> Types.VARCHAR;
+            case Types.FLOAT -> Types.REAL;
+            default -> sqlType;
+        };
+    }
+
+    private boolean callableWasNull() throws SQLException {
+        if (callableLastIndex == 0 || callableResult == null) {
+            throw new PSQLException(
+                "wasNull cannot be call before fetching a result.",
+                PSQLState.OBJECT_NOT_IN_STATE
+            );
+        }
+        return callableResult[callableLastIndex - 1] == null;
+    }
+
+    private CallableValue callableGetter(Method method, Object[] args) throws SQLException {
+        var types = method.getParameterTypes();
+        if (args == null || args.length == 0 || types.length == 0 || types[0] != int.class) {
+            return new CallableValue(false, null);
+        }
+        var index = (Integer) args[0];
+        return switch (method.getName()) {
+            case "getObject" -> {
+                if (types.length == 2 && types[1] == Class.class) {
+                    yield new CallableValue(true, callableObject(index, (Class<?>) args[1]));
+                }
+                if (types.length == 1) {
+                    yield new CallableValue(true, getCallableResult(index));
+                }
+                yield new CallableValue(false, null);
+            }
+            case "getString" -> new CallableValue(true, (String) checkCallableIndex(index, Types.VARCHAR, "String"));
+            case "getBoolean" -> {
+                var value = checkCallableIndex(index, Types.BIT, "Boolean");
+                yield new CallableValue(true, value == null ? false : JdbcCompat.toBoolean(value));
+            }
+            case "getByte" -> {
+                var value = checkCallableIndex(index, Types.SMALLINT, "Byte");
+                yield new CallableValue(true, value == null ? (byte) 0 : JdbcCompat.toByte(value));
+            }
+            case "getShort" -> {
+                var value = checkCallableIndex(index, Types.SMALLINT, "Short");
+                yield new CallableValue(true, value == null ? (short) 0 : JdbcCompat.toShort(value));
+            }
+            case "getInt" -> {
+                var value = checkCallableIndex(index, Types.INTEGER, "Int");
+                yield new CallableValue(true, value == null ? 0 : JdbcCompat.toInt(value));
+            }
+            case "getLong" -> {
+                var value = checkCallableIndex(index, Types.BIGINT, "Long");
+                yield new CallableValue(true, value == null ? 0L : JdbcCompat.toLong(value));
+            }
+            case "getFloat" -> {
+                var value = checkCallableIndex(index, Types.REAL, "Float");
+                yield new CallableValue(true, value == null ? 0F : JdbcCompat.toNumber(value).floatValue());
+            }
+            case "getDouble" -> {
+                var value = checkCallableIndex(index, Types.DOUBLE, "Double");
+                yield new CallableValue(true, value == null ? 0D : JdbcCompat.toNumber(value).doubleValue());
+            }
+            case "getBigDecimal" -> new CallableValue(
+                true,
+                checkCallableIndex(index, Types.NUMERIC, "BigDecimal")
+            );
+            case "getBytes" -> new CallableValue(
+                true,
+                checkCallableIndex(index, Types.VARBINARY, Types.BINARY, "Bytes")
+            );
+            case "getDate" -> new CallableValue(true, checkCallableIndex(index, Types.DATE, "Date"));
+            case "getTime" -> new CallableValue(true, checkCallableIndex(index, Types.TIME, "Time"));
+            case "getTimestamp" -> new CallableValue(
+                true,
+                checkCallableIndex(index, Types.TIMESTAMP, "Timestamp")
+            );
+            case "getArray" -> new CallableValue(true, getCallableResult(index));
+            default -> new CallableValue(false, null);
+        };
+    }
+
+    private Object callableObject(int index, Class<?> type) throws SQLException {
+        if (type == ResultSet.class) {
+            return type.cast(getCallableResult(index));
+        }
+        throw new PSQLException(
+            "Unsupported type conversion to " + type + ".",
+            PSQLState.INVALID_PARAMETER_VALUE
+        );
+    }
+
+    private Object checkCallableIndex(int parameterIndex, int type, String getterName) throws SQLException {
+        var result = getCallableResult(parameterIndex);
+        var testReturn = callableTestReturnTypes.getOrDefault(parameterIndex, -1);
+        if (type != testReturn) {
+            throw callableTypeMismatch(testReturn, getterName, type);
+        }
+        return result;
+    }
+
+    private Object checkCallableIndex(int parameterIndex, int type1, int type2, String getterName)
+        throws SQLException {
+        var result = getCallableResult(parameterIndex);
+        var testReturn = callableTestReturnTypes.getOrDefault(parameterIndex, -1);
+        if (type1 != testReturn && type2 != testReturn) {
+            throw callableTypeMismatch(testReturn, getterName, type1);
+        }
+        return result;
+    }
+
+    private PSQLException callableTypeMismatch(int registeredType, String getterName, int requestedType) {
+        return new PSQLException(
+            "Parameter of type java.sql.Types=" + registeredType
+                + " was registered, but call to get" + getterName
+                + " (sqltype=java.sql.Types=" + requestedType + ") was made.",
+            PSQLState.MOST_SPECIFIC_TYPE_DOES_NOT_MATCH
+        );
+    }
+
+    private Object getCallableResult(int parameterIndex) throws SQLException {
+        if (!callableFunction) {
+            throw new PSQLException(
+                "A CallableStatement was declared, but no call to registerOutParameter(1, <some type>) was made.",
+                PSQLState.STATEMENT_NOT_ALLOWED_IN_FUNCTION_CALL
+            );
+        }
+        if (!callableReturnTypeSet) {
+            throw new PSQLException("No function outputs were registered.", PSQLState.OBJECT_NOT_IN_STATE);
+        }
+        if (callableResult == null) {
+            throw new PSQLException(
+                "Results cannot be retrieved from a CallableStatement before it is executed.",
+                PSQLState.NO_DATA
+            );
+        }
+        callableLastIndex = parameterIndex;
+        return callableResult[parameterIndex - 1];
     }
 
     private String callableNotImplemented(Method method) {
@@ -1391,6 +1609,34 @@ final class PgStatementHandler implements InvocationHandler {
         return false;
     }
 
+    private String removeCallableReturnPlaceholder(String sql) {
+        if (sql == null) {
+            return null;
+        }
+        var open = sql.indexOf('(');
+        if (open < 0) {
+            return sql;
+        }
+        var first = open + 1;
+        while (first < sql.length() && Character.isWhitespace(sql.charAt(first))) {
+            first++;
+        }
+        if (first >= sql.length() || sql.charAt(first) != '?') {
+            return sql;
+        }
+        var next = first + 1;
+        while (next < sql.length() && Character.isWhitespace(sql.charAt(next))) {
+            next++;
+        }
+        if (next < sql.length() && sql.charAt(next) == ',') {
+            return sql.substring(0, first) + sql.substring(next + 1);
+        }
+        if (next < sql.length() && sql.charAt(next) == ')') {
+            return sql.substring(0, first) + sql.substring(next);
+        }
+        return sql;
+    }
+
     private String preparedNClobSignature(Method method) {
         var parameterTypes = method.getParameterTypes();
         if (parameterTypes.length >= 3) {
@@ -1429,8 +1675,10 @@ final class PgStatementHandler implements InvocationHandler {
             currentResultIndex = -1;
             currentResultSet = null;
             updateCount = -1;
+            callableResult = null;
             throw new SQLException("No results were returned by the query");
         }
+        captureCallableResult(result);
         currentResults = List.of();
         currentResultIndex = -1;
         currentResultSet = createStatementArrayResultSet(result);
@@ -1500,10 +1748,12 @@ final class PgStatementHandler implements InvocationHandler {
                 currentResults = List.of();
                 currentResultIndex = -1;
                 if (!result.fields().isEmpty()) {
+                    captureCallableResult(result);
                     currentResultSet = createStatementArrayResultSet(result);
                     updateCount = -1;
                     return true;
                 }
+                callableResult = null;
                 currentResultSet = null;
                 updateCount = JdbcCompat.safeAffectedRows(result);
                 return false;
@@ -1541,6 +1791,33 @@ final class PgStatementHandler implements InvocationHandler {
             return false;
         }
         return advanceResult();
+    }
+
+    private void captureCallableResult(interface_.Results<List<Object>> result) throws SQLException {
+        if (!callable || !callableFunction || !callableReturnTypeSet) {
+            callableResult = null;
+            callableLastIndex = 0;
+            return;
+        }
+        if (result.rows().isEmpty()) {
+            throw new PSQLException(
+                "A CallableStatement was executed with nothing returned.",
+                PSQLState.NO_DATA
+            );
+        }
+        var row = result.rows().getFirst();
+        callableResult = new Object[Math.max(parameterCount, row.size())];
+        for (var entry : callableReturnTypes.entrySet()) {
+            var index = entry.getKey();
+            if (index < 1 || index > row.size()) {
+                throw new PSQLException(
+                    "A CallableStatement was executed with an invalid number of parameters",
+                    PSQLState.SYNTAX_ERROR
+                );
+            }
+            callableResult[index - 1] = row.get(index - 1);
+        }
+        callableLastIndex = 0;
     }
 
     private int[] executeBatch() throws SQLException {
