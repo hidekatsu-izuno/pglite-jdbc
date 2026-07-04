@@ -429,6 +429,27 @@ class PgjdbcInspiredStatementTest {
     }
 
     @Test
+    void statementDefaultQuotingMethodsMatchPgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            assertEquals("'a''b'", statement.enquoteLiteral("a'b"));
+            assertEquals("N'a''b'", statement.enquoteNCharLiteral("a'b"));
+
+            assertTrue(statement.isSimpleIdentifier("abc_123"));
+            assertFalse(statement.isSimpleIdentifier("123abc"));
+            assertFalse(statement.isSimpleIdentifier(""));
+
+            assertEquals("abc_123", statement.enquoteIdentifier("abc_123", false));
+            assertEquals("\"abc_123\"", statement.enquoteIdentifier("abc_123", true));
+            assertEquals("\"two words\"", statement.enquoteIdentifier("two words", false));
+            assertEquals("\"two words\"", statement.enquoteIdentifier("\"two words\"", false));
+
+            assertThrows(SQLException.class, () -> statement.enquoteIdentifier("", false));
+            assertThrows(SQLException.class, () -> statement.enquoteIdentifier("bad\"name", false));
+            assertThrows(SQLException.class, () -> statement.enquoteIdentifier("bad\u0000name", false));
+        }
+    }
+
+    @Test
     void statementRejectsInvalidFetchDirectionLikePgjdbc() throws Exception {
         try (var statement = connection.createStatement()) {
             assertThrows(SQLException.class, () -> statement.setFetchDirection(-1));

@@ -260,6 +260,10 @@ final class PgStatementHandler implements InvocationHandler {
             case "isCloseOnCompletion" -> closeOnCompletion;
             case "getLargeUpdateCount" -> (long) updateCount;
             case "setLargeMaxRows", "getLargeMaxRows" -> throw pgjdbcNotImplemented(name);
+            case "enquoteLiteral" -> enquoteLiteral((String) args[0]);
+            case "enquoteIdentifier" -> enquoteIdentifier((String) args[0], (Boolean) args[1]);
+            case "isSimpleIdentifier" -> isSimpleIdentifier((String) args[0]);
+            case "enquoteNCharLiteral" -> "N" + enquoteLiteral((String) args[0]);
             case "executeLargeBatch" -> {
                 var batch = executeBatch();
                 var out = new long[batch.length];
@@ -1142,6 +1146,33 @@ final class PgStatementHandler implements InvocationHandler {
             throw new SQLException("Invalid fetch direction: " + value);
         }
         return value;
+    }
+
+    private String enquoteLiteral(String value) {
+        return "'" + value.replace("'", "''") + "'";
+    }
+
+    private String enquoteIdentifier(String identifier, boolean alwaysQuote) throws SQLException {
+        var length = identifier.length();
+        if (length < 1 || length > 128) {
+            throw new SQLException("Invalid name");
+        }
+        if (isSimpleIdentifier(identifier)) {
+            return alwaysQuote ? "\"" + identifier + "\"" : identifier;
+        }
+        var value = identifier;
+        if (value.matches("^\".+\"$")) {
+            value = value.substring(1, length - 1);
+        }
+        if (!value.matches("[^\u0000\"]+")) {
+            throw new SQLException("Invalid name");
+        }
+        return "\"" + value + "\"";
+    }
+
+    private boolean isSimpleIdentifier(String identifier) {
+        var length = identifier.length();
+        return length >= 1 && length <= 128 && identifier.matches("[\\p{Alpha}][\\p{Alnum}_]*");
     }
 
     private SQLFeatureNotSupportedException pgjdbcNotImplemented(String methodName) {
