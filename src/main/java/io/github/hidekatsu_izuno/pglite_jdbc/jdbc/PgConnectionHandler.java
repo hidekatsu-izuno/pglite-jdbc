@@ -817,6 +817,7 @@ public final class PgConnectionHandler implements InvocationHandler {
     }
 
     private void addDataType(String typeName, Object objectClass) throws SQLException {
+        ensureOpen();
         if (objectClass instanceof Class<?> clazz) {
             if (!org.postgresql.util.PGobject.class.isAssignableFrom(clazz)) {
                 throw new PSQLException(
@@ -837,12 +838,8 @@ public final class PgConnectionHandler implements InvocationHandler {
             try {
                 addDataType(typeName, Class.forName(className));
                 return;
-            } catch (ClassNotFoundException exception) {
-                throw new PSQLException(
-                    "Custom type class not found: " + className,
-                    PSQLState.INVALID_PARAMETER_VALUE,
-                    exception
-                );
+            } catch (Exception exception) {
+                throw new RuntimeException("Cannot register new type " + typeName, exception);
             }
         }
         throw new PSQLException(

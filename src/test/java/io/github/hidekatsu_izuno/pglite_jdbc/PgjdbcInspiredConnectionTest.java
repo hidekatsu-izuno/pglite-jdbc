@@ -78,6 +78,24 @@ class PgjdbcInspiredConnectionTest {
     }
 
     @Test
+    void connectionAddDataTypeValidationMatchesPgjdbc() throws Exception {
+        var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000");
+        var pgConnection = connection.unwrap(org.postgresql.PGConnection.class);
+
+        var missing = assertThrows(
+            RuntimeException.class,
+            () -> pgConnection.addDataType("missing_type", "example.MissingPgObject")
+        );
+        assertEquals("Cannot register new type missing_type", missing.getMessage());
+
+        connection.close();
+        assertThrows(
+            SQLException.class,
+            () -> pgConnection.addDataType("closed_type", org.postgresql.util.PGobject.class)
+        );
+    }
+
+    @Test
     void connectionTimeoutAndFetchSizeValidationMatchesPgjdbc() throws Exception {
         try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
             var pgConnection = connection.unwrap(org.postgresql.PGConnection.class);
