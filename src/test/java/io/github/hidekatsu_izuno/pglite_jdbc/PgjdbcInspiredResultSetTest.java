@@ -6,7 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.StringReader;
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -206,6 +208,41 @@ class PgjdbcInspiredResultSetTest {
             assertFalse(resultSet.rowDeleted());
             assertThrows(SQLException.class, () -> resultSet.updateInt(1, 2));
             assertThrows(SQLException.class, resultSet::moveToInsertRow);
+        }
+    }
+
+    @Test
+    void resultSetUnsupportedUpdateMethodsMatchPgjdbc() throws Exception {
+        try (var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("SELECT 1 AS value")) {
+            assertTrue(resultSet.next());
+
+            assertPgjdbcResultSetNotImplemented("updateRef(int,Ref)", () -> resultSet.updateRef(1, null));
+            assertPgjdbcResultSetNotImplemented("updateRef(String,Ref)", () -> resultSet.updateRef("value", null));
+            assertPgjdbcResultSetNotImplemented("updateBlob(int,Blob)", () -> resultSet.updateBlob(1, (java.sql.Blob) null));
+            assertPgjdbcResultSetNotImplemented("updateBlob(String,Blob)", () -> resultSet.updateBlob("value", (java.sql.Blob) null));
+            assertPgjdbcResultSetNotImplemented("updateClob(int,Clob)", () -> resultSet.updateClob(1, (java.sql.Clob) null));
+            assertPgjdbcResultSetNotImplemented("updateClob(String,Clob)", () -> resultSet.updateClob("value", (java.sql.Clob) null));
+            assertPgjdbcResultSetNotImplemented("updateObject", () -> resultSet.updateObject(1, "x", java.sql.JDBCType.VARCHAR));
+            assertPgjdbcResultSetNotImplemented("updateObject", () -> resultSet.updateObject("value", "x", java.sql.JDBCType.VARCHAR, 1));
+            assertPgjdbcResultSetNotImplemented("updateRowId(int, RowId)", () -> resultSet.updateRowId(1, null));
+            assertPgjdbcResultSetNotImplemented("updateRowId(int, RowId)", () -> resultSet.updateRowId("value", null));
+            assertPgjdbcResultSetNotImplemented("updateNString(int, String)", () -> resultSet.updateNString(1, "x"));
+            assertPgjdbcResultSetNotImplemented("updateNString(int, String)", () -> resultSet.updateNString("value", "x"));
+            assertPgjdbcResultSetNotImplemented("updateNClob(int, NClob)", () -> resultSet.updateNClob(1, (java.sql.NClob) null));
+            assertPgjdbcResultSetNotImplemented("updateNClob(int, NClob)", () -> resultSet.updateNClob("value", (java.sql.NClob) null));
+            assertPgjdbcResultSetNotImplemented("updateNClob(int, Reader)", () -> resultSet.updateNClob(1, new StringReader("x")));
+            assertPgjdbcResultSetNotImplemented("updateNClob(int, Reader)", () -> resultSet.updateNClob("value", new StringReader("x")));
+            assertPgjdbcResultSetNotImplemented("updateNClob(int, Reader, long)", () -> resultSet.updateNClob(1, new StringReader("x"), 1L));
+            assertPgjdbcResultSetNotImplemented("updateNClob(int, Reader, long)", () -> resultSet.updateNClob("value", new StringReader("x"), 1L));
+            assertPgjdbcResultSetNotImplemented("updateBlob(int, InputStream)", () -> resultSet.updateBlob(1, new ByteArrayInputStream(new byte[] { 1 })));
+            assertPgjdbcResultSetNotImplemented("updateBlob(int, InputStream)", () -> resultSet.updateBlob("value", new ByteArrayInputStream(new byte[] { 1 })));
+            assertPgjdbcResultSetNotImplemented("updateBlob(int, InputStream, long)", () -> resultSet.updateBlob(1, new ByteArrayInputStream(new byte[] { 1 }), 1L));
+            assertPgjdbcResultSetNotImplemented("updateBlob(int, InputStream, long)", () -> resultSet.updateBlob("value", new ByteArrayInputStream(new byte[] { 1 }), 1L));
+            assertPgjdbcResultSetNotImplemented("updateClob(int, Reader)", () -> resultSet.updateClob(1, new StringReader("x")));
+            assertPgjdbcResultSetNotImplemented("updateClob(int, Reader)", () -> resultSet.updateClob("value", new StringReader("x")));
+            assertPgjdbcResultSetNotImplemented("updateClob(int, Reader, long)", () -> resultSet.updateClob(1, new StringReader("x"), 1L));
+            assertPgjdbcResultSetNotImplemented("updateClob(int, Reader, long)", () -> resultSet.updateClob("value", new StringReader("x"), 1L));
         }
     }
 

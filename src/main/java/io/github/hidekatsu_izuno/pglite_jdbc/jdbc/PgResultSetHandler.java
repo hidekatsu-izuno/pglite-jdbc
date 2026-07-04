@@ -238,6 +238,12 @@ final class PgResultSetHandler implements InvocationHandler {
                 default -> null;
             };
         }
+        if (name.startsWith("update")) {
+            var notImplemented = pgjdbcUpdateNotImplemented(method);
+            if (notImplemented != null) {
+                throw pgjdbcNotImplemented(notImplemented);
+            }
+        }
 
         return switch (name) {
             case "next" -> {
@@ -499,6 +505,60 @@ final class PgResultSetHandler implements InvocationHandler {
             "Method org.postgresql.jdbc.PgResultSet." + methodName + " is not yet implemented.",
             PSQLState.NOT_IMPLEMENTED.getState()
         );
+    }
+
+    private String pgjdbcUpdateNotImplemented(Method method) {
+        var name = method.getName();
+        var types = method.getParameterTypes();
+        return switch (name) {
+            case "updateRef" -> types[0] == int.class ? "updateRef(int,Ref)" : "updateRef(String,Ref)";
+            case "updateRowId" -> "updateRowId(int, RowId)";
+            case "updateNString" -> "updateNString(int, String)";
+            case "updateObject" -> usesSqlType(types) ? "updateObject" : null;
+            case "updateBlob" -> updateBlobNotImplemented(types);
+            case "updateClob" -> updateClobNotImplemented(types);
+            case "updateNClob" -> updateNClobNotImplemented(types);
+            default -> null;
+        };
+    }
+
+    private boolean usesSqlType(Class<?>[] types) {
+        for (var type : types) {
+            if (type == java.sql.SQLType.class) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String updateBlobNotImplemented(Class<?>[] types) {
+        if (types[1] == java.sql.Blob.class) {
+            return types[0] == int.class ? "updateBlob(int,Blob)" : "updateBlob(String,Blob)";
+        }
+        if (types.length >= 3) {
+            return "updateBlob(int, InputStream, long)";
+        }
+        return "updateBlob(int, InputStream)";
+    }
+
+    private String updateClobNotImplemented(Class<?>[] types) {
+        if (types[1] == java.sql.Clob.class) {
+            return types[0] == int.class ? "updateClob(int,Clob)" : "updateClob(String,Clob)";
+        }
+        if (types.length >= 3) {
+            return "updateClob(int, Reader, long)";
+        }
+        return "updateClob(int, Reader)";
+    }
+
+    private String updateNClobNotImplemented(Class<?>[] types) {
+        if (types[1] == java.sql.NClob.class) {
+            return "updateNClob(int, NClob)";
+        }
+        if (types.length >= 3) {
+            return "updateNClob(int, Reader, long)";
+        }
+        return "updateNClob(int, Reader)";
     }
 
     private void ensureNotClosed() throws SQLException {
