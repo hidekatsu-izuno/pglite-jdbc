@@ -350,6 +350,26 @@ class PgjdbcInspiredConnectionTest {
         }
     }
 
+    @Test
+    void requestAndShardingDefaultsMatchPgjdbc() throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
+            connection.beginRequest();
+            connection.endRequest();
+
+            var setIfValidError = assertThrows(
+                SQLFeatureNotSupportedException.class,
+                () -> connection.setShardingKeyIfValid(null, 1)
+            );
+            assertEquals("setShardingKeyIfValid not implemented", setIfValidError.getMessage());
+
+            var setError = assertThrows(
+                SQLFeatureNotSupportedException.class,
+                () -> connection.setShardingKey(null)
+            );
+            assertEquals("setShardingKey not implemented", setError.getMessage());
+        }
+    }
+
     private void assertPgjdbcConnectionNotImplemented(String method, ThrowingSqlCall call) {
         var error = assertThrows(java.sql.SQLFeatureNotSupportedException.class, call::run);
         assertEquals(

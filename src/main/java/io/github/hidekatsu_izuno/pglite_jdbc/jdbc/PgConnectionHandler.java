@@ -433,6 +433,12 @@ public final class PgConnectionHandler implements InvocationHandler {
                 yield null;
             }
             case "getNetworkTimeout" -> networkTimeout;
+            case "setShardingKeyIfValid" -> throw new SQLFeatureNotSupportedException(
+                "setShardingKeyIfValid not implemented"
+            );
+            case "setShardingKey" -> throw new SQLFeatureNotSupportedException(
+                "setShardingKey not implemented"
+            );
             case "getNotifications", "getNotifications" + "\u0000" -> EMPTY_NOTIFICATIONS;
             case "getParameterStatuses" -> Collections.unmodifiableMap(parameterStatuses);
             case "getParameterStatus" -> parameterStatuses.get((String) args[0]);
