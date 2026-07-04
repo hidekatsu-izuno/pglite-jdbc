@@ -25,6 +25,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.Timer;
+import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
@@ -74,7 +75,7 @@ public final class PgConnectionHandler implements InvocationHandler {
     private org.postgresql.fastpath.Fastpath fastpathApi;
     private org.postgresql.largeobject.LargeObjectManager largeObjectApi;
     private final Properties clientInfo = new Properties();
-    private final Map<String, String> parameterStatuses = new HashMap<>();
+    private final Map<String, String> parameterStatuses = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
     private Set<Integer> binaryReceiveOids = new HashSet<>();
     private Set<Integer> binarySendOids = new HashSet<>();
     private final Map<String, Class<? extends org.postgresql.util.PGobject>> dataTypeObjects =

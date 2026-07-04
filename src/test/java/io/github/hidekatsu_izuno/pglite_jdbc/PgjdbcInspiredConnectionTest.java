@@ -41,13 +41,17 @@ class PgjdbcInspiredConnectionTest {
         assertTrue(connection.isValid(0));
         assertThrows(SQLException.class, () -> connection.isValid(-1));
         assertEquals("initial-app", connection.getClientInfo("ApplicationName"));
-        assertEquals("initial-app", connection.unwrap(org.postgresql.PGConnection.class)
-            .getParameterStatus("application_name"));
+        var pgConnection = connection.unwrap(org.postgresql.PGConnection.class);
+        assertEquals("initial-app", pgConnection.getParameterStatus("application_name"));
+        assertEquals("initial-app", pgConnection.getParameterStatus("Application_Name"));
+        assertThrows(
+            UnsupportedOperationException.class,
+            () -> pgConnection.getParameterStatuses().put("extra", "value")
+        );
 
         connection.setClientInfo("ApplicationName", "updated-app");
         assertEquals("updated-app", connection.getClientInfo().getProperty("ApplicationName"));
-        assertEquals("updated-app", connection.unwrap(org.postgresql.PGConnection.class)
-            .getParameterStatus("application_name"));
+        assertEquals("updated-app", pgConnection.getParameterStatus("application_name"));
 
         connection.clearWarnings();
         connection.setClientInfo("unsupported", "ignored");
