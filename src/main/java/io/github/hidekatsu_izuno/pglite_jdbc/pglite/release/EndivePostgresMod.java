@@ -12,6 +12,7 @@ import run.endive.runtime.TagInstance;
 import run.endive.wasi.WasiOptions;
 import run.endive.wasi.WasiPreview1;
 import run.endive.wasm.Parser;
+import run.endive.wasm.WasmModule;
 import run.endive.wasm.types.FunctionImport;
 import run.endive.wasm.types.FunctionType;
 import run.endive.wasm.types.TagImport;
@@ -31,6 +32,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
     private static final int DEFAULT_INITIAL_PAGES = 2048;
@@ -40,6 +42,7 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
     private static final boolean TRACE_WASI_CALLS = Boolean.getBoolean("pglite.trace_wasi_calls");
     private static final boolean TRACE_ENV_CALLS = Boolean.getBoolean("pglite.trace_env_calls");
     private static final boolean TRACE_EXEC = Boolean.getBoolean("pglite.trace_exec");
+    private static final Map<String, WasmModule> MODULE_CACHE = new ConcurrentHashMap<>();
 
     private final postgresMod.PartialPostgresMod overrides;
     private final URL moduleUrl;
@@ -241,11 +244,7 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
     }
 
     private void instantiate() throws Exception {
-        var wasmBytes = overrides.wasmModule != null
-            ? overrides.wasmModule
-            : moduleUrl.openStream().readAllBytes();
-        var module = Parser.parse(wasmBytes);
-        growCallbackTables(module);
+        var module = loadModule();
         var functions = new ArrayList<ImportFunction>();
         var wasiFunctions = new HashMap<String, ImportFunction>();
         for (var fn : wasi.toHostFunctions()) {
@@ -326,6 +325,24 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
         this.memory = this.instance.memory();
         callIfExists("__wasm_init_memory");
         callIfExists("__wasm_call_ctors");
+    }
+
+    private WasmModule loadModule() throws Exception {
+        if (overrides.wasmModule != null) {
+            var module = Parser.parse(overrides.wasmModule);
+            growCallbackTables(module);
+            return module;
+        }
+        var cacheKey = moduleUrl.toString();
+        return MODULE_CACHE.computeIfAbsent(cacheKey, ignored -> {
+            try {
+                var module = Parser.parse(moduleUrl.openStream().readAllBytes());
+                growCallbackTables(module);
+                return module;
+            } catch (Exception e) {
+                throw new ModuleLoadException(e);
+            }
+        });
     }
 
     private boolean tracedWasiCall(String name) {
@@ -975,6 +992,12 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
 
         private ExitStatus(int status) {
             this.status = status;
+        }
+    }
+
+    private static final class ModuleLoadException extends RuntimeException {
+        private ModuleLoadException(Throwable cause) {
+            super(cause);
         }
     }
 
