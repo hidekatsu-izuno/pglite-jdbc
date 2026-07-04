@@ -1178,6 +1178,20 @@ public final class PgConnectionHandler implements InvocationHandler {
         );
     }
 
+    private org.postgresql.copy.CopyOperation startCopy(String sql) throws SQLException {
+        var normalized = sql.toUpperCase(java.util.Locale.ROOT);
+        if (normalized.contains(" FROM STDIN")) {
+            return new PgCopyManagerAdapter.CopyInOp(this, sql);
+        }
+        if (normalized.contains(" TO STDOUT")) {
+            return new PgCopyManagerAdapter.CopyOutOp(this, sql);
+        }
+        throw new SQLFeatureNotSupportedException(
+            "COPY operation is not supported: " + sql,
+            PSQLState.NOT_IMPLEMENTED.getState()
+        );
+    }
+
     private org.postgresql.core.Query wrapNativeQueries(List<org.postgresql.core.NativeQuery> nativeQueries) {
         var queries = nativeQueries.stream()
             .map(this::wrapNativeQuery)
@@ -1320,6 +1334,7 @@ public final class PgConnectionHandler implements InvocationHandler {
                         true,
                         (String[]) args[1]
                     );
+                    case "startCopy" -> startCopy((String) args[0]);
                     case "wrap" -> wrapNativeQueries((List<org.postgresql.core.NativeQuery>) args[0]);
                     case "getProtocolVersion" -> org.postgresql.core.ProtocolVersion.v3_0;
                     case "isReWriteBatchedInsertsEnabled" -> false;

@@ -522,6 +522,36 @@ class OrgPostgresqlCompatibilityTest {
     }
 
     @Test
+    void shouldCopyViaDirectOrgPostgresqlCopyManager() throws Exception {
+        assertTimeout(Duration.ofSeconds(180), () -> {
+            try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
+                var baseConnection = connection.unwrap(org.postgresql.core.BaseConnection.class);
+                var copyManager = new org.postgresql.copy.CopyManager(baseConnection);
+                try (var statement = connection.createStatement()) {
+                    statement.execute("CREATE TABLE IF NOT EXISTS pg_direct_copy_test(id int, name text)");
+                    statement.execute("DELETE FROM pg_direct_copy_test");
+                }
+
+                var csv = "1,alice\n2,bob\n";
+                var copied = copyManager.copyIn(
+                    "COPY pg_direct_copy_test(id,name) FROM STDIN WITH (FORMAT csv)",
+                    new ByteArrayInputStream(csv.getBytes(StandardCharsets.UTF_8))
+                );
+                assertTrue(copied >= 0);
+
+                var out = new ByteArrayOutputStream();
+                copyManager.copyOut(
+                    "COPY (SELECT id, name FROM pg_direct_copy_test ORDER BY id) TO STDOUT WITH (FORMAT csv)",
+                    out
+                );
+                var dumped = out.toString(StandardCharsets.UTF_8);
+                assertTrue(dumped.contains("1,alice"));
+                assertTrue(dumped.contains("2,bob"));
+            }
+        });
+    }
+
+    @Test
     void shouldSupportLargeObjectViaOrgPostgresqlApi() throws Exception {
         assertTimeout(Duration.ofSeconds(180), () -> {
             try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {

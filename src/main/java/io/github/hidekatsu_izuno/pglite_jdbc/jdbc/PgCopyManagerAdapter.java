@@ -112,14 +112,14 @@ final class PgCopyManagerAdapter extends org.postgresql.copy.CopyManager {
         return op.endCopy();
     }
 
-    private static final class CopyInOp implements CopyIn {
+    static final class CopyInOp implements CopyIn {
         private final PgConnectionHandler connection;
         private final String sql;
         private final List<byte[]> bufferedChunks = new ArrayList<>();
         private boolean active = true;
         private long handledRowCount = -1L;
 
-        private CopyInOp(PgConnectionHandler connection, String sql) throws SQLException {
+        CopyInOp(PgConnectionHandler connection, String sql) throws SQLException {
             this.connection = connection;
             this.sql = sql;
         }
@@ -219,12 +219,12 @@ final class PgCopyManagerAdapter extends org.postgresql.copy.CopyManager {
         }
     }
 
-    private static final class CopyOutOp implements CopyOut {
+    static final class CopyOutOp implements CopyOut {
         private final ArrayDeque<byte[]> chunks = new ArrayDeque<>();
         private final long handledRowCount;
         private boolean active = true;
 
-        private CopyOutOp(PgConnectionHandler connection, String sql) throws SQLException {
+        CopyOutOp(PgConnectionHandler connection, String sql) throws SQLException {
             var stage = executeStage(
                 connection,
                 "copyOut.begin",
