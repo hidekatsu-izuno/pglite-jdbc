@@ -12,7 +12,6 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.StringReader;
 import java.math.BigDecimal;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.sql.DriverManager;
@@ -239,8 +238,8 @@ class OrgPostgresqlCompatibilityTest {
                  var statement = connection.prepareStatement(
                      "SELECT ?::text AS link, ?::text AS label, ?::numeric AS amount"
                  )) {
-                statement.setURL(1, new URL("https://example.test/path?q=1"));
-                statement.setNString(2, "unicode label");
+                statement.setString(1, "https://example.test/path?q=1");
+                statement.setString(2, "unicode label");
                 statement.setBigDecimal(3, new BigDecimal("12.345"));
                 try (var resultSet = statement.executeQuery()) {
                     assertTrue(resultSet.next());

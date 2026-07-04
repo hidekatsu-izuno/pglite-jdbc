@@ -331,8 +331,22 @@ final class PgStatementHandler implements InvocationHandler {
     }
 
     private Object setParameter(Method method, Integer index, Object[] args) throws SQLException {
-        validateParameterIndex(index);
         var methodName = method.getName();
+        switch (methodName) {
+            case "setRef" -> throw pgjdbcPreparedNotImplemented("setRef(int,Ref)");
+            case "setRowId" -> throw pgjdbcPreparedNotImplemented("setRowId(int, RowId)");
+            case "setNString" -> throw pgjdbcPreparedNotImplemented("setNString(int, String)");
+            case "setNCharacterStream" -> throw pgjdbcPreparedNotImplemented(
+                args.length >= 3
+                    ? "setNCharacterStream(int, Reader, long)"
+                    : "setNCharacterStream(int, Reader)"
+            );
+            case "setNClob" -> throw pgjdbcPreparedNotImplemented(preparedNClobSignature(method));
+            case "setURL" -> throw pgjdbcPreparedNotImplemented("setURL(int,URL)");
+            default -> {
+            }
+        }
+        validateParameterIndex(index);
         var value = switch (methodName) {
             case "setNull" -> null;
             case "setArray" -> {
@@ -1094,6 +1108,24 @@ final class PgStatementHandler implements InvocationHandler {
             "Method org.postgresql.jdbc.PgStatement." + methodName + " is not yet implemented.",
             PSQLState.NOT_IMPLEMENTED.getState()
         );
+    }
+
+    private SQLFeatureNotSupportedException pgjdbcPreparedNotImplemented(String methodName) {
+        return new SQLFeatureNotSupportedException(
+            "Method org.postgresql.jdbc.PgPreparedStatement." + methodName + " is not yet implemented.",
+            PSQLState.NOT_IMPLEMENTED.getState()
+        );
+    }
+
+    private String preparedNClobSignature(Method method) {
+        var parameterTypes = method.getParameterTypes();
+        if (parameterTypes.length >= 3) {
+            return "setNClob(int, Reader, long)";
+        }
+        if (parameterTypes[1] == java.sql.NClob.class) {
+            return "setNClob(int, NClob)";
+        }
+        return "setNClob(int, Reader)";
     }
 
     private ResultSet executeQuery(String sql) throws SQLException {

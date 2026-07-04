@@ -12,6 +12,7 @@ import java.io.File;
 import java.io.StringReader;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -872,6 +873,56 @@ class PgjdbcInspiredPreparedStatementTest {
                 assertFalse(resultSet.next());
             }
         }
+    }
+
+    @Test
+    void preparedStatementUnsupportedSettersMatchPgjdbc() throws Exception {
+        try (var prepared = connection.prepareStatement("SELECT ?::text")) {
+            assertPgjdbcPreparedNotImplemented("setRef(int,Ref)", () -> prepared.setRef(1, null));
+            assertPgjdbcPreparedNotImplemented(
+                "setRowId(int, RowId)",
+                () -> prepared.setRowId(1, (java.sql.RowId) null)
+            );
+            assertPgjdbcPreparedNotImplemented("setNString(int, String)", () -> prepared.setNString(1, "value"));
+            assertPgjdbcPreparedNotImplemented(
+                "setNCharacterStream(int, Reader, long)",
+                () -> prepared.setNCharacterStream(1, new StringReader("value"), 5L)
+            );
+            assertPgjdbcPreparedNotImplemented(
+                "setNCharacterStream(int, Reader)",
+                () -> prepared.setNCharacterStream(1, new StringReader("value"))
+            );
+            assertPgjdbcPreparedNotImplemented(
+                "setNClob(int, NClob)",
+                () -> prepared.setNClob(1, (java.sql.NClob) null)
+            );
+            assertPgjdbcPreparedNotImplemented(
+                "setNClob(int, Reader, long)",
+                () -> prepared.setNClob(1, new StringReader("value"), 5L)
+            );
+            assertPgjdbcPreparedNotImplemented(
+                "setNClob(int, Reader)",
+                () -> prepared.setNClob(1, new StringReader("value"))
+            );
+            assertPgjdbcPreparedNotImplemented(
+                "setURL(int,URL)",
+                () -> prepared.setURL(1, new URL("https://example.test/"))
+            );
+        }
+    }
+
+    private void assertPgjdbcPreparedNotImplemented(String method, ThrowingSqlCall call) {
+        var error = assertThrows(java.sql.SQLFeatureNotSupportedException.class, call::run);
+        assertEquals(
+            "Method org.postgresql.jdbc.PgPreparedStatement." + method + " is not yet implemented.",
+            error.getMessage()
+        );
+        assertEquals(org.postgresql.util.PSQLState.NOT_IMPLEMENTED.getState(), error.getSQLState());
+    }
+
+    @FunctionalInterface
+    private interface ThrowingSqlCall {
+        void run() throws Exception;
     }
 
     private void assertPreparedSqlTextError(SQLException error) {
