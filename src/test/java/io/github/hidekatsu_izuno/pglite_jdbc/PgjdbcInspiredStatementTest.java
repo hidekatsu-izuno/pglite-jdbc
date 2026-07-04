@@ -465,11 +465,11 @@ class PgjdbcInspiredStatementTest {
 
             pgStatement.setPrepareThreshold(-1);
             assertEquals(1, pgStatement.getPrepareThreshold());
-            assertFalse(pgStatement.isUseServerPrepare());
+            assertTrue(pgStatement.isUseServerPrepare());
 
             pgStatement.setUseServerPrepare(true);
             assertEquals(1, pgStatement.getPrepareThreshold());
-            assertFalse(pgStatement.isUseServerPrepare());
+            assertTrue(pgStatement.isUseServerPrepare());
 
             pgStatement.setUseServerPrepare(false);
             assertEquals(0, pgStatement.getPrepareThreshold());

@@ -412,7 +412,7 @@ final class PgStatementHandler implements InvocationHandler {
                 prepareThreshold = Boolean.TRUE.equals(args[0]) ? 1 : 0;
                 yield null;
             }
-            case "isUseServerPrepare" -> false;
+            case "isUseServerPrepare" -> prepareThreshold > 0;
             case "setAdaptiveFetch" -> {
                 adaptiveFetch = (Boolean) args[0];
                 yield null;
