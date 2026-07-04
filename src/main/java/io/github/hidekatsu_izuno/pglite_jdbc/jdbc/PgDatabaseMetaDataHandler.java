@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.postgresql.core.Utils;
 import org.postgresql.util.PSQLState;
 
 final class PgDatabaseMetaDataHandler implements InvocationHandler {
@@ -1212,7 +1213,7 @@ final class PgDatabaseMetaDataHandler implements InvocationHandler {
         return DatabaseMetaData.importedKeyInitiallyImmediate;
     }
 
-    private String likeCondition(String expression, String pattern) {
+    private String likeCondition(String expression, String pattern) throws SQLException {
         if (pattern == null) {
             return "";
         }
@@ -1222,12 +1223,12 @@ final class PgDatabaseMetaDataHandler implements InvocationHandler {
         return "AND " + expression + " LIKE " + literal(pattern) + " ESCAPE '\\'";
     }
 
-    private String equalsCondition(String expression, String value) {
+    private String equalsCondition(String expression, String value) throws SQLException {
         return value == null ? "" : "AND " + expression + " = " + literal(value);
     }
 
-    private String literal(String value) {
-        return "'" + value.replace("'", "''") + "'";
+    private String literal(String value) throws SQLException {
+        return "'" + Utils.escapeLiteral(null, value, true) + "'";
     }
 
     private boolean hasDanglingSearchEscape(String value) {

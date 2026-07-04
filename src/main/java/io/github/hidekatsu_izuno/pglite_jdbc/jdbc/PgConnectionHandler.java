@@ -780,8 +780,8 @@ public final class PgConnectionHandler implements InvocationHandler {
         execControl("SET search_path TO " + quoteIdentifier(schema));
     }
 
-    private String quoteIdentifier(String identifier) {
-        return '"' + identifier.replace("\"", "\"\"") + '"';
+    private String quoteIdentifier(String identifier) throws SQLException {
+        return Utils.escapeIdentifier(null, identifier).toString();
     }
 
     private String normalizeTypeName(String typeName) {

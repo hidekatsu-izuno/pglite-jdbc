@@ -1002,6 +1002,10 @@ class PgjdbcInspiredDatabaseMetaDataTest {
         try (var tables = metadata.getTables(null, null, "a\\", new String[] { "TABLE" })) {
             assertFalse(tables.next());
         }
+        assertThrows(
+            java.sql.SQLException.class,
+            () -> metadata.getTables(null, null, "bad\0table", new String[] { "TABLE" })
+        );
     }
 
     @Test

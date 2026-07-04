@@ -209,6 +209,28 @@ class PgjdbcInspiredStatementTest {
                 assertThrows(SQLException.class, () -> keys.findColumn("body"));
                 assertFalse(keys.next());
             }
+
+            statement.execute("CREATE TEMP TABLE pgjdbc_statement_quoted_keys(\"weird\"\"id\" serial primary key, body text)");
+            assertEquals(
+                1,
+                statement.executeUpdate(
+                    "INSERT INTO pgjdbc_statement_quoted_keys(body) VALUES ('quoted')",
+                    new String[] { "weird\"id" }
+                )
+            );
+            try (var keys = statement.getGeneratedKeys()) {
+                assertTrue(keys.next());
+                assertEquals(1, keys.getInt("weird\"id"));
+                assertFalse(keys.next());
+            }
+
+            assertThrows(
+                SQLException.class,
+                () -> statement.executeUpdate(
+                    "INSERT INTO pgjdbc_statement_keys(body) VALUES ('bad')",
+                    new String[] { "bad\0column" }
+                )
+            );
         }
     }
 

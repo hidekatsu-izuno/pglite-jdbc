@@ -23,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import org.postgresql.core.Utils;
 import org.postgresql.util.PSQLException;
 import org.postgresql.util.PSQLState;
 
@@ -714,17 +715,21 @@ final class PgStatementHandler implements InvocationHandler {
     }
 
     private String preparedStatementToString() {
-        if (preparedBatch.isEmpty()) {
-            return renderPreparedSql(parameters);
-        }
-        var out = new StringBuilder();
-        for (var i = 0; i < preparedBatch.size(); i++) {
-            if (i > 0) {
-                out.append(";\n");
+        try {
+            if (preparedBatch.isEmpty()) {
+                return renderPreparedSql(parameters);
             }
-            out.append(renderPreparedSql(preparedBatchParameters(preparedBatch.get(i))));
+            var out = new StringBuilder();
+            for (var i = 0; i < preparedBatch.size(); i++) {
+                if (i > 0) {
+                    out.append(";\n");
+                }
+                out.append(renderPreparedSql(preparedBatchParameters(preparedBatch.get(i))));
+            }
+            return out.toString();
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
         }
-        return out.toString();
     }
 
     private Map<Integer, Object> preparedBatchParameters(Object[] values) {
@@ -735,7 +740,7 @@ final class PgStatementHandler implements InvocationHandler {
         return out;
     }
 
-    private String renderPreparedSql(Map<Integer, Object> values) {
+    private String renderPreparedSql(Map<Integer, Object> values) throws SQLException {
         var out = new StringBuilder(preparedSql.length() + 32);
         var parameterIndex = 0;
         var inSingleQuote = false;
@@ -957,7 +962,7 @@ final class PgStatementHandler implements InvocationHandler {
         return false;
     }
 
-    private String renderParameter(Map<Integer, Object> values, int index) {
+    private String renderParameter(Map<Integer, Object> values, int index) throws SQLException {
         if (!values.containsKey(index)) {
             return "?";
         }
@@ -977,20 +982,24 @@ final class PgStatementHandler implements InvocationHandler {
         if (value instanceof Number || value instanceof Boolean) {
             return String.valueOf(value);
         }
-        return "('" + String.valueOf(value).replace("'", "''") + "')";
+        return "('" + literalValue(String.valueOf(value)) + "')";
     }
 
-    private String renderPgObjectParameter(org.postgresql.util.PGobject object) {
+    private String renderPgObjectParameter(org.postgresql.util.PGobject object) throws SQLException {
         var value = object.getValue();
         if ("bytea".equalsIgnoreCase(object.getType()) && value != null) {
             if (value.startsWith("\\x")) {
-                return "'" + value.replace("'", "''") + "'::bytea";
+                return "'" + literalValue(value) + "'::bytea";
             }
-            return "('" + value.replace("'", "''") + "'::bytea)";
+            return "('" + literalValue(value) + "'::bytea)";
         }
         return value == null
             ? "NULL"
-            : "('" + value.replace("'", "''") + "')";
+            : "('" + literalValue(value) + "')";
+    }
+
+    private String literalValue(String value) throws SQLException {
+        return Utils.escapeLiteral(null, value, true).toString();
     }
 
     private String hex(byte[] bytes) {
@@ -1023,7 +1032,7 @@ final class PgStatementHandler implements InvocationHandler {
         return null;
     }
 
-    private String withGeneratedKeys(String sql, String[] columns) {
+    private String withGeneratedKeys(String sql, String[] columns) throws SQLException {
         if (columns == null || !sql.stripLeading().regionMatches(true, 0, "insert", 0, 6)) {
             return sql;
         }
@@ -1033,14 +1042,20 @@ final class PgStatementHandler implements InvocationHandler {
         var trimmed = sql.stripTrailing();
         var suffix = " RETURNING *";
         if (columns.length > 0) {
-            suffix = " RETURNING " + String.join(", ", Arrays.stream(columns)
-                .map(column -> '"' + column.replace("\"", "\"\"") + '"')
-                .toList());
+            var quoted = new ArrayList<String>(columns.length);
+            for (var column : columns) {
+                quoted.add(quoteIdentifier(column));
+            }
+            suffix = " RETURNING " + String.join(", ", quoted);
         }
         if (trimmed.endsWith(";")) {
             return trimmed.substring(0, trimmed.length() - 1) + suffix;
         }
         return trimmed + suffix;
+    }
+
+    private String quoteIdentifier(String identifier) throws SQLException {
+        return Utils.escapeIdentifier(null, identifier).toString();
     }
 
     private void setGeneratedKeys(interface_.Results<Map<String, Object>> result) throws SQLException {

@@ -136,6 +136,7 @@ class PgjdbcInspiredConnectionTest {
             assertThrows(SQLException.class, () -> pgConnection.escapeIdentifier("bad\0identifier"));
             assertThrows(SQLException.class, () -> pgConnection.escapeLiteral("bad\0literal"));
             assertThrows(SQLException.class, () -> baseConnection.escapeString("bad\0string"));
+            assertThrows(SQLException.class, () -> connection.setSchema("bad\0schema"));
         }
     }
 
