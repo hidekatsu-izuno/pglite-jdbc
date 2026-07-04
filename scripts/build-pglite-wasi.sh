@@ -13,7 +13,8 @@ REPO_ROOT=$(cd "$ROOT_DIR/.." && pwd)
 BIN_DIR="$REPO_ROOT/.bin"
 TMP_DIR="$BIN_DIR/tmp"
 WASI_SDK_PATH=${WASI_SDK_PATH:-}
-WASM_OPT=${WASM_OPT:-}
+PGLITE_WASI_SJLJ_FLAGS=${PGLITE_WASI_SJLJ_FLAGS:-"-mllvm -wasm-enable-sjlj -mllvm -wasm-use-legacy-eh=false"}
+PGLITE_WASI_LINK_FLAGS=${PGLITE_WASI_LINK_FLAGS:-"--no-wasm-opt"}
 PGLITE_WASI_ICU_PREFIX=${PGLITE_WASI_ICU_PREFIX:-"$ROOT_DIR/../.bin/wasi-icu"}
 PGLITE_WASI_LIBXML2_PREFIX=${PGLITE_WASI_LIBXML2_PREFIX:-"$ROOT_DIR/../.bin/wasi-libxml2"}
 PGLITE_WASI_PROJ_PREFIX=${PGLITE_WASI_PROJ_PREFIX:-"$ROOT_DIR/../.bin/wasi-proj"}
@@ -103,11 +104,12 @@ ensure_autotools() {
 ensure_autotools
 
 export CC CXX AR RANLIB
-export CFLAGS="${CFLAGS:-} -D__PGLITE__ -D_WASI_EMULATED_GETPID -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_MMAN -Dpoll=pgl_poll -mllvm -wasm-enable-sjlj"
-export LDFLAGS="${LDFLAGS:-} -mllvm -wasm-enable-sjlj"
+export CFLAGS="${CFLAGS:-} -D__PGLITE__ -D_WASI_EMULATED_GETPID -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_MMAN -Dpoll=pgl_poll $PGLITE_WASI_SJLJ_FLAGS"
+export LDFLAGS="${LDFLAGS:-} $PGLITE_WASI_SJLJ_FLAGS $PGLITE_WASI_LINK_FLAGS"
 export LIBS="${LIBS:-} -lsetjmp -lwasi-emulated-getpid -lwasi-emulated-signal -lwasi-emulated-process-clocks -lwasi-emulated-mman"
-export PGLITE_CFLAGS="${PGLITE_CFLAGS:-} -D__PGLITE__ -D_WASI_EMULATED_GETPID -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_MMAN -mllvm -wasm-enable-sjlj"
+export PGLITE_CFLAGS="${PGLITE_CFLAGS:-} -D__PGLITE__ -D_WASI_EMULATED_GETPID -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_MMAN $PGLITE_WASI_SJLJ_FLAGS"
 export POSTGRES_PGLITE_WASI_FLAGS="${POSTGRES_PGLITE_WASI_FLAGS:-} \
+$PGLITE_WASI_LINK_FLAGS \
 -mexec-model=reactor \
 -Wl,--export=malloc \
 -Wl,--export=free \
@@ -1189,7 +1191,7 @@ __cxa_thread_atexit(void (*dtor)(void *), void *obj, void *dso_symbol)
 	return 0;
 }
 EOF
-  "$CXX" -D__PGLITE__ -D_WASI_EMULATED_GETPID -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_MMAN -mllvm -wasm-enable-sjlj -I"$ROOT_DIR/src/include" -I"$ROOT_DIR/dist/include" -I"$PGLITE_WASI_ICU_PREFIX/include" -fno-exceptions -o "$cxx_exception_stubs_o" -c "$cxx_exception_stubs_c"
+  "$CXX" -D__PGLITE__ -D_WASI_EMULATED_GETPID -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_MMAN $PGLITE_WASI_SJLJ_FLAGS -I"$ROOT_DIR/src/include" -I"$ROOT_DIR/dist/include" -I"$PGLITE_WASI_ICU_PREFIX/include" -fno-exceptions -o "$cxx_exception_stubs_o" -c "$cxx_exception_stubs_c"
 
   for obj in "$postgis_build"/postgis/*.o "$postgis_build"/deps/flatgeobuf/*.o; do
     [[ -e "$obj" ]] || continue

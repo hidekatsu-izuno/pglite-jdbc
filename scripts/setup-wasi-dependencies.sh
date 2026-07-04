@@ -6,6 +6,8 @@ repo_root=$(cd "$script_dir/.." && pwd)
 bin_dir="$repo_root/.bin"
 tmp_dir="$bin_dir/tmp"
 jobs=${PGLITE_WASI_JOBS:-2}
+PGLITE_WASI_SJLJ_FLAGS=${PGLITE_WASI_SJLJ_FLAGS:-"-mllvm -wasm-enable-sjlj -mllvm -wasm-use-legacy-eh=false"}
+wasm_flags_marker=".pglite-wasi-exnref-sjlj"
 
 exec 3>&1
 exec 1>&2
@@ -27,6 +29,14 @@ download() {
   if [[ ! -f "$output" ]]; then
     curl -L "$url" -o "$output"
   fi
+}
+
+has_wasm_flags_marker() {
+  [[ -f "$1/$wasm_flags_marker" ]]
+}
+
+write_wasm_flags_marker() {
+  printf '%s\n' "$PGLITE_WASI_SJLJ_FLAGS" > "$1/$wasm_flags_marker"
 }
 
 ensure_wasi_sdk() {
@@ -54,7 +64,9 @@ ensure_libxml2() {
   local install_dir=${PGLITE_WASI_LIBXML2_PREFIX:-"$bin_dir/wasi-libxml2"}
   local src_dir="$tmp_dir/libxml2-${version}"
 
-  if [[ -f "$install_dir/lib/libxml2.a" && -f "$install_dir/include/libxml2/libxml/parser.h" ]]; then
+  if [[ -f "$install_dir/lib/libxml2.a" &&
+        -f "$install_dir/include/libxml2/libxml/parser.h" ]] &&
+     has_wasm_flags_marker "$install_dir"; then
     export PGLITE_WASI_LIBXML2_PREFIX="$install_dir"
     return
   fi
@@ -67,6 +79,7 @@ ensure_libxml2() {
     CC="$WASI_SDK_PATH/bin/clang" \
     AR="$WASI_SDK_PATH/bin/llvm-ar" \
     RANLIB="$WASI_SDK_PATH/bin/llvm-ranlib" \
+    CFLAGS="-O2 $PGLITE_WASI_SJLJ_FLAGS" \
     ./configure \
       --host=wasm32-wasi \
       --prefix="$install_dir" \
@@ -84,6 +97,7 @@ ensure_libxml2() {
     make -j "$jobs"
     make install
   )
+  write_wasm_flags_marker "$install_dir"
   export PGLITE_WASI_LIBXML2_PREFIX="$install_dir"
 }
 
@@ -93,7 +107,9 @@ ensure_sqlite() {
   local install_dir=${PGLITE_WASI_SQLITE_PREFIX:-"$bin_dir/wasi-sqlite"}
   local src_dir="$tmp_dir/sqlite-autoconf-${version}"
 
-  if [[ -f "$install_dir/lib/libsqlite3.a" && -f "$install_dir/include/sqlite3.h" ]]; then
+  if [[ -f "$install_dir/lib/libsqlite3.a" &&
+        -f "$install_dir/include/sqlite3.h" ]] &&
+     has_wasm_flags_marker "$install_dir"; then
     export PGLITE_WASI_SQLITE_PREFIX="$install_dir"
     return
   fi
@@ -106,7 +122,7 @@ ensure_sqlite() {
     CC="$WASI_SDK_PATH/bin/clang" \
     AR="$WASI_SDK_PATH/bin/llvm-ar" \
     RANLIB="$WASI_SDK_PATH/bin/llvm-ranlib" \
-    CFLAGS="-O2 -DSQLITE_THREADSAFE=0 -DSQLITE_OMIT_LOAD_EXTENSION -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_GETPID" \
+    CFLAGS="-O2 -DSQLITE_THREADSAFE=0 -DSQLITE_OMIT_LOAD_EXTENSION -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_GETPID $PGLITE_WASI_SJLJ_FLAGS" \
     LIBS="-lwasi-emulated-signal -lwasi-emulated-process-clocks -lwasi-emulated-getpid" \
     ./configure \
       --host=wasm32-wasi \
@@ -117,6 +133,7 @@ ensure_sqlite() {
     mkdir -p "$install_dir/share/icu/76.1/icudt76l/brkitr"
     make install
   )
+  write_wasm_flags_marker "$install_dir"
   export PGLITE_WASI_SQLITE_PREFIX="$install_dir"
 }
 
@@ -127,7 +144,9 @@ ensure_json_c() {
   local src_dir="$tmp_dir/json-c-${version}"
   local build_dir="$tmp_dir/json-c-${version}-wasi-build"
 
-  if [[ -f "$install_dir/lib/libjson-c.a" && -f "$install_dir/include/json-c/json.h" ]]; then
+  if [[ -f "$install_dir/lib/libjson-c.a" &&
+        -f "$install_dir/include/json-c/json.h" ]] &&
+     has_wasm_flags_marker "$install_dir"; then
     export PGLITE_WASI_JSON_C_PREFIX="$install_dir"
     return
   fi
@@ -145,7 +164,7 @@ ensure_json_c() {
       -DCMAKE_RANLIB="$WASI_SDK_PATH/bin/llvm-ranlib" \
       -DCMAKE_INSTALL_PREFIX="$install_dir" \
       -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_C_FLAGS="-O2 -DHAVE_CONFIG_H -DHAVE_SNPRINTF" \
+      -DCMAKE_C_FLAGS="-O2 -DHAVE_CONFIG_H -DHAVE_SNPRINTF $PGLITE_WASI_SJLJ_FLAGS" \
       -DBUILD_SHARED_LIBS=OFF \
       -DBUILD_STATIC_LIBS=ON \
       -DDISABLE_THREAD_LOCAL_STORAGE=ON \
@@ -154,6 +173,7 @@ ensure_json_c() {
     cmake --build . --parallel "$jobs"
     cmake --install .
   )
+  write_wasm_flags_marker "$install_dir"
   export PGLITE_WASI_JSON_C_PREFIX="$install_dir"
 }
 
@@ -168,7 +188,8 @@ ensure_icu() {
 
   if [[ -f "$install_dir/lib/libicuuc.a" &&
         -f "$install_dir/lib/libicui18n.a" &&
-        -d "$install_dir/share/icu/76.1/icudt76l/brkitr" ]]; then
+        -d "$install_dir/share/icu/76.1/icudt76l/brkitr" ]] &&
+     has_wasm_flags_marker "$install_dir"; then
     export PGLITE_WASI_ICU_PREFIX="$install_dir"
     return
   fi
@@ -226,8 +247,8 @@ EOF
     CXX="$WASI_SDK_PATH/bin/clang++" \
     AR="$WASI_SDK_PATH/bin/llvm-ar" \
     RANLIB="$WASI_SDK_PATH/bin/llvm-ranlib" \
-    CFLAGS="-O2 -D_WASI_EMULATED_SIGNAL" \
-    CXXFLAGS="-O2 -D_WASI_EMULATED_SIGNAL -include $thread_shim" \
+    CFLAGS="-O2 -D_WASI_EMULATED_SIGNAL $PGLITE_WASI_SJLJ_FLAGS" \
+    CXXFLAGS="-O2 -D_WASI_EMULATED_SIGNAL $PGLITE_WASI_SJLJ_FLAGS -include $thread_shim" \
     "$src_dir/configure" \
       --host=wasm32-wasi \
       --prefix="$install_dir" \
@@ -251,6 +272,7 @@ EOF
     fi
     make install
   )
+  write_wasm_flags_marker "$install_dir"
   export PGLITE_WASI_ICU_PREFIX="$install_dir"
 }
 
@@ -266,7 +288,8 @@ ensure_proj() {
 
   if [[ -f "$install_dir/lib/libproj.a" &&
         -f "$install_dir/include/proj.h" &&
-        -f "$install_dir/share/proj/proj.db" ]]; then
+        -f "$install_dir/share/proj/proj.db" ]] &&
+     has_wasm_flags_marker "$install_dir"; then
     export PGLITE_WASI_PROJ_PREFIX="$install_dir"
     return
   fi
@@ -297,8 +320,8 @@ EOF
       -DCMAKE_RANLIB="$WASI_SDK_PATH/bin/llvm-ranlib" \
       -DCMAKE_INSTALL_PREFIX="$install_dir" \
       -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_C_FLAGS="-O2 -D_WASI_EMULATED_GETPID" \
-      -DCMAKE_CXX_FLAGS="-O2 -D_WASI_EMULATED_GETPID -include $thread_shim" \
+      -DCMAKE_C_FLAGS="-O2 -D_WASI_EMULATED_GETPID $PGLITE_WASI_SJLJ_FLAGS" \
+      -DCMAKE_CXX_FLAGS="-O2 -D_WASI_EMULATED_GETPID $PGLITE_WASI_SJLJ_FLAGS -include $thread_shim" \
       -DCMAKE_EXE_LINKER_FLAGS="-lwasi-emulated-getpid" \
       -DCMAKE_SHARED_LINKER_FLAGS="-lwasi-emulated-getpid" \
       -DBUILD_SHARED_LIBS=OFF \
@@ -312,6 +335,7 @@ EOF
     cmake --build . --parallel "$jobs"
     cmake --install .
   )
+  write_wasm_flags_marker "$install_dir"
   export PGLITE_WASI_PROJ_PREFIX="$install_dir"
 }
 
@@ -325,7 +349,8 @@ ensure_geos() {
 
   if [[ -f "$install_dir/lib/libgeos.a" &&
         -f "$install_dir/lib/libgeos_c.a" &&
-        -x "$install_dir/bin/geos-config" ]]; then
+        -x "$install_dir/bin/geos-config" ]] &&
+     has_wasm_flags_marker "$install_dir"; then
     export PGLITE_WASI_GEOS_PREFIX="$install_dir"
     return
   fi
@@ -350,14 +375,15 @@ EOF
       -DCMAKE_RANLIB="$WASI_SDK_PATH/bin/llvm-ranlib" \
       -DCMAKE_INSTALL_PREFIX="$install_dir" \
       -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_C_FLAGS="-O2" \
-      -DCMAKE_CXX_FLAGS="-O2 -include $thread_shim" \
+      -DCMAKE_C_FLAGS="-O2 $PGLITE_WASI_SJLJ_FLAGS" \
+      -DCMAKE_CXX_FLAGS="-O2 $PGLITE_WASI_SJLJ_FLAGS -include $thread_shim" \
       -DBUILD_SHARED_LIBS=OFF \
       -DBUILD_TESTING=OFF \
       -DBUILD_GEOSOP=OFF
     cmake --build . --parallel "$jobs"
     cmake --install .
   )
+  write_wasm_flags_marker "$install_dir"
   export PGLITE_WASI_GEOS_PREFIX="$install_dir"
 }
 
@@ -371,7 +397,8 @@ ensure_gdal() {
 
   if [[ -f "$install_dir/lib/libgdal.a" &&
         -f "$install_dir/include/gdal.h" &&
-        -x "$install_dir/bin/gdal-config" ]]; then
+        -x "$install_dir/bin/gdal-config" ]] &&
+     has_wasm_flags_marker "$install_dir"; then
     export PGLITE_WASI_GDAL_PREFIX="$install_dir"
     return
   fi
@@ -452,8 +479,8 @@ EOF
       -DCMAKE_RANLIB="$WASI_SDK_PATH/bin/llvm-ranlib" \
       -DCMAKE_INSTALL_PREFIX="$install_dir" \
       -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_C_FLAGS="-O2 -D_WASI_EMULATED_GETPID -mllvm -wasm-enable-sjlj" \
-      -DCMAKE_CXX_FLAGS="-O2 -D_WASI_EMULATED_GETPID -D_WASI_EMULATED_SIGNAL -mllvm -wasm-enable-sjlj -include $thread_shim" \
+      -DCMAKE_C_FLAGS="-O2 -D_WASI_EMULATED_GETPID $PGLITE_WASI_SJLJ_FLAGS" \
+      -DCMAKE_CXX_FLAGS="-O2 -D_WASI_EMULATED_GETPID -D_WASI_EMULATED_SIGNAL $PGLITE_WASI_SJLJ_FLAGS -include $thread_shim" \
       -DCMAKE_EXE_LINKER_FLAGS="-lwasi-emulated-getpid -lwasi-emulated-signal -lsetjmp" \
       -DBUILD_SHARED_LIBS=OFF \
       -DBUILD_APPS=OFF \
@@ -479,6 +506,7 @@ EOF
     cmake --build . --parallel "$jobs"
     cmake --install .
   )
+  write_wasm_flags_marker "$install_dir"
   export PGLITE_WASI_GDAL_PREFIX="$install_dir"
 }
 
