@@ -350,7 +350,7 @@ public final class PgConnectionHandler implements InvocationHandler {
             case "isClosed" -> closed;
             case "createStatement" -> createStatement(args);
             case "prepareStatement" -> prepareStatement(args);
-            case "prepareCall" -> throw JdbcCompat.unsupported(name);
+            case "prepareCall" -> prepareCall(args);
             case "nativeSQL" -> JdbcCompat.replaceJdbcEscapes((String) args[0], true);
             case "setAutoCommit" -> {
                 setAutoCommit((Boolean) args[0]);
@@ -1067,6 +1067,17 @@ public final class PgConnectionHandler implements InvocationHandler {
             options.concurrency(),
             options.holdability(),
             generatedColumns(args)
+        );
+    }
+
+    private java.sql.CallableStatement prepareCall(Object[] args) throws SQLException {
+        var options = statementOptions(args, 1);
+        return PgStatementHandler.createCallable(
+            this,
+            (String) args[0],
+            options.type(),
+            options.concurrency(),
+            options.holdability()
         );
     }
 

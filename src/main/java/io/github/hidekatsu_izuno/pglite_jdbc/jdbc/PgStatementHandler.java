@@ -8,6 +8,7 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
+import java.sql.CallableStatement;
 import java.sql.ParameterMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -38,6 +39,7 @@ final class PgStatementHandler implements InvocationHandler {
     private final int resultSetConcurrency;
     private final int resultSetHoldability;
     private final String[] preparedGeneratedColumns;
+    private final boolean callable;
     private final TreeMap<Integer, Object> parameters = new TreeMap<>();
     private final TreeMap<Integer, Integer> parameterTypeOverrides = new TreeMap<>();
     private final List<String> sqlBatch = new ArrayList<>();
@@ -67,7 +69,8 @@ final class PgStatementHandler implements InvocationHandler {
         int resultSetType,
         int resultSetConcurrency,
         int resultSetHoldability,
-        String[] preparedGeneratedColumns
+        String[] preparedGeneratedColumns,
+        boolean callable
     ) throws SQLException {
         this.connection = connection;
         this.preparedSql = preparedSql != null ? JdbcCompat.replaceJdbcEscapes(preparedSql, true) : null;
@@ -79,6 +82,7 @@ final class PgStatementHandler implements InvocationHandler {
         this.resultSetConcurrency = resultSetConcurrency;
         this.resultSetHoldability = resultSetHoldability;
         this.preparedGeneratedColumns = preparedGeneratedColumns;
+        this.callable = callable;
         this.prepareThreshold = connection.getPrepareThresholdInternal();
         this.fetchSize = connection.getDefaultFetchSizeInternal();
         this.queryTimeout = connection.getQueryTimeoutInternal();
@@ -121,11 +125,54 @@ final class PgStatementHandler implements InvocationHandler {
         int resultSetHoldability,
         String[] preparedGeneratedColumns
     ) throws SQLException {
+        return create(
+            connection,
+            preparedSql,
+            resultSetType,
+            resultSetConcurrency,
+            resultSetHoldability,
+            preparedGeneratedColumns,
+            false
+        );
+    }
+
+    static CallableStatement createCallable(
+        PgConnectionHandler connection,
+        String sql,
+        int resultSetType,
+        int resultSetConcurrency,
+        int resultSetHoldability
+    ) throws SQLException {
+        return (CallableStatement) create(
+            connection,
+            sql,
+            resultSetType,
+            resultSetConcurrency,
+            resultSetHoldability,
+            null,
+            true
+        );
+    }
+
+    private static Statement create(
+        PgConnectionHandler connection,
+        String preparedSql,
+        int resultSetType,
+        int resultSetConcurrency,
+        int resultSetHoldability,
+        String[] preparedGeneratedColumns,
+        boolean callable
+    ) throws SQLException {
         var interfaces = preparedSql == null
             ? new Class<?>[] {
                 org.postgresql.core.BaseStatement.class,
             }
-            : new Class<?>[] {
+            : callable
+                ? new Class<?>[] {
+                    CallableStatement.class,
+                    org.postgresql.core.BaseStatement.class,
+                }
+                : new Class<?>[] {
                 PreparedStatement.class,
                 org.postgresql.core.BaseStatement.class,
             };
@@ -135,7 +182,8 @@ final class PgStatementHandler implements InvocationHandler {
             resultSetType,
             resultSetConcurrency,
             resultSetHoldability,
-            preparedGeneratedColumns
+            preparedGeneratedColumns,
+            callable
         );
         var proxy = (Statement) Proxy.newProxyInstance(
             PgStatementHandler.class.getClassLoader(),
@@ -166,6 +214,19 @@ final class PgStatementHandler implements InvocationHandler {
             return closed;
         }
         ensureOpen();
+
+        if (callable) {
+            if ("wasNull".equals(name)) {
+                throw new PSQLException(
+                    "wasNull cannot be call before fetching a result.",
+                    PSQLState.OBJECT_NOT_IN_STATE
+                );
+            }
+            var notImplemented = callableNotImplemented(method);
+            if (notImplemented != null) {
+                throw pgjdbcCallableNotImplemented(notImplemented);
+            }
+        }
 
         if (
             name.startsWith("set") &&
@@ -1187,6 +1248,147 @@ final class PgStatementHandler implements InvocationHandler {
             "Method org.postgresql.jdbc.PgPreparedStatement." + methodName + " is not yet implemented.",
             PSQLState.NOT_IMPLEMENTED.getState()
         );
+    }
+
+    private SQLFeatureNotSupportedException pgjdbcCallableNotImplemented(String methodName) {
+        return new SQLFeatureNotSupportedException(
+            "Method org.postgresql.jdbc.PgCallableStatement." + methodName + " is not yet implemented.",
+            PSQLState.NOT_IMPLEMENTED.getState()
+        );
+    }
+
+    private String callableNotImplemented(Method method) {
+        var name = method.getName();
+        var types = method.getParameterTypes();
+        if ("registerOutParameter".equals(name)) {
+            if (types.length == 3 && types[0] == int.class && types[1] == int.class && types[2] == String.class) {
+                return "registerOutParameter(int,int,String)";
+            }
+            if (types.length >= 2 && types[0] == String.class && types[1] == int.class) {
+                return types.length == 2
+                    ? "registerOutParameter(String,int)"
+                    : types[2] == int.class
+                        ? "registerOutParameter(String,int,int)"
+                        : "registerOutParameter(String,int,String)";
+            }
+            return "registerOutParameter";
+        }
+        if (types.length == 0 || types[0] != String.class) {
+            return switch (name) {
+                case "getRowId" -> "getRowId(int)";
+                case "getNClob" -> "getNClob(int)";
+                case "getNString" -> "getNString(int)";
+                case "getNCharacterStream" -> "getNCharacterStream(int)";
+                case "getCharacterStream" -> "getCharacterStream(int)";
+                case "getURL" -> "getURL(String)";
+                default -> null;
+            };
+        }
+        return switch (name) {
+            case "setObject" -> usesSqlType(types) ? "setObject" : callableSetObjectSignature(types);
+            case "setRowId" -> "setRowId(String, RowId)";
+            case "setNString" -> "setNString(String, String)";
+            case "setNCharacterStream" -> types.length >= 3
+                ? "setNCharacterStream(String, Reader, long)"
+                : "setNCharacterStream(String, Reader)";
+            case "setCharacterStream" -> types.length >= 3 && types[2] == long.class
+                ? "setCharacterStream(String, Reader, long)"
+                : types.length >= 3
+                    ? "setCharacterStream(String,Reader,int)"
+                    : "setCharacterStream(String, Reader)";
+            case "setBinaryStream" -> types.length >= 3 && types[2] == long.class
+                ? "setBinaryStream(String, InputStream, long)"
+                : types.length >= 3
+                    ? "setBinaryStream(String,InputStream,int)"
+                    : "setBinaryStream(String, InputStream)";
+            case "setAsciiStream" -> types.length >= 3 && types[2] == long.class
+                ? "setAsciiStream(String, InputStream, long)"
+                : types.length >= 3
+                    ? "setAsciiStream(String,InputStream,int)"
+                    : "setAsciiStream(String, InputStream)";
+            case "setNClob" -> types.length >= 3
+                ? "setNClob(String, Reader, long)"
+                : types.length >= 2 && types[1] == java.sql.NClob.class
+                    ? "setNClob(String, NClob)"
+                    : "setNClob(String, Reader)";
+            case "setClob" -> types.length >= 3
+                ? "setClob(String, Reader, long)"
+                : types.length >= 2 && types[1] == java.sql.Clob.class
+                    ? "setClob(String, Clob)"
+                    : "setClob(String, Reader)";
+            case "setBlob" -> types.length >= 3
+                ? "setBlob(String, InputStream, long)"
+                : types.length >= 2 && types[1] == java.sql.Blob.class
+                    ? "setBlob(String, Blob)"
+                    : "setBlob(String, InputStream)";
+            case "setSQLXML" -> "setSQLXML(String, SQLXML)";
+            case "setURL" -> "setURL(String,URL)";
+            case "setNull" -> types.length >= 3 ? "setNull(String,int,String)" : "setNull(String,int)";
+            case "setBoolean" -> "setBoolean(String,boolean)";
+            case "setByte" -> "setByte(String,byte)";
+            case "setShort" -> "setShort(String,short)";
+            case "setInt" -> "setInt(String,int)";
+            case "setLong" -> "setLong(String,long)";
+            case "setFloat" -> "setFloat(String,float)";
+            case "setDouble" -> "setDouble(String,double)";
+            case "setBigDecimal" -> "setBigDecimal(String,BigDecimal)";
+            case "setString" -> "setString(String,String)";
+            case "setBytes" -> "setBytes(String,byte)";
+            case "setDate" -> types.length >= 3 ? "setDate(String,Date,Calendar)" : "setDate(String,Date)";
+            case "setTime" -> types.length >= 3 ? "setTime(String,Time,Calendar)" : "setTime(String,Time)";
+            case "setTimestamp" -> types.length >= 3
+                ? "setTimestamp(String,Timestamp,Calendar)"
+                : "setTimestamp(String,Timestamp)";
+            case "getObject" -> types.length >= 2 && types[1] == Class.class
+                ? "getObject(String, Class<T>)"
+                : types.length >= 2
+                    ? "getObject(String,Map)"
+                    : "getObject(String)";
+            case "getString" -> "getString(String)";
+            case "getBoolean" -> "getBoolean(String)";
+            case "getByte" -> "getByte(String)";
+            case "getShort" -> "getShort(String)";
+            case "getInt" -> "getInt(String)";
+            case "getLong" -> "getLong(String)";
+            case "getFloat" -> "getFloat(String)";
+            case "getDouble" -> "getDouble(String)";
+            case "getBytes" -> "getBytes(String)";
+            case "getDate" -> types.length >= 2 ? "getDate(String,Calendar)" : "getDate(String)";
+            case "getTime" -> types.length >= 2 ? "getTime(String,Calendar)" : "getTime(String)";
+            case "getTimestamp" -> types.length >= 2
+                ? "getTimestamp(String,Calendar)"
+                : "getTimestamp(String)";
+            case "getBigDecimal" -> "getBigDecimal(String)";
+            case "getRef" -> "getRef(String)";
+            case "getBlob" -> "getBlob(String)";
+            case "getClob" -> "getClob(String)";
+            case "getArray" -> "getArray(String)";
+            case "getURL" -> "getURL(String)";
+            case "getRowId" -> "getRowId(String)";
+            case "getNClob" -> "getNClob(String)";
+            case "getSQLXML" -> "getSQLXML(String)";
+            case "getNString" -> "getNString(String)";
+            case "getNCharacterStream" -> "getNCharacterStream(String)";
+            case "getCharacterStream" -> "getCharacterStream(String)";
+            default -> null;
+        };
+    }
+
+    private String callableSetObjectSignature(Class<?>[] types) {
+        return types.length >= 4
+            ? "setObject(String,Object,int,int)"
+            : types.length >= 3
+                ? "setObject(String,Object,int)"
+                : "setObject(String,Object)";
+    }
+
+    private boolean usesSqlType(Class<?>[] types) {
+        for (var type : types) {
+            if (type == SQLType.class) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String preparedNClobSignature(Method method) {
