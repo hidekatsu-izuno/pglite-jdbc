@@ -1,7 +1,11 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.ds.common;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.Driver;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.PrintWriter;
+import java.io.Serializable;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -16,7 +20,9 @@ import javax.naming.Referenceable;
 import javax.naming.StringRefAddr;
 import javax.sql.CommonDataSource;
 
-public abstract class BaseDataSource implements CommonDataSource, Referenceable {
+public abstract class BaseDataSource implements CommonDataSource, Referenceable, Serializable {
+    private static final long serialVersionUID = 1L;
+
     private static final Logger LOGGER = Logger.getLogger(
         "io.github.hidekatsu_izuno.pglite_jdbc.ds"
     );
@@ -28,7 +34,7 @@ public abstract class BaseDataSource implements CommonDataSource, Referenceable 
     private String password;
     private PrintWriter logWriter;
     private int loginTimeout;
-    private final Properties properties = new Properties();
+    private Properties properties = new Properties();
     private static final String PROP_USER = "user";
     private static final String PROP_PASSWORD = "password";
     private static final String PROP_DATABASE = "database";
@@ -302,6 +308,29 @@ public abstract class BaseDataSource implements CommonDataSource, Referenceable 
             out.setProperty(PROP_PASSWORD, password);
         }
         return out;
+    }
+
+    protected void writeBaseObject(ObjectOutputStream out) throws IOException {
+        out.writeObject(url);
+        out.writeObject(serverNames);
+        out.writeObject(getDatabaseName());
+        out.writeObject(user);
+        out.writeObject(password);
+        out.writeObject(portNumbers);
+        out.writeObject(properties);
+    }
+
+    protected void readBaseObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        url = (String) in.readObject();
+        serverNames = (String[]) in.readObject();
+        var databaseName = (String) in.readObject();
+        user = (String) in.readObject();
+        password = (String) in.readObject();
+        portNumbers = (int[]) in.readObject();
+        properties = (Properties) in.readObject();
+        if (databaseName != null && !properties.containsKey(PROP_DATABASE)) {
+            setDatabaseName(databaseName);
+        }
     }
 
     private static String getOrDefault(Properties properties, String key, String defaultValue) {

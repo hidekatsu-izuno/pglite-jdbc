@@ -7,6 +7,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.ds.PGConnectionPoolDataSource;
 import io.github.hidekatsu_izuno.pglite_jdbc.ds.PGSimpleDataSource;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.sql.SQLException;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.sql.ConnectionEvent;
@@ -42,6 +46,46 @@ class PgjdbcInspiredDataSourceTest {
         assertEquals("secret", restored.getPassword());
         assertEquals("app", restored.getApplicationName());
         assertEquals("/tmp/pglite-ds", restored.getDataDir());
+    }
+
+    @Test
+    void simpleDataSourceSerializationMatchesPgjdbc() throws Exception {
+        var dataSource = new PGSimpleDataSource();
+        dataSource.setUrl("jdbc:pglite:?protocolTimeoutMs=5000");
+        dataSource.setServerNames(new String[] { "db1", "db2" });
+        dataSource.setPortNumbers(new int[] { 5432, 15432 });
+        dataSource.setDatabaseName("example");
+        dataSource.setUser("alice");
+        dataSource.setPassword("secret");
+        dataSource.setApplicationName("app");
+        dataSource.setDataDir("/tmp/pglite-ds");
+
+        var restored = roundTrip(dataSource, PGSimpleDataSource.class);
+        assertEquals("jdbc:pglite:?protocolTimeoutMs=5000", restored.getUrl());
+        assertArrayEquals(dataSource.getServerNames(), restored.getServerNames());
+        assertArrayEquals(dataSource.getPortNumbers(), restored.getPortNumbers());
+        assertEquals("example", restored.getDatabaseName());
+        assertEquals("alice", restored.getUser());
+        assertEquals("secret", restored.getPassword());
+        assertEquals("app", restored.getApplicationName());
+        assertEquals("/tmp/pglite-ds", restored.getDataDir());
+    }
+
+    @Test
+    void connectionPoolDataSourceSerializationIncludesDefaultAutoCommitLikePgjdbc() throws Exception {
+        var dataSource = new PGConnectionPoolDataSource();
+        dataSource.setUrl("jdbc:pglite:?protocolTimeoutMs=5000");
+        dataSource.setServerNames(new String[] { "db1" });
+        dataSource.setPortNumbers(new int[] { 5432 });
+        dataSource.setDatabaseName("example");
+        dataSource.setDefaultAutoCommit(false);
+
+        var restored = roundTrip(dataSource, PGConnectionPoolDataSource.class);
+        assertEquals("jdbc:pglite:?protocolTimeoutMs=5000", restored.getUrl());
+        assertArrayEquals(dataSource.getServerNames(), restored.getServerNames());
+        assertArrayEquals(dataSource.getPortNumbers(), restored.getPortNumbers());
+        assertEquals("example", restored.getDatabaseName());
+        assertFalse(restored.isDefaultAutoCommit());
     }
 
     @Test
@@ -110,5 +154,15 @@ class PgjdbcInspiredDataSourceTest {
         assertEquals("This PooledConnection has already been closed.", error.getMessage());
         assertEquals("08003", error.getSQLState());
         assertEquals("08003", event.get().getSQLException().getSQLState());
+    }
+
+    private static <T> T roundTrip(T value, Class<T> type) throws Exception {
+        var buffer = new ByteArrayOutputStream();
+        try (var out = new ObjectOutputStream(buffer)) {
+            out.writeObject(value);
+        }
+        try (var in = new ObjectInputStream(new ByteArrayInputStream(buffer.toByteArray()))) {
+            return type.cast(in.readObject());
+        }
     }
 }
