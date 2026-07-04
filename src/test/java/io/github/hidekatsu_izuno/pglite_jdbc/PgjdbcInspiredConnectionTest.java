@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.sql.DriverManager;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.SQLClientInfoException;
 import java.util.Properties;
@@ -83,6 +84,30 @@ class PgjdbcInspiredConnectionTest {
             assertEquals(7, pgConnection.getDefaultFetchSize());
             connection.setNetworkTimeout(null, 9);
             assertEquals(9, connection.getNetworkTimeout());
+        }
+    }
+
+    @Test
+    void connectionHoldabilityMatchesPgjdbc() throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
+            assertEquals(ResultSet.CLOSE_CURSORS_AT_COMMIT, connection.getHoldability());
+
+            connection.setHoldability(ResultSet.HOLD_CURSORS_OVER_COMMIT);
+            assertEquals(ResultSet.HOLD_CURSORS_OVER_COMMIT, connection.getHoldability());
+            try (var statement = connection.createStatement()) {
+                assertEquals(ResultSet.HOLD_CURSORS_OVER_COMMIT, statement.getResultSetHoldability());
+            }
+            try (var statement = connection.createStatement(
+                     ResultSet.TYPE_FORWARD_ONLY,
+                     ResultSet.CONCUR_READ_ONLY
+                 )) {
+                assertEquals(ResultSet.HOLD_CURSORS_OVER_COMMIT, statement.getResultSetHoldability());
+            }
+
+            var error = assertThrows(SQLException.class, () -> connection.setHoldability(-1));
+            assertEquals("Unknown ResultSet holdability setting: -1.", error.getMessage());
+            assertEquals("22023", error.getSQLState());
+            assertEquals(ResultSet.HOLD_CURSORS_OVER_COMMIT, connection.getHoldability());
         }
     }
 }

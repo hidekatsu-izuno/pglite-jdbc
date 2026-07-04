@@ -56,6 +56,7 @@ public final class PgConnectionHandler implements InvocationHandler {
     private boolean readOnly;
     private String catalog;
     private int transactionIsolation = Connection.TRANSACTION_READ_COMMITTED;
+    private int holdability = ResultSet.CLOSE_CURSORS_AT_COMMIT;
     private java.sql.SQLWarning warnings;
     private int prepareThreshold = 5;
     private int defaultFetchSize;
@@ -362,8 +363,11 @@ public final class PgConnectionHandler implements InvocationHandler {
                 warnings = null;
                 yield null;
             }
-            case "setHoldability" -> null;
-            case "getHoldability" -> ResultSet.CLOSE_CURSORS_AT_COMMIT;
+            case "setHoldability" -> {
+                setHoldability((Integer) args[0]);
+                yield null;
+            }
+            case "getHoldability" -> holdability;
             case "setSavepoint" -> args == null || args.length == 0
                 ? setSavepoint()
                 : setSavepoint((String) args[0]);
@@ -879,6 +883,19 @@ public final class PgConnectionHandler implements InvocationHandler {
         networkTimeout = milliseconds;
     }
 
+    private void setHoldability(int value) throws SQLException {
+        if (
+            value != ResultSet.CLOSE_CURSORS_AT_COMMIT &&
+            value != ResultSet.HOLD_CURSORS_OVER_COMMIT
+        ) {
+            throw new PSQLException(
+                "Unknown ResultSet holdability setting: " + value + ".",
+                PSQLState.INVALID_PARAMETER_VALUE
+            );
+        }
+        holdability = value;
+    }
+
     private org.postgresql.copy.CopyManager getCopyAPI() throws SQLException {
         ensureOpen();
         if (copyApi == null) {
@@ -949,7 +966,7 @@ public final class PgConnectionHandler implements InvocationHandler {
             var concurrency = (Integer) args[offset + 1];
             var holdability = args.length - offset == 3
                 ? (Integer) args[offset + 2]
-                : ResultSet.CLOSE_CURSORS_AT_COMMIT;
+                : this.holdability;
             validateStatementOptions(type, concurrency, holdability);
             return new StatementOptions(type, concurrency, holdability);
         }
@@ -960,7 +977,7 @@ public final class PgConnectionHandler implements InvocationHandler {
         return new StatementOptions(
             ResultSet.TYPE_FORWARD_ONLY,
             ResultSet.CONCUR_READ_ONLY,
-            ResultSet.CLOSE_CURSORS_AT_COMMIT
+            holdability
         );
     }
 
