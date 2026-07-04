@@ -110,4 +110,41 @@ class PgjdbcInspiredConnectionTest {
             assertEquals(ResultSet.HOLD_CURSORS_OVER_COMMIT, connection.getHoldability());
         }
     }
+
+    @Test
+    void statementOptionValidationMatchesPgjdbc() throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
+            var typeError = assertThrows(
+                SQLException.class,
+                () -> connection.createStatement(-1, ResultSet.CONCUR_READ_ONLY)
+            );
+            assertEquals("Unknown value for ResultSet type", typeError.getMessage());
+            assertEquals("22023", typeError.getSQLState());
+
+            var concurrencyError = assertThrows(
+                SQLException.class,
+                () -> connection.createStatement(ResultSet.TYPE_FORWARD_ONLY, -1)
+            );
+            assertEquals("Unknown value for ResultSet concurrency", concurrencyError.getMessage());
+            assertEquals("22023", concurrencyError.getSQLState());
+
+            var holdabilityError = assertThrows(
+                SQLException.class,
+                () -> connection.createStatement(
+                    ResultSet.TYPE_FORWARD_ONLY,
+                    ResultSet.CONCUR_READ_ONLY,
+                    -1
+                )
+            );
+            assertEquals("Unknown value for ResultSet holdability", holdabilityError.getMessage());
+            assertEquals("22023", holdabilityError.getSQLState());
+
+            var preparedTypeError = assertThrows(
+                SQLException.class,
+                () -> connection.prepareStatement("SELECT 1", -1, ResultSet.CONCUR_READ_ONLY)
+            );
+            assertEquals("Unknown value for ResultSet type", preparedTypeError.getMessage());
+            assertEquals("22023", preparedTypeError.getSQLState());
+        }
+    }
 }

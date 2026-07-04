@@ -987,16 +987,25 @@ public final class PgConnectionHandler implements InvocationHandler {
             type != ResultSet.TYPE_SCROLL_INSENSITIVE &&
             type != ResultSet.TYPE_SCROLL_SENSITIVE
         ) {
-            throw new SQLException("Invalid result set type: " + type);
+            throw new PSQLException(
+                "Unknown value for ResultSet type",
+                PSQLState.INVALID_PARAMETER_VALUE
+            );
         }
         if (concurrency != ResultSet.CONCUR_READ_ONLY && concurrency != ResultSet.CONCUR_UPDATABLE) {
-            throw new SQLException("Invalid result set concurrency: " + concurrency);
+            throw new PSQLException(
+                "Unknown value for ResultSet concurrency",
+                PSQLState.INVALID_PARAMETER_VALUE
+            );
         }
         if (
             holdability != ResultSet.CLOSE_CURSORS_AT_COMMIT &&
             holdability != ResultSet.HOLD_CURSORS_OVER_COMMIT
         ) {
-            throw new SQLException("Invalid result set holdability: " + holdability);
+            throw new PSQLException(
+                "Unknown value for ResultSet holdability",
+                PSQLState.INVALID_PARAMETER_VALUE
+            );
         }
     }
 
