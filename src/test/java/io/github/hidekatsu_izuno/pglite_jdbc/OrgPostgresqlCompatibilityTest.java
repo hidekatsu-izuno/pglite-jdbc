@@ -336,6 +336,7 @@ class OrgPostgresqlCompatibilityTest {
                     "Method org.postgresql.jdbc.PgPreparedStatement.setObject is not yet implemented.",
                     error.getMessage()
                 );
+                assertEquals(org.postgresql.util.PSQLState.NOT_IMPLEMENTED.getState(), error.getSQLState());
 
                 var scaledError = assertThrows(
                     java.sql.SQLFeatureNotSupportedException.class,
@@ -345,6 +346,7 @@ class OrgPostgresqlCompatibilityTest {
                     "Method org.postgresql.jdbc.PgPreparedStatement.setObject is not yet implemented.",
                     scaledError.getMessage()
                 );
+                assertEquals(org.postgresql.util.PSQLState.NOT_IMPLEMENTED.getState(), scaledError.getSQLState());
             }
         });
     }

@@ -472,7 +472,8 @@ final class PgStatementHandler implements InvocationHandler {
         var value = args[1];
         if (args.length >= 3 && args[2] instanceof SQLType) {
             throw new SQLFeatureNotSupportedException(
-                "Method org.postgresql.jdbc.PgPreparedStatement.setObject is not yet implemented."
+                "Method org.postgresql.jdbc.PgPreparedStatement.setObject is not yet implemented.",
+                PSQLState.NOT_IMPLEMENTED.getState()
             );
         }
         if (args.length < 3 || value == null) {
