@@ -1343,12 +1343,17 @@ public final class PgConnectionHandler implements InvocationHandler {
     }
 
     private org.postgresql.core.ParameterList createParameterListProxy(int parameterCount) {
-        return createParameterListProxy(new Object[parameterCount], new int[parameterCount]);
+        return createParameterListProxy(new Object[parameterCount], new int[parameterCount], new boolean[parameterCount]);
     }
 
-    private org.postgresql.core.ParameterList createParameterListProxy(Object[] initialValues, int[] initialTypeOids) {
+    private org.postgresql.core.ParameterList createParameterListProxy(
+        Object[] initialValues,
+        int[] initialTypeOids,
+        boolean[] initialOutParameters
+    ) {
         var values = initialValues.clone();
         var typeOids = initialTypeOids.clone();
+        var outParameters = initialOutParameters.clone();
         var parameterCount = values.length;
         return (org.postgresql.core.ParameterList) Proxy.newProxyInstance(
             PgConnectionHandler.class.getClassLoader(),
@@ -1363,34 +1368,44 @@ public final class PgConnectionHandler implements InvocationHandler {
                     };
                 }
                 return switch (method.getName()) {
-                    case "getParameterCount", "getInParameterCount" -> parameterCount;
-                    case "getOutParameterCount" -> 0;
+                    case "registerOutParameter" -> {
+                        registerOutParameter(outParameters, (Integer) args[0]);
+                        yield null;
+                    }
+                    case "getParameterCount" -> parameterCount;
+                    case "getInParameterCount" -> inParameterCount(outParameters);
+                    case "getOutParameterCount" -> outParameterCount(outParameters);
                     case "getTypeOIDs" -> typeOids.clone();
                     case "setIntParameter" -> {
+                        markInParameter(outParameters, (Integer) args[0]);
                         setParameterValue(values, typeOids, (Integer) args[0], args[1], parameterTypeOid(args));
                         yield null;
                     }
                     case "setLiteralParameter", "setStringParameter", "setBinaryParameter", "setNull" -> {
+                        markInParameter(outParameters, (Integer) args[0]);
                         setParameterValue(values, typeOids, (Integer) args[0], args[1], parameterTypeOid(args));
                         yield null;
                     }
                     case "setBytea" -> {
+                        markInParameter(outParameters, (Integer) args[0]);
                         setByteaParameter(values, typeOids, args);
                         yield null;
                     }
                     case "setText" -> {
+                        markInParameter(outParameters, (Integer) args[0]);
                         setParameterValue(values, typeOids, (Integer) args[0], readAllBytes((InputStream) args[1]), 0);
                         yield null;
                     }
-                    case "copy" -> copyParameterList(values, typeOids);
+                    case "copy" -> copyParameterList(values, typeOids, outParameters);
                     case "clear" -> {
                         java.util.Arrays.fill(values, null);
                         java.util.Arrays.fill(typeOids, 0);
+                        java.util.Arrays.fill(outParameters, false);
                         yield null;
                     }
                     case "toString" -> parameterToString(values, (Integer) args[0]);
                     case "appendAll" -> {
-                        appendParameterList(values, typeOids, (org.postgresql.core.ParameterList) args[0]);
+                        appendParameterList(values, typeOids, outParameters, (org.postgresql.core.ParameterList) args[0]);
                         yield null;
                     }
                     case "getValues" -> values.clone();
@@ -1400,8 +1415,42 @@ public final class PgConnectionHandler implements InvocationHandler {
         );
     }
 
-    private org.postgresql.core.ParameterList copyParameterList(Object[] values, int[] typeOids) {
-        return createParameterListProxy(values, typeOids);
+    private org.postgresql.core.ParameterList copyParameterList(
+        Object[] values,
+        int[] typeOids,
+        boolean[] outParameters
+    ) {
+        return createParameterListProxy(values, typeOids, outParameters);
+    }
+
+    private void registerOutParameter(boolean[] outParameters, int index) throws SQLException {
+        validateParameterListIndex(outParameters.length, index);
+        outParameters[index - 1] = true;
+    }
+
+    private void markInParameter(boolean[] outParameters, int index) throws SQLException {
+        validateParameterListIndex(outParameters.length, index);
+        outParameters[index - 1] = false;
+    }
+
+    private int inParameterCount(boolean[] outParameters) {
+        var count = 0;
+        for (var outParameter : outParameters) {
+            if (!outParameter) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private int outParameterCount(boolean[] outParameters) {
+        var count = 0;
+        for (var outParameter : outParameters) {
+            if (outParameter) {
+                count++;
+            }
+        }
+        return count == 0 ? 1 : count;
     }
 
     private void setParameterValue(Object[] values, int[] typeOids, int index, Object value, int typeOid)
@@ -1459,23 +1508,33 @@ public final class PgConnectionHandler implements InvocationHandler {
     private void appendParameterList(
         Object[] values,
         int[] typeOids,
+        boolean[] outParameters,
         org.postgresql.core.ParameterList source
     ) throws SQLException {
         var sourceValues = source.getValues();
         var sourceTypes = source.getTypeOIDs();
-        if (sourceValues.length > values.length) {
-            throw new PSQLException("Added parameters index out of range", PSQLState.INVALID_PARAMETER_VALUE);
+        var inCount = source.getInParameterCount();
+        if (inCount > values.length) {
+            throw new PSQLException(
+                "Added parameters index out of range: " + inCount + ", number of columns: " + values.length + ".",
+                PSQLState.INVALID_PARAMETER_VALUE
+            );
         }
-        for (var i = 0; i < sourceValues.length; i++) {
+        for (var i = 0; i < inCount; i++) {
             values[i] = sourceValues[i];
             typeOids[i] = i < sourceTypes.length ? sourceTypes[i] : 0;
+            outParameters[i] = false;
         }
     }
 
     private void validateParameterListIndex(Object[] values, int index) throws SQLException {
-        if (index < 1 || index > values.length) {
+        validateParameterListIndex(values.length, index);
+    }
+
+    private void validateParameterListIndex(int length, int index) throws SQLException {
+        if (index < 1 || index > length) {
             throw new PSQLException(
-                "The column index is out of range: " + index + ", number of columns: " + values.length + ".",
+                "The column index is out of range: " + index + ", number of columns: " + length + ".",
                 PSQLState.INVALID_PARAMETER_VALUE
             );
         }

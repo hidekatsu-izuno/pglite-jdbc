@@ -214,13 +214,21 @@ class PgjdbcInspiredConnectionTest {
 
             assertEquals(2, parameters.getParameterCount());
             assertEquals(2, parameters.getInParameterCount());
-            assertEquals(0, parameters.getOutParameterCount());
+            assertEquals(1, parameters.getOutParameterCount());
             assertEquals(7, parameters.getValues()[0]);
             assertArrayEquals(new byte[] { 2, 3 }, (byte[]) parameters.getValues()[1]);
 
+            parameters.registerOutParameter(1, java.sql.Types.INTEGER);
+            assertEquals(1, parameters.getInParameterCount());
+            assertEquals(1, parameters.getOutParameterCount());
+
             var copy = parameters.copy();
             parameters.clear();
+            assertEquals(2, parameters.getInParameterCount());
+            assertEquals(1, parameters.getOutParameterCount());
             assertEquals(7, copy.getValues()[0]);
+            assertEquals(1, copy.getInParameterCount());
+            assertEquals(1, copy.getOutParameterCount());
             assertNull(parameters.getValues()[0]);
         }
     }
