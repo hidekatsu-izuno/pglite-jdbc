@@ -82,6 +82,7 @@ final class PgStatementHandler implements InvocationHandler {
         this.prepareThreshold = connection.getPrepareThresholdInternal();
         this.fetchSize = connection.getDefaultFetchSizeInternal();
         this.queryTimeout = connection.getQueryTimeoutInternal();
+        this.adaptiveFetch = connection.getAdaptiveFetchInternal();
     }
 
     static Statement create(PgConnectionHandler connection, String preparedSql) throws SQLException {

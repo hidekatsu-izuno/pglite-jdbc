@@ -457,6 +457,21 @@ class PgjdbcInspiredStatementTest {
     }
 
     @Test
+    void pgStatementAdaptiveFetchInheritsConnectionSettingLikePgjdbc() throws Exception {
+        var pgConnection = connection.unwrap(org.postgresql.PGConnection.class);
+        pgConnection.setAdaptiveFetch(true);
+
+        try (var statement = connection.createStatement()) {
+            var pgStatement = statement.unwrap(org.postgresql.PGStatement.class);
+            assertTrue(pgStatement.getAdaptiveFetch());
+            pgStatement.setAdaptiveFetch(false);
+            assertFalse(pgStatement.getAdaptiveFetch());
+        } finally {
+            pgConnection.setAdaptiveFetch(false);
+        }
+    }
+
+    @Test
     void statementPoolableStateMatchesPgjdbc() throws Exception {
         var statement = connection.createStatement();
 

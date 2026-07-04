@@ -155,6 +155,10 @@ public final class PgConnectionHandler implements InvocationHandler {
         return queryTimeout;
     }
 
+    boolean getAdaptiveFetchInternal() {
+        return adaptiveFetch;
+    }
+
     org.postgresql.core.BaseConnection baseConnection() {
         return (org.postgresql.core.BaseConnection) self;
     }
