@@ -456,6 +456,10 @@ public final class PgConnectionHandler implements InvocationHandler {
             case "getReplicationAPI" -> new org.postgresql.replication.PGReplicationConnectionImpl(
                 (org.postgresql.core.BaseConnection) self
             );
+            case "alterUserPassword" -> {
+                alterUserPassword((String) args[0], (char[]) args[1], (String) args[2]);
+                yield null;
+            }
             case "execSQLQuery" -> execSqlQuery((String) args[0]);
             case "execSQLUpdate" -> {
                 execControl((String) args[0]);
@@ -925,6 +929,38 @@ public final class PgConnectionHandler implements InvocationHandler {
             largeObjectApi = PgLargeObjectManagerAdapter.create(this);
         }
         return largeObjectApi;
+    }
+
+    private void alterUserPassword(String user, char[] newPassword, String encryptionType)
+        throws SQLException {
+        try (var statement = self.createStatement()) {
+            var resolvedEncryptionType = encryptionType;
+            if (resolvedEncryptionType == null) {
+                try (var result = statement.executeQuery("SHOW password_encryption")) {
+                    if (!result.next()) {
+                        throw new PSQLException(
+                            "Expected a row when reading password_encryption but none was found",
+                            PSQLState.NO_DATA
+                        );
+                    }
+                    resolvedEncryptionType = result.getString(1);
+                    if (resolvedEncryptionType == null) {
+                        throw new PSQLException(
+                            "SHOW password_encryption returned null value",
+                            PSQLState.NO_DATA
+                        );
+                    }
+                }
+            }
+            var sql = org.postgresql.util.PasswordUtil.genAlterUserPasswordSQL(
+                user,
+                newPassword,
+                resolvedEncryptionType
+            );
+            statement.execute(sql);
+        } finally {
+            java.util.Arrays.fill(newPassword, (char) 0);
+        }
     }
 
     private java.sql.Statement createStatement(Object[] args) throws SQLException {

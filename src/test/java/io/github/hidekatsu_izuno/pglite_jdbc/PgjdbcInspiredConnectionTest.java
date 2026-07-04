@@ -136,6 +136,22 @@ class PgjdbcInspiredConnectionTest {
     }
 
     @Test
+    void alterUserPasswordValidationMatchesPgjdbc() throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
+            var pgConnection = connection.unwrap(org.postgresql.PGConnection.class);
+            var password = "secret".toCharArray();
+
+            var error = assertThrows(
+                SQLException.class,
+                () -> pgConnection.alterUserPassword("postgres", password, "unknown")
+            );
+            assertEquals("Unable to determine encryption type: unknown", error.getMessage());
+            assertEquals("60000", error.getSQLState());
+            assertEquals(new String(new char[password.length]), new String(password));
+        }
+    }
+
+    @Test
     void baseConnectionCreateQueryUsesPgjdbcParser() throws Exception {
         try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
             var baseConnection = connection.unwrap(org.postgresql.core.BaseConnection.class);
