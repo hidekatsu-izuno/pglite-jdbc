@@ -25,6 +25,7 @@ final class PgFastpathAdapter extends Fastpath {
     @Override
     public Object fastpath(String name, boolean resultType, FastpathArg[] args)
         throws SQLException {
+        requireKnown(name);
         var data = fastpath(name, args);
         if (!resultType || data == null) {
             return data;
@@ -32,12 +33,16 @@ final class PgFastpathAdapter extends Fastpath {
         return switch (data.length) {
             case 4 -> ByteBuffer.wrap(data).getInt();
             case 8 -> ByteBuffer.wrap(data).getLong();
-            default -> data;
+            default -> throw new PSQLException(
+                "Fastpath call " + name + " - No result was returned and we expected a numeric.",
+                PSQLState.NO_DATA
+            );
         };
     }
 
     @Override
     public byte[] fastpath(String name, FastpathArg[] args) throws SQLException {
+        requireKnown(name);
         return switch (name) {
             case "lo_close" -> intResult(callInt("SELECT lo_close(?)", intArg(args, 0)));
             case "lo_unlink" -> intResult(callInt("SELECT lo_unlink(?::oid)", oidArg(args, 0)));
@@ -70,6 +75,7 @@ final class PgFastpathAdapter extends Fastpath {
 
     @Override
     public int getInteger(String name, FastpathArg[] args) throws SQLException {
+        requireKnown(name);
         return switch (name) {
             case "lo_creat" -> callInt("SELECT lo_creat(?)::int", intArg(args, 0));
             case "lo_open" -> callInt("SELECT lo_open(?::oid, ?)", oidArg(args, 0), intArg(args, 1));
@@ -82,6 +88,7 @@ final class PgFastpathAdapter extends Fastpath {
 
     @Override
     public long getLong(String name, FastpathArg[] args) throws SQLException {
+        requireKnown(name);
         return switch (name) {
             case "lo_tell64" -> callLong("SELECT lo_tell64(?)", intArg(args, 0));
             default -> throw unsupported(name);
@@ -96,6 +103,7 @@ final class PgFastpathAdapter extends Fastpath {
 
     @Override
     public byte[] getData(String name, FastpathArg[] args) throws SQLException {
+        requireKnown(name);
         return switch (name) {
             case "loread" -> callBytes("SELECT loread(?, ?)", intArg(args, 0), intArg(args, 1));
             default -> fastpath(name, args);
@@ -127,6 +135,10 @@ final class PgFastpathAdapter extends Fastpath {
                 return result.getObject(1);
             }
         }
+    }
+
+    private void requireKnown(String name) throws SQLException {
+        getID(name);
     }
 
     private void bind(PreparedStatement statement, Object[] args) throws SQLException {

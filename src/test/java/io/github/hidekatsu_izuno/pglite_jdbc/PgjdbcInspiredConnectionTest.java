@@ -121,6 +121,21 @@ class PgjdbcInspiredConnectionTest {
     }
 
     @Test
+    void fastpathNameLookupMatchesPgjdbc() throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
+            var pgConnection = connection.unwrap(org.postgresql.PGConnection.class);
+            var fastpath = pgConnection.getFastpathAPI();
+
+            var error = assertThrows(
+                SQLException.class,
+                () -> fastpath.getData("lo_open", new org.postgresql.fastpath.FastpathArg[0])
+            );
+            assertEquals("The fastpath function lo_open is unknown.", error.getMessage());
+            assertEquals("99999", error.getSQLState());
+        }
+    }
+
+    @Test
     void baseConnectionCreateQueryUsesPgjdbcParser() throws Exception {
         try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
             var baseConnection = connection.unwrap(org.postgresql.core.BaseConnection.class);
