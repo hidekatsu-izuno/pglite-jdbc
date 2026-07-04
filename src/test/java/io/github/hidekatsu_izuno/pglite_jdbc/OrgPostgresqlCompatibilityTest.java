@@ -189,18 +189,11 @@ class OrgPostgresqlCompatibilityTest {
     void shouldSupportJdbcBlobAndClobValues() throws Exception {
         assertTimeout(Duration.ofSeconds(180), () -> {
             try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
-                var blob = connection.createBlob();
-                assertTrue(blob instanceof org.postgresql.jdbc.PgBlob);
-                blob.setBytes(1, "blob-bytes".getBytes(StandardCharsets.UTF_8));
-                var clob = connection.createClob();
-                assertTrue(clob instanceof org.postgresql.jdbc.PgClob);
-                clob.setString(1, "clob text");
-
                 try (var statement = connection.prepareStatement(
                     "SELECT ?::bytea AS payload, ?::text AS body"
                 )) {
-                    statement.setBlob(1, blob);
-                    statement.setClob(2, clob);
+                    statement.setBytes(1, "blob-bytes".getBytes(StandardCharsets.UTF_8));
+                    statement.setString(2, "clob text");
                     try (var resultSet = statement.executeQuery()) {
                         assertTrue(resultSet.next());
                         var readBlob = resultSet.getBlob("payload");
@@ -214,8 +207,6 @@ class OrgPostgresqlCompatibilityTest {
                         assertEquals("clob text", readClob.getSubString(1, (int) readClob.length()));
                     }
                 }
-                blob.free();
-                clob.free();
             }
         });
     }

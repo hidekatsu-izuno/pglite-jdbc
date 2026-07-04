@@ -375,12 +375,14 @@ public final class PgConnectionHandler implements InvocationHandler {
                 releaseSavepoint((Savepoint) args[0]);
                 yield null;
             }
-            case "createBlob" -> new PgBlob((org.postgresql.core.BaseConnection) self, null);
-            case "createClob", "createNClob" -> new PgClob((org.postgresql.core.BaseConnection) self, null);
+            case "createBlob" -> throw pgjdbcNotImplemented("createBlob()");
+            case "createClob" -> throw pgjdbcNotImplemented("createClob()");
+            case "createNClob" -> throw pgjdbcNotImplemented("createNClob()");
             case "createSQLXML" -> new org.postgresql.jdbc.PgSQLXML(
                 (org.postgresql.core.BaseConnection) self
             );
-            case "setTypeMap", "createStruct" ->
+            case "createStruct" -> throw pgjdbcNotImplemented("createStruct(String, Object[])");
+            case "setTypeMap" ->
                 throw JdbcCompat.unsupported(name);
             case "createArrayOf" -> createArrayOf((String) args[0], args[1]);
             case "getTypeMap" -> new HashMap<String, Class<?>>();
@@ -1042,6 +1044,13 @@ public final class PgConnectionHandler implements InvocationHandler {
 
     private Object unsupportedCore(String method) throws SQLException {
         throw new SQLFeatureNotSupportedException(method + " is not supported");
+    }
+
+    private SQLFeatureNotSupportedException pgjdbcNotImplemented(String methodName) {
+        return new SQLFeatureNotSupportedException(
+            "Method org.postgresql.jdbc.PgConnection." + methodName + " is not yet implemented.",
+            PSQLState.NOT_IMPLEMENTED.getState()
+        );
     }
 
     private Object getObjectValue(String type, String value, byte[] byteValue) {

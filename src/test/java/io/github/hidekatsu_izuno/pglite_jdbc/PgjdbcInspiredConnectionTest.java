@@ -65,6 +65,19 @@ class PgjdbcInspiredConnectionTest {
     }
 
     @Test
+    void connectionUnsupportedFactoryMethodsMatchPgjdbc() throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
+            assertPgjdbcConnectionNotImplemented("createBlob()", connection::createBlob);
+            assertPgjdbcConnectionNotImplemented("createClob()", connection::createClob);
+            assertPgjdbcConnectionNotImplemented("createNClob()", connection::createNClob);
+            assertPgjdbcConnectionNotImplemented(
+                "createStruct(String, Object[])",
+                () -> connection.createStruct("example", new Object[] { "value" })
+            );
+        }
+    }
+
+    @Test
     void connectionTimeoutAndFetchSizeValidationMatchesPgjdbc() throws Exception {
         try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
             var pgConnection = connection.unwrap(org.postgresql.PGConnection.class);
@@ -165,5 +178,19 @@ class PgjdbcInspiredConnectionTest {
             connection.releaseSavepoint(savepoint);
             connection.rollback();
         }
+    }
+
+    private void assertPgjdbcConnectionNotImplemented(String method, ThrowingSqlCall call) {
+        var error = assertThrows(java.sql.SQLFeatureNotSupportedException.class, call::run);
+        assertEquals(
+            "Method org.postgresql.jdbc.PgConnection." + method + " is not yet implemented.",
+            error.getMessage()
+        );
+        assertEquals(org.postgresql.util.PSQLState.NOT_IMPLEMENTED.getState(), error.getSQLState());
+    }
+
+    @FunctionalInterface
+    private interface ThrowingSqlCall {
+        void run() throws Exception;
     }
 }
