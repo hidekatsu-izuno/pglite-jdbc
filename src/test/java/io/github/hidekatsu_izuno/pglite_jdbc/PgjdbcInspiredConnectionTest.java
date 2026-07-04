@@ -177,6 +177,29 @@ class PgjdbcInspiredConnectionTest {
     }
 
     @Test
+    void queryExecutorCachedQueryFactoriesUsePgjdbcParser() throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
+            var queryExecutor = connection.unwrap(org.postgresql.core.BaseConnection.class).getQueryExecutor();
+
+            var key = queryExecutor.createQueryKey("select ?", true, true);
+            var cached = queryExecutor.createQueryByKey(key);
+            assertEquals("select $1", cached.query.getNativeSql());
+
+            var borrowed = queryExecutor.borrowQuery("select ?");
+            assertEquals("select $1", borrowed.query.getNativeSql());
+
+            var returning = queryExecutor.borrowReturningQuery(
+                "insert into example(name) values (?)",
+                new String[] { "generated id" }
+            );
+            assertEquals(
+                "insert into example(name) values ($1)\nRETURNING \"generated id\"",
+                returning.query.getNativeSql()
+            );
+        }
+    }
+
+    @Test
     void connectionTimeoutAndFetchSizeValidationMatchesPgjdbc() throws Exception {
         try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
             var pgConnection = connection.unwrap(org.postgresql.PGConnection.class);

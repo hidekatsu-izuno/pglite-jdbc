@@ -43,6 +43,13 @@ import org.postgresql.util.PSQLException;
 import org.postgresql.util.PSQLState;
 
 public final class PgConnectionHandler implements InvocationHandler {
+    private record QueryKey(
+        String sql,
+        boolean escapeProcessing,
+        boolean isParameterized,
+        String[] columnNames
+    ) {}
+
     private static final org.postgresql.PGNotification[] EMPTY_NOTIFICATIONS =
         new org.postgresql.PGNotification[0];
     private static final org.postgresql.jdbc.TimestampUtils TIMESTAMP_UTILS =
@@ -1141,6 +1148,36 @@ public final class PgConnectionHandler implements InvocationHandler {
         return new org.postgresql.core.CachedQuery(sql, wrapNativeQueries(nativeQueries), false);
     }
 
+    private Object createQueryKey(
+        String sql,
+        boolean escapeProcessing,
+        boolean isParameterized,
+        String[] columnNames
+    ) {
+        if ((columnNames == null || columnNames.length != 0) || !isParameterized || !escapeProcessing) {
+            return new QueryKey(sql, escapeProcessing, isParameterized, columnNames);
+        }
+        return sql;
+    }
+
+    private org.postgresql.core.CachedQuery createCachedQueryByKey(Object key) throws SQLException {
+        if (key instanceof String sql) {
+            return createCachedQuery(sql, true, true, new String[0]);
+        }
+        if (key instanceof QueryKey queryKey) {
+            return createCachedQuery(
+                queryKey.sql(),
+                queryKey.escapeProcessing(),
+                queryKey.isParameterized(),
+                queryKey.columnNames()
+            );
+        }
+        throw new SQLFeatureNotSupportedException(
+            "Query key is not supported: " + key.getClass().getName(),
+            PSQLState.NOT_IMPLEMENTED.getState()
+        );
+    }
+
     private org.postgresql.core.Query wrapNativeQueries(List<org.postgresql.core.NativeQuery> nativeQueries) {
         var queries = nativeQueries.stream()
             .map(this::wrapNativeQuery)
@@ -1267,6 +1304,21 @@ public final class PgConnectionHandler implements InvocationHandler {
                         (Boolean) args[1],
                         (Boolean) args[2],
                         (String[]) args[3]
+                    );
+                    case "createQueryKey" -> createQueryKey(
+                        (String) args[0],
+                        (Boolean) args[1],
+                        (Boolean) args[2],
+                        (String[]) args[3]
+                    );
+                    case "createQueryByKey", "borrowQueryByKey" -> createCachedQueryByKey(args[0]);
+                    case "borrowQuery" -> createCachedQuery((String) args[0], true, true, new String[0]);
+                    case "borrowCallableQuery" -> createCachedQuery((String) args[0], true, true, new String[0]);
+                    case "borrowReturningQuery" -> createCachedQuery(
+                        (String) args[0],
+                        true,
+                        true,
+                        (String[]) args[1]
                     );
                     case "wrap" -> wrapNativeQueries((List<org.postgresql.core.NativeQuery>) args[0]);
                     case "getProtocolVersion" -> org.postgresql.core.ProtocolVersion.v3_0;
