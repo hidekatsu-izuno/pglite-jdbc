@@ -123,6 +123,29 @@ class PgjdbcInspiredResultSetTest {
     }
 
     @Test
+    void zeroRowResultPositioningMatchesPgjdbc() throws Exception {
+        try (var statement = connection.createStatement(
+                 ResultSet.TYPE_SCROLL_INSENSITIVE,
+                 ResultSet.CONCUR_UPDATABLE
+             );
+             var resultSet = statement.executeQuery("SELECT 1 AS value WHERE false")) {
+            assertFalse(resultSet.previous());
+            assertFalse(resultSet.previous());
+            assertFalse(resultSet.next());
+            assertFalse(resultSet.next());
+            assertFalse(resultSet.first());
+            assertFalse(resultSet.last());
+            assertEquals(0, resultSet.getRow());
+            assertFalse(resultSet.absolute(1));
+            assertFalse(resultSet.relative(1));
+            assertFalse(resultSet.isBeforeFirst());
+            assertFalse(resultSet.isAfterLast());
+            assertFalse(resultSet.isFirst());
+            assertFalse(resultSet.isLast());
+        }
+    }
+
+    @Test
     void resultSetNullAndClosedStateFollowJdbcContract() throws Exception {
         try (var statement = connection.createStatement();
              var resultSet = statement.executeQuery("SELECT NULL::int4 AS value")) {
