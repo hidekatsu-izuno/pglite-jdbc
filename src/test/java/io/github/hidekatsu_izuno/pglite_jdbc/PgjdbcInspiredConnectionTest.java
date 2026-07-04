@@ -7,11 +7,13 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.SQLClientInfoException;
 import java.sql.SQLFeatureNotSupportedException;
+import java.util.HashMap;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
 
@@ -267,6 +269,50 @@ class PgjdbcInspiredConnectionTest {
             assertEquals("Unknown ResultSet holdability setting: -1.", error.getMessage());
             assertEquals("22023", error.getSQLState());
             assertEquals(ResultSet.HOLD_CURSORS_OVER_COMMIT, connection.getHoldability());
+        }
+    }
+
+    @Test
+    void connectionTypeMapAndTransactionModeValidationMatchPgjdbc() throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
+            var typeMap = new HashMap<String, Class<?>>();
+            typeMap.put("example", String.class);
+            connection.setTypeMap(typeMap);
+            assertTrue(connection.getTypeMap() == typeMap);
+            assertEquals(String.class, connection.getTypeMap().get("example"));
+
+            var isolationError = assertThrows(SQLException.class, () -> connection.setTransactionIsolation(3));
+            assertEquals("Transaction isolation level 3 not supported.", isolationError.getMessage());
+            assertEquals("0A000", isolationError.getSQLState());
+
+            connection.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+            assertEquals(Connection.TRANSACTION_REPEATABLE_READ, connection.getTransactionIsolation());
+
+            connection.setAutoCommit(false);
+            try (var statement = connection.createStatement()) {
+                statement.execute("SELECT 1");
+            }
+
+            var readOnlyError = assertThrows(SQLException.class, () -> connection.setReadOnly(true));
+            assertEquals(
+                "Cannot change transaction read-only property in the middle of a transaction.",
+                readOnlyError.getMessage()
+            );
+            assertEquals("25001", readOnlyError.getSQLState());
+
+            var txIsolationError = assertThrows(
+                SQLException.class,
+                () -> connection.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE)
+            );
+            assertEquals(
+                "Cannot change transaction isolation level in the middle of a transaction.",
+                txIsolationError.getMessage()
+            );
+            assertEquals("25001", txIsolationError.getSQLState());
+            connection.rollback();
+
+            connection.setReadOnly(true);
+            assertTrue(connection.isReadOnly());
         }
     }
 

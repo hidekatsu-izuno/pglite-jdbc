@@ -86,6 +86,7 @@ public final class PgConnectionHandler implements InvocationHandler {
     private org.postgresql.largeobject.LargeObjectManager largeObjectApi;
     private final Properties clientInfo = new Properties();
     private final Map<String, String> parameterStatuses = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+    private Map<String, Class<?>> typeMap = new HashMap<>();
     private Set<Integer> binaryReceiveOids = new HashSet<>();
     private Set<Integer> binarySendOids = new HashSet<>();
     private final Map<String, Class<? extends org.postgresql.util.PGobject>> dataTypeObjects =
@@ -370,7 +371,7 @@ public final class PgConnectionHandler implements InvocationHandler {
             }
             case "getMetaData" -> PgDatabaseMetaDataHandler.create(this);
             case "setReadOnly" -> {
-                readOnly = (Boolean) args[0];
+                setReadOnly((Boolean) args[0]);
                 yield null;
             }
             case "isReadOnly" -> readOnly;
@@ -380,7 +381,7 @@ public final class PgConnectionHandler implements InvocationHandler {
             }
             case "getCatalog" -> catalog;
             case "setTransactionIsolation" -> {
-                transactionIsolation = (Integer) args[0];
+                setTransactionIsolation((Integer) args[0]);
                 yield null;
             }
             case "getTransactionIsolation" -> transactionIsolation;
@@ -408,10 +409,12 @@ public final class PgConnectionHandler implements InvocationHandler {
                 (org.postgresql.core.BaseConnection) self
             );
             case "createStruct" -> throw pgjdbcNotImplemented("createStruct(String, Object[])");
-            case "setTypeMap" ->
-                throw JdbcCompat.unsupported(name);
+            case "setTypeMap" -> {
+                setTypeMap((Map<String, Class<?>>) args[0]);
+                yield null;
+            }
             case "createArrayOf" -> createArrayOf((String) args[0], args[1]);
-            case "getTypeMap" -> new HashMap<String, Class<?>>();
+            case "getTypeMap" -> typeMap;
             case "isValid" -> isValid((Integer) args[0]);
             case "setClientInfo" -> {
                 if (args[0] instanceof Properties properties) {
@@ -731,6 +734,48 @@ public final class PgConnectionHandler implements InvocationHandler {
             txOpen = false;
         }
         autoCommit = value;
+    }
+
+    private void setReadOnly(boolean value) throws SQLException {
+        ensureOpen();
+        if (txOpen) {
+            throw new PSQLException(
+                "Cannot change transaction read-only property in the middle of a transaction.",
+                PSQLState.ACTIVE_SQL_TRANSACTION
+            );
+        }
+        readOnly = value;
+    }
+
+    private void setTransactionIsolation(int level) throws SQLException {
+        ensureOpen();
+        if (txOpen) {
+            throw new PSQLException(
+                "Cannot change transaction isolation level in the middle of a transaction.",
+                PSQLState.ACTIVE_SQL_TRANSACTION
+            );
+        }
+        if (isolationLevelName(level) == null) {
+            throw new PSQLException(
+                "Transaction isolation level " + level + " not supported.",
+                PSQLState.NOT_IMPLEMENTED
+            );
+        }
+        transactionIsolation = level;
+    }
+
+    private String isolationLevelName(int level) {
+        return switch (level) {
+            case Connection.TRANSACTION_READ_COMMITTED -> "READ COMMITTED";
+            case Connection.TRANSACTION_SERIALIZABLE -> "SERIALIZABLE";
+            case Connection.TRANSACTION_READ_UNCOMMITTED -> "READ UNCOMMITTED";
+            case Connection.TRANSACTION_REPEATABLE_READ -> "REPEATABLE READ";
+            default -> null;
+        };
+    }
+
+    private void setTypeMap(Map<String, Class<?>> map) {
+        typeMap = map;
     }
 
     private void ensureTransactionIfNeeded() throws SQLException {
