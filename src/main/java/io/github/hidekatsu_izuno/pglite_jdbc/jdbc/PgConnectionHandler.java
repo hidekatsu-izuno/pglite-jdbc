@@ -25,6 +25,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.Timer;
+import java.util.stream.Collectors;
 import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -486,7 +487,12 @@ public final class PgConnectionHandler implements InvocationHandler {
                 yield null;
             }
             case "getFieldMetadataCache" -> fieldMetadataCache;
-            case "createQuery" -> unsupportedCore("createQuery");
+            case "createQuery" -> createCachedQuery(
+                (String) args[0],
+                (Boolean) args[1],
+                (Boolean) args[2],
+                (String[]) args[3]
+            );
             case "setFlushCacheOnDeallocate" -> null;
             case "hintReadOnly" -> readOnly;
             case "getXmlFactoryFactory" -> org.postgresql.xml.DefaultPGXmlFactoryFactory.INSTANCE;
@@ -1070,6 +1076,124 @@ public final class PgConnectionHandler implements InvocationHandler {
         return Utils.escapeLiteral(null, value, true).toString();
     }
 
+    private org.postgresql.core.CachedQuery createCachedQuery(
+        String sql,
+        boolean escapeProcessing,
+        boolean isParameterized,
+        String[] columnNames
+    ) throws SQLException {
+        var parsedSql = sql;
+        if (escapeProcessing) {
+            parsedSql = org.postgresql.core.Parser.replaceProcessing(
+                parsedSql,
+                true,
+                getStandardConformingStrings()
+            );
+        }
+        var splitStatements = isParameterized
+            || preferQueryMode.compareTo(PreferQueryMode.EXTENDED) >= 0;
+        var returningColumnNames = columnNames == null ? new String[] { "*" } : columnNames;
+        var nativeQueries = org.postgresql.core.Parser.parseJdbcSql(
+            parsedSql,
+            getStandardConformingStrings(),
+            isParameterized,
+            splitStatements,
+            false,
+            true,
+            returningColumnNames
+        );
+        return new org.postgresql.core.CachedQuery(sql, wrapNativeQueries(nativeQueries), false);
+    }
+
+    private org.postgresql.core.Query wrapNativeQueries(List<org.postgresql.core.NativeQuery> nativeQueries) {
+        var queries = nativeQueries.stream()
+            .map(this::wrapNativeQuery)
+            .toArray(org.postgresql.core.Query[]::new);
+        if (queries.length == 1) {
+            return queries[0];
+        }
+        return createQueryProxy(nativeQueries, queries);
+    }
+
+    private org.postgresql.core.Query wrapNativeQuery(org.postgresql.core.NativeQuery nativeQuery) {
+        return createQueryProxy(List.of(nativeQuery), new org.postgresql.core.Query[0]);
+    }
+
+    private org.postgresql.core.Query createQueryProxy(
+        List<org.postgresql.core.NativeQuery> nativeQueries,
+        org.postgresql.core.Query[] subqueries
+    ) {
+        return (org.postgresql.core.Query) Proxy.newProxyInstance(
+            PgConnectionHandler.class.getClassLoader(),
+            new Class<?>[] { org.postgresql.core.Query.class },
+            (proxy, method, args) -> {
+                if (method.getDeclaringClass() == Object.class) {
+                    return switch (method.getName()) {
+                        case "toString" -> nativeQueries.stream()
+                            .map(query -> query.toString(null))
+                            .collect(Collectors.joining(";"));
+                        case "hashCode" -> System.identityHashCode(proxy);
+                        case "equals" -> proxy == args[0];
+                        default -> null;
+                    };
+                }
+                return switch (method.getName()) {
+                    case "createParameterList" -> createParameterListProxy(nativeQueries);
+                    case "toString" -> nativeQueries.stream()
+                        .map(query -> query.toString(null))
+                        .collect(Collectors.joining(";"));
+                    case "getNativeSql" -> nativeQueries.stream()
+                        .map(query -> query.nativeSql)
+                        .collect(Collectors.joining(";"));
+                    case "getSqlCommand" -> nativeQueries.size() == 1 ? nativeQueries.get(0).command : null;
+                    case "close" -> null;
+                    case "isStatementDescribed" -> false;
+                    case "isEmpty" -> nativeQueries.stream().allMatch(query -> query.nativeSql.isBlank());
+                    case "getBatchSize" -> nativeQueries.size() == 1 ? 1 : 0;
+                    case "getResultSetColumnNameIndexMap" -> null;
+                    case "getSubqueries" -> subqueries.length == 0 ? null : subqueries.clone();
+                    default -> JdbcCompat.defaultReturn(method.getReturnType());
+                };
+            }
+        );
+    }
+
+    private org.postgresql.core.ParameterList createParameterListProxy(
+        List<org.postgresql.core.NativeQuery> nativeQueries
+    ) {
+        var parameterCount = nativeQueries.stream()
+            .mapToInt(query -> query.bindPositions.length)
+            .sum();
+        return (org.postgresql.core.ParameterList) Proxy.newProxyInstance(
+            PgConnectionHandler.class.getClassLoader(),
+            new Class<?>[] { org.postgresql.core.ParameterList.class },
+            (proxy, method, args) -> {
+                if (method.getDeclaringClass() == Object.class) {
+                    return switch (method.getName()) {
+                        case "toString" -> "PgParameterList";
+                        case "hashCode" -> System.identityHashCode(proxy);
+                        case "equals" -> proxy == args[0];
+                        default -> null;
+                    };
+                }
+                return switch (method.getName()) {
+                    case "getParameterCount", "getInParameterCount" -> parameterCount;
+                    case "getOutParameterCount" -> 0;
+                    case "getTypeOIDs" -> new int[parameterCount];
+                    case "copy" -> createParameterListProxy(nativeQueries);
+                    case "clear" -> null;
+                    case "toString" -> "?";
+                    case "getValues" -> new Object[parameterCount];
+                    default -> JdbcCompat.defaultReturn(method.getReturnType());
+                };
+            }
+        );
+    }
+
+    private boolean getStandardConformingStrings() {
+        return true;
+    }
+
     private org.postgresql.core.TypeInfo createTypeInfo() {
         return new org.postgresql.jdbc.TypeInfoCache(
             (org.postgresql.core.BaseConnection) self,
@@ -1094,6 +1218,21 @@ public final class PgConnectionHandler implements InvocationHandler {
                     return autosave;
                 }
                 return switch (method.getName()) {
+                    case "createSimpleQuery" -> wrapNativeQuery(
+                        new org.postgresql.core.NativeQuery(
+                            (String) args[0],
+                            org.postgresql.core.SqlCommand.createStatementTypeInfo(
+                                org.postgresql.core.SqlCommandType.BLANK
+                            )
+                        )
+                    );
+                    case "createQuery" -> createCachedQuery(
+                        (String) args[0],
+                        (Boolean) args[1],
+                        (Boolean) args[2],
+                        (String[]) args[3]
+                    );
+                    case "wrap" -> wrapNativeQueries((List<org.postgresql.core.NativeQuery>) args[0]);
                     case "getProtocolVersion" -> org.postgresql.core.ProtocolVersion.v3_0;
                     case "isReWriteBatchedInsertsEnabled" -> false;
                     case "processNotifies", "sendQueryCancel", "setPreferQueryMode", "setAutoSave",
