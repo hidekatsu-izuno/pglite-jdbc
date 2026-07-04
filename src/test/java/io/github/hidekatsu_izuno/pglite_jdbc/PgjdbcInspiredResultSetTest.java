@@ -169,7 +169,9 @@ class PgjdbcInspiredResultSetTest {
     void resultSetFetchSizeRejectsNegativeValuesLikePgjdbc() throws Exception {
         try (var statement = connection.createStatement();
              var resultSet = statement.executeQuery("SELECT 1 AS value")) {
-            assertThrows(SQLException.class, () -> resultSet.setFetchSize(-1));
+            var error = assertThrows(SQLException.class, () -> resultSet.setFetchSize(-1));
+            assertEquals("Fetch size must be a value greater than or equal to 0.", error.getMessage());
+            assertEquals("22023", error.getSQLState());
             resultSet.setFetchSize(2);
             assertEquals(2, resultSet.getFetchSize());
         }
@@ -180,9 +182,29 @@ class PgjdbcInspiredResultSetTest {
         try (var statement = connection.createStatement();
              var resultSet = statement.executeQuery("SELECT 1 AS value")) {
             assertEquals(ResultSet.FETCH_FORWARD, resultSet.getFetchDirection());
-            assertThrows(SQLException.class, () -> resultSet.setFetchDirection(ResultSet.FETCH_REVERSE));
-            assertThrows(SQLException.class, () -> resultSet.setFetchDirection(ResultSet.FETCH_UNKNOWN));
-            assertThrows(SQLException.class, () -> resultSet.setFetchDirection(-1));
+            var reverseError = assertThrows(
+                SQLException.class,
+                () -> resultSet.setFetchDirection(ResultSet.FETCH_REVERSE)
+            );
+            assertEquals(
+                "Operation requires a scrollable ResultSet, but this ResultSet is FORWARD_ONLY.",
+                reverseError.getMessage()
+            );
+            assertEquals("24000", reverseError.getSQLState());
+
+            var unknownError = assertThrows(
+                SQLException.class,
+                () -> resultSet.setFetchDirection(ResultSet.FETCH_UNKNOWN)
+            );
+            assertEquals(
+                "Operation requires a scrollable ResultSet, but this ResultSet is FORWARD_ONLY.",
+                unknownError.getMessage()
+            );
+            assertEquals("24000", unknownError.getSQLState());
+
+            var invalidError = assertThrows(SQLException.class, () -> resultSet.setFetchDirection(-1));
+            assertEquals("Invalid fetch direction constant: -1.", invalidError.getMessage());
+            assertEquals("22023", invalidError.getSQLState());
             resultSet.setFetchDirection(ResultSet.FETCH_FORWARD);
             assertEquals(ResultSet.FETCH_FORWARD, resultSet.getFetchDirection());
         }

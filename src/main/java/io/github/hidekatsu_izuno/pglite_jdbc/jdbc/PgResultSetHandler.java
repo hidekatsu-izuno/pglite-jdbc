@@ -18,6 +18,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import org.postgresql.util.PSQLException;
+import org.postgresql.util.PSQLState;
 
 final class PgResultSetHandler implements InvocationHandler {
     private final PgConnectionHandler connection;
@@ -429,7 +431,10 @@ final class PgResultSetHandler implements InvocationHandler {
                 var value = (Integer) args[0];
                 validateFetchDirection(value);
                 if (type == ResultSet.TYPE_FORWARD_ONLY && value != ResultSet.FETCH_FORWARD) {
-                    throw new SQLException("Invalid fetch direction for forward-only result set: " + value);
+                    throw new PSQLException(
+                        "Operation requires a scrollable ResultSet, but this ResultSet is FORWARD_ONLY.",
+                        PSQLState.INVALID_CURSOR_STATE
+                    );
                 }
                 fetchDirection = value;
                 yield null;
@@ -442,7 +447,10 @@ final class PgResultSetHandler implements InvocationHandler {
                 ensureNotClosed();
                 var value = (Integer) args[0];
                 if (value < 0) {
-                    throw new SQLException("Invalid fetch size: " + value);
+                    throw new PSQLException(
+                        "Fetch size must be a value greater than or equal to 0.",
+                        PSQLState.INVALID_PARAMETER_VALUE
+                    );
                 }
                 fetchSize = value;
                 yield null;
@@ -504,7 +512,10 @@ final class PgResultSetHandler implements InvocationHandler {
             value != ResultSet.FETCH_REVERSE &&
             value != ResultSet.FETCH_UNKNOWN
         ) {
-            throw new SQLException("Invalid fetch direction: " + value);
+            throw new PSQLException(
+                "Invalid fetch direction constant: " + value + ".",
+                PSQLState.INVALID_PARAMETER_VALUE
+            );
         }
     }
 
@@ -517,7 +528,10 @@ final class PgResultSetHandler implements InvocationHandler {
 
     private void ensureScrollable() throws SQLException {
         if (type == ResultSet.TYPE_FORWARD_ONLY) {
-            throw new SQLException("Operation requires a scrollable ResultSet");
+            throw new PSQLException(
+                "Operation requires a scrollable ResultSet, but this ResultSet is FORWARD_ONLY.",
+                PSQLState.INVALID_CURSOR_STATE
+            );
         }
     }
 
