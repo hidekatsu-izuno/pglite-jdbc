@@ -8,11 +8,14 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
+import java.sql.ClientInfoStatus;
+import java.sql.SQLClientInfoException;
 import java.sql.SQLFeatureNotSupportedException;
 import java.sql.ResultSet;
 import java.sql.Savepoint;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.SQLWarning;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -67,6 +70,7 @@ public final class PgConnectionHandler implements InvocationHandler {
     private org.postgresql.copy.CopyManager copyApi;
     private org.postgresql.fastpath.Fastpath fastpathApi;
     private org.postgresql.largeobject.LargeObjectManager largeObjectApi;
+    private final Properties clientInfo = new Properties();
     private final Map<String, String> parameterStatuses = new HashMap<>();
     private Set<Integer> binaryReceiveOids = new HashSet<>();
     private Set<Integer> binarySendOids = new HashSet<>();
@@ -305,7 +309,8 @@ public final class PgConnectionHandler implements InvocationHandler {
             };
         }
 
-        if (!"close".equals(name) && !"isClosed".equals(name)) {
+        if (!"close".equals(name) && !"isClosed".equals(name) && !"isValid".equals(name) &&
+            !"setClientInfo".equals(name)) {
             ensureOpen();
         }
 
@@ -375,13 +380,20 @@ public final class PgConnectionHandler implements InvocationHandler {
                 throw JdbcCompat.unsupported(name);
             case "createArrayOf" -> createArrayOf((String) args[0], args[1]);
             case "getTypeMap" -> new HashMap<String, Class<?>>();
-            case "isValid" -> !closed;
-            case "setClientInfo" -> null;
-            case "getClientInfo" -> {
-                if (args == null || args.length == 0) {
-                    yield new Properties();
+            case "isValid" -> isValid((Integer) args[0]);
+            case "setClientInfo" -> {
+                if (args[0] instanceof Properties properties) {
+                    setClientInfo(properties);
+                } else {
+                    setClientInfo((String) args[0], (String) args[1]);
                 }
                 yield null;
+            }
+            case "getClientInfo" -> {
+                if (args == null || args.length == 0) {
+                    yield getClientInfo();
+                }
+                yield getClientInfo((String) args[0]);
             }
             case "setSchema" -> {
                 setSchema((String) args[0]);
@@ -541,7 +553,70 @@ public final class PgConnectionHandler implements InvocationHandler {
         if (applicationName == null && properties != null) {
             applicationName = trimToNull(properties.getProperty("applicationName"));
         }
-        parameterStatuses.put("application_name", applicationName == null ? "" : applicationName);
+        setApplicationName(applicationName);
+    }
+
+    private boolean isValid(int timeout) throws SQLException {
+        if (timeout < 0) {
+            throw new PSQLException("Invalid timeout (" + timeout + "<0).", PSQLState.INVALID_PARAMETER_VALUE);
+        }
+        return !closed;
+    }
+
+    private void setClientInfo(String name, String value) throws SQLClientInfoException {
+        try {
+            ensureOpen();
+        } catch (SQLException cause) {
+            var failures = new HashMap<String, ClientInfoStatus>();
+            failures.put(name, ClientInfoStatus.REASON_UNKNOWN);
+            throw new SQLClientInfoException("This connection has been closed.", failures, cause);
+        }
+
+        if ("ApplicationName".equals(name)) {
+            setApplicationName(value);
+            return;
+        }
+
+        warnings = appendWarning(
+            warnings,
+            new SQLWarning("ClientInfo property not supported.", PSQLState.NOT_IMPLEMENTED.getState())
+        );
+    }
+
+    private void setClientInfo(Properties properties) throws SQLClientInfoException {
+        try {
+            ensureOpen();
+        } catch (SQLException cause) {
+            var failures = new HashMap<String, ClientInfoStatus>();
+            for (var entry : properties.entrySet()) {
+                failures.put((String) entry.getKey(), ClientInfoStatus.REASON_UNKNOWN);
+            }
+            throw new SQLClientInfoException("This connection has been closed.", failures, cause);
+        }
+
+        setClientInfo("ApplicationName", properties.getProperty("ApplicationName", null));
+    }
+
+    private String getClientInfo(String name) {
+        return clientInfo.getProperty(name);
+    }
+
+    private Properties getClientInfo() {
+        return clientInfo;
+    }
+
+    private void setApplicationName(String applicationName) {
+        var value = applicationName == null ? "" : applicationName;
+        parameterStatuses.put("application_name", value);
+        clientInfo.put("ApplicationName", value);
+    }
+
+    private SQLWarning appendWarning(SQLWarning current, SQLWarning warning) {
+        if (current == null) {
+            return warning;
+        }
+        current.setNextWarning(warning);
+        return current;
     }
 
     private int parseIntProperty(Properties properties, String name, int defaultValue) {
