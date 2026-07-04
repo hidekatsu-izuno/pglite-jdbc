@@ -339,6 +339,9 @@ final class PgResultSetHandler implements InvocationHandler {
                     }
                     yield JdbcCompat.coerce(value, targetType);
                 }
+                if (args.length == 2 && args[1] instanceof Map<?, ?> map && !map.isEmpty()) {
+                    throw pgjdbcNotImplemented("getObjectImpl(int,Map)");
+                }
                 yield objectValue(column, value);
             }
             case "getArray" -> {

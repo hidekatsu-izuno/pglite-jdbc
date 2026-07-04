@@ -15,6 +15,7 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterAll;
@@ -195,6 +196,21 @@ class PgjdbcInspiredResultSetTest {
             assertPgjdbcResultSetNotImplemented("getNString(int)", () -> resultSet.getNString("label"));
             assertPgjdbcResultSetNotImplemented("getNCharacterStream(int)", () -> resultSet.getNCharacterStream(2));
             assertPgjdbcResultSetNotImplemented("getNCharacterStream(int)", () -> resultSet.getNCharacterStream("label"));
+        }
+    }
+
+    @Test
+    void resultSetObjectMapLookupMatchesPgjdbc() throws Exception {
+        try (var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("SELECT 'value'::text AS value")) {
+            assertTrue(resultSet.next());
+            assertEquals("value", resultSet.getObject(1, new HashMap<String, Class<?>>()));
+            assertEquals("value", resultSet.getObject("value", new HashMap<String, Class<?>>()));
+
+            var map = new HashMap<String, Class<?>>();
+            map.put("text", String.class);
+            assertPgjdbcResultSetNotImplemented("getObjectImpl(int,Map)", () -> resultSet.getObject(1, map));
+            assertPgjdbcResultSetNotImplemented("getObjectImpl(int,Map)", () -> resultSet.getObject("value", map));
         }
     }
 
