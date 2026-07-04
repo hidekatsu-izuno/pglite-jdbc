@@ -405,7 +405,7 @@ public final class PgConnectionHandler implements InvocationHandler {
                 yield null;
             }
             case "setNetworkTimeout" -> {
-                networkTimeout = (Integer) args[1];
+                setNetworkTimeout((Integer) args[1]);
                 yield null;
             }
             case "getNetworkTimeout" -> networkTimeout;
@@ -424,12 +424,12 @@ public final class PgConnectionHandler implements InvocationHandler {
             }
             case "getPrepareThreshold" -> prepareThreshold;
             case "setDefaultFetchSize" -> {
-                defaultFetchSize = (Integer) args[0];
+                setDefaultFetchSize((Integer) args[0]);
                 yield null;
             }
             case "getDefaultFetchSize" -> defaultFetchSize;
             case "setQueryTimeout" -> {
-                setQueryTimeoutSeconds((Integer) args[0]);
+                setQueryTimeout((Integer) args[0]);
                 yield null;
             }
             case "getQueryTimeout" -> queryTimeout;
@@ -849,14 +849,34 @@ public final class PgConnectionHandler implements InvocationHandler {
         );
     }
 
-    private void setQueryTimeoutSeconds(int seconds) throws SQLException {
+    private void setDefaultFetchSize(int fetchSize) throws SQLException {
+        if (fetchSize < 0) {
+            throw new PSQLException(
+                "Fetch size must be a value greater than or equal to 0.",
+                PSQLState.INVALID_PARAMETER_VALUE
+            );
+        }
+        defaultFetchSize = fetchSize;
+    }
+
+    private void setQueryTimeout(int seconds) throws SQLException {
         if (seconds < 0) {
             throw new PSQLException(
-                "queryTimeout must be >= 0",
+                "Query timeout must be a value greater than or equal to 0.",
                 PSQLState.INVALID_PARAMETER_VALUE
             );
         }
         queryTimeout = seconds;
+    }
+
+    private void setNetworkTimeout(int milliseconds) throws SQLException {
+        if (milliseconds < 0) {
+            throw new PSQLException(
+                "Network timeout must be a value greater than or equal to 0.",
+                PSQLState.INVALID_PARAMETER_VALUE
+            );
+        }
+        networkTimeout = milliseconds;
     }
 
     private org.postgresql.copy.CopyManager getCopyAPI() throws SQLException {

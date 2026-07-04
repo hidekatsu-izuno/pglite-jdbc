@@ -62,4 +62,27 @@ class PgjdbcInspiredConnectionTest {
         assertFalse(connection.isValid(0));
         assertThrows(SQLClientInfoException.class, () -> connection.setClientInfo("ApplicationName", "closed"));
     }
+
+    @Test
+    void connectionTimeoutAndFetchSizeValidationMatchesPgjdbc() throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
+            var pgConnection = connection.unwrap(org.postgresql.PGConnection.class);
+
+            var fetchSizeError = assertThrows(SQLException.class, () -> pgConnection.setDefaultFetchSize(-1));
+            assertEquals("Fetch size must be a value greater than or equal to 0.", fetchSizeError.getMessage());
+            assertEquals("22023", fetchSizeError.getSQLState());
+
+            var networkTimeoutError = assertThrows(SQLException.class, () -> connection.setNetworkTimeout(null, -1));
+            assertEquals(
+                "Network timeout must be a value greater than or equal to 0.",
+                networkTimeoutError.getMessage()
+            );
+            assertEquals("22023", networkTimeoutError.getSQLState());
+
+            pgConnection.setDefaultFetchSize(7);
+            assertEquals(7, pgConnection.getDefaultFetchSize());
+            connection.setNetworkTimeout(null, 9);
+            assertEquals(9, connection.getNetworkTimeout());
+        }
+    }
 }
