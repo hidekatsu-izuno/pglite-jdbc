@@ -4,14 +4,19 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.sql.CallableStatement;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import javax.sql.ConnectionEvent;
 import javax.sql.ConnectionEventListener;
 import javax.sql.PooledConnection;
 import javax.sql.StatementEventListener;
+import org.postgresql.util.PSQLException;
+import org.postgresql.util.PSQLState;
 
 public class PGPooledConnection implements PooledConnection {
     private final Connection physicalConnection;
@@ -88,17 +93,27 @@ public class PGPooledConnection implements PooledConnection {
 
         return (Connection) Proxy.newProxyInstance(
             PGPooledConnection.class.getClassLoader(),
-            new Class<?>[] { Connection.class },
+            new Class<?>[] { Connection.class, org.postgresql.PGConnection.class },
             handler
         );
     }
 
     private void ensureOpen() throws SQLException {
         if (closed) {
-            throw new SQLException("PooledConnection is closed");
+            var exception = new PSQLException(
+                "This PooledConnection has already been closed.",
+                PSQLState.CONNECTION_DOES_NOT_EXIST
+            );
+            fireConnectionError(exception);
+            throw exception;
         }
         if (physicalConnection.isClosed()) {
-            throw new SQLException("Physical connection is closed");
+            var exception = new PSQLException(
+                "This PooledConnection has already been closed.",
+                PSQLState.CONNECTION_DOES_NOT_EXIST
+            );
+            fireConnectionError(exception);
+            throw exception;
         }
     }
 
@@ -152,8 +167,77 @@ public class PGPooledConnection implements PooledConnection {
                 throw new SQLException("Connection is closed");
             }
 
+            if ("unwrap".equals(name) && args != null && args.length == 1 && args[0] instanceof Class<?> iface) {
+                if (iface.isInstance(proxy)) {
+                    return iface.cast(proxy);
+                }
+            }
+            if ("isWrapperFor".equals(name) && args != null && args.length == 1 && args[0] instanceof Class<?> iface) {
+                if (iface.isInstance(proxy)) {
+                    return true;
+                }
+            }
+
             try {
-                return method.invoke(physicalConnection, args);
+                var result = method.invoke(physicalConnection, args);
+                return switch (name) {
+                    case "createStatement" -> wrapStatement((Connection) proxy, (Statement) result, Statement.class);
+                    case "prepareStatement" -> wrapStatement(
+                        (Connection) proxy,
+                        (Statement) result,
+                        PreparedStatement.class
+                    );
+                    case "prepareCall" -> wrapStatement(
+                        (Connection) proxy,
+                        (Statement) result,
+                        CallableStatement.class
+                    );
+                    default -> result;
+                };
+            } catch (InvocationTargetException e) {
+                var cause = e.getCause();
+                if (cause instanceof SQLException sqlException) {
+                    fireConnectionError(sqlException);
+                    throw sqlException;
+                }
+                throw cause;
+            }
+        }
+    }
+
+    private Statement wrapStatement(Connection logicalConnection, Statement statement, Class<?> statementInterface) {
+        return (Statement) Proxy.newProxyInstance(
+            PGPooledConnection.class.getClassLoader(),
+            new Class<?>[] { statementInterface, org.postgresql.PGStatement.class },
+            new LogicalStatementHandler(logicalConnection, statement)
+        );
+    }
+
+    private final class LogicalStatementHandler implements InvocationHandler {
+        private final Connection logicalConnection;
+        private final Statement statement;
+
+        private LogicalStatementHandler(Connection logicalConnection, Statement statement) {
+            this.logicalConnection = logicalConnection;
+            this.statement = statement;
+        }
+
+        @Override
+        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+            var name = method.getName();
+            if (method.getDeclaringClass() == Object.class) {
+                return switch (name) {
+                    case "toString" -> "Pooled statement wrapping physical statement " + statement;
+                    case "hashCode" -> System.identityHashCode(proxy);
+                    case "equals" -> proxy == args[0];
+                    default -> method.invoke(statement, args);
+                };
+            }
+            if ("getConnection".equals(name)) {
+                return logicalConnection;
+            }
+            try {
+                return method.invoke(statement, args);
             } catch (InvocationTargetException e) {
                 var cause = e.getCause();
                 if (cause instanceof SQLException sqlException) {
