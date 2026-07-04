@@ -3,9 +3,12 @@ package io.github.hidekatsu_izuno.pglite_jdbc;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.ds.PGConnectionPoolDataSource;
+import io.github.hidekatsu_izuno.pglite_jdbc.ds.PGPoolingDataSource;
 import io.github.hidekatsu_izuno.pglite_jdbc.ds.PGSimpleDataSource;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -86,6 +89,62 @@ class PgjdbcInspiredDataSourceTest {
         assertArrayEquals(dataSource.getPortNumbers(), restored.getPortNumbers());
         assertEquals("example", restored.getDatabaseName());
         assertFalse(restored.isDefaultAutoCommit());
+    }
+
+    @Test
+    void poolingDataSourceRegistryMatchesPgjdbc() {
+        var name = "pool-" + System.nanoTime();
+        var dataSource = new PGPoolingDataSource();
+        var duplicate = new PGPoolingDataSource();
+        try {
+            dataSource.setDataSourceName(name);
+            assertEquals(dataSource, PGPoolingDataSource.getDataSource(name));
+
+            var error = assertThrows(
+                IllegalArgumentException.class,
+                () -> duplicate.setDataSourceName(name)
+            );
+            assertEquals("DataSource with name '" + name + "' already exists!", error.getMessage());
+
+            dataSource.close();
+            assertNull(PGPoolingDataSource.getDataSource(name));
+        } finally {
+            dataSource.close();
+            duplicate.close();
+        }
+    }
+
+    @Test
+    void poolingDataSourceReferenceIncludesPoolPropertiesLikePgjdbc() throws Exception {
+        var name = "pool-ref-" + System.nanoTime();
+        var dataSource = new PGPoolingDataSource();
+        try {
+            dataSource.setDataSourceName(name);
+            dataSource.setInitialConnections(2);
+            dataSource.setMaxConnections(5);
+            dataSource.setServerNames(new String[] { "db1" });
+            dataSource.setPortNumbers(new int[] { 5432 });
+            dataSource.setDatabaseName("example");
+
+            var reference = dataSource.getReference();
+            dataSource.close();
+
+            var restored = new PGPoolingDataSource();
+            restored.setFromReference(reference);
+            try {
+                assertEquals(name, restored.getDataSourceName());
+                assertEquals(restored, PGPoolingDataSource.getDataSource(name));
+                assertEquals(2, restored.getInitialConnections());
+                assertEquals(5, restored.getMaxConnections());
+                assertArrayEquals(new String[] { "db1" }, restored.getServerNames());
+                assertArrayEquals(new int[] { 5432 }, restored.getPortNumbers());
+                assertEquals("example", restored.getDatabaseName());
+            } finally {
+                restored.close();
+            }
+        } finally {
+            dataSource.close();
+        }
     }
 
     @Test
