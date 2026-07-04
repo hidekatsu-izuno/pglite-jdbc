@@ -168,8 +168,7 @@ class PgjdbcInspiredStatementTest {
             assertEquals(-1, statement.getUpdateCount());
             assertEquals(-1L, statement.getLargeUpdateCount());
 
-            statement.setLargeMaxRows(2);
-            assertEquals(2L, statement.getLargeMaxRows());
+            statement.setMaxRows(0);
             try (var resultSet = statement.executeQuery("SELECT i FROM pgjdbc_update_test ORDER BY i")) {
                 assertTrue(resultSet.next());
                 assertTrue(resultSet.next());
@@ -370,20 +369,40 @@ class PgjdbcInspiredStatementTest {
             assertThrows(SQLException.class, () -> statement.setFetchSize(-1));
             assertThrows(SQLException.class, () -> statement.setMaxFieldSize(-1));
             assertThrows(SQLException.class, () -> statement.setMaxRows(-1));
-            assertThrows(SQLException.class, () -> statement.setLargeMaxRows(-1));
             assertThrows(SQLException.class, () -> statement.setQueryTimeout(-1));
 
             statement.setFetchSize(2);
             statement.setMaxFieldSize(6);
             statement.setMaxRows(3);
-            statement.setLargeMaxRows(4);
             statement.setQueryTimeout(5);
 
             assertEquals(2, statement.getFetchSize());
             assertEquals(6, statement.getMaxFieldSize());
-            assertEquals(4, statement.getMaxRows());
-            assertEquals(4L, statement.getLargeMaxRows());
+            assertEquals(3, statement.getMaxRows());
             assertEquals(5, statement.getQueryTimeout());
+        }
+    }
+
+    @Test
+    void statementLargeMaxRowsIsNotImplementedLikePgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            var setError = assertThrows(
+                java.sql.SQLFeatureNotSupportedException.class,
+                () -> statement.setLargeMaxRows(1)
+            );
+            assertEquals(
+                "Method org.postgresql.jdbc.PgStatement.setLargeMaxRows is not yet implemented.",
+                setError.getMessage()
+            );
+
+            var getError = assertThrows(
+                java.sql.SQLFeatureNotSupportedException.class,
+                statement::getLargeMaxRows
+            );
+            assertEquals(
+                "Method org.postgresql.jdbc.PgStatement.getLargeMaxRows is not yet implemented.",
+                getError.getMessage()
+            );
         }
     }
 

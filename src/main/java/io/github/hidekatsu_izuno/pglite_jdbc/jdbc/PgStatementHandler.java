@@ -23,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import org.postgresql.util.PSQLState;
 
 final class PgStatementHandler implements InvocationHandler {
     private record StreamParameter(Object value) {}
@@ -247,11 +248,7 @@ final class PgStatementHandler implements InvocationHandler {
             case "isPoolable" -> false;
             case "isCloseOnCompletion" -> closeOnCompletion;
             case "getLargeUpdateCount" -> (long) updateCount;
-            case "setLargeMaxRows" -> {
-                maxRows = nonNegativeLongAsInt((Long) args[0], "large max rows");
-                yield null;
-            }
-            case "getLargeMaxRows" -> (long) maxRows;
+            case "setLargeMaxRows", "getLargeMaxRows" -> throw pgjdbcNotImplemented(name);
             case "executeLargeBatch" -> {
                 var batch = executeBatch();
                 var out = new long[batch.length];
@@ -1070,13 +1067,6 @@ final class PgStatementHandler implements InvocationHandler {
         return value;
     }
 
-    private int nonNegativeLongAsInt(long value, String name) throws SQLException {
-        if (value < 0 || value > Integer.MAX_VALUE) {
-            throw new SQLException("Invalid " + name + ": " + value);
-        }
-        return (int) value;
-    }
-
     private int fetchDirection(int value) throws SQLException {
         if (
             value != ResultSet.FETCH_FORWARD &&
@@ -1086,6 +1076,13 @@ final class PgStatementHandler implements InvocationHandler {
             throw new SQLException("Invalid fetch direction: " + value);
         }
         return value;
+    }
+
+    private SQLFeatureNotSupportedException pgjdbcNotImplemented(String methodName) {
+        return new SQLFeatureNotSupportedException(
+            "Method org.postgresql.jdbc.PgStatement." + methodName + " is not yet implemented.",
+            PSQLState.NOT_IMPLEMENTED.getState()
+        );
     }
 
     private ResultSet executeQuery(String sql) throws SQLException {
