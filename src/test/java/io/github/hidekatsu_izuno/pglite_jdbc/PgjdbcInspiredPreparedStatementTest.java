@@ -44,9 +44,13 @@ class PgjdbcInspiredPreparedStatementTest {
     @Test
     void preparedStatementRejectsStatementSqlOverloads() throws Exception {
         try (var prepared = connection.prepareStatement("SELECT 1")) {
-            assertThrows(SQLException.class, () -> prepared.executeQuery("SELECT 2"));
-            assertThrows(SQLException.class, () -> prepared.executeUpdate("CREATE TEMP TABLE pgjdbc_bad_ps(i int)"));
-            assertThrows(SQLException.class, () -> prepared.execute("SELECT 2"));
+            assertPreparedSqlTextError(assertThrows(SQLException.class, () -> prepared.executeQuery("SELECT 2")));
+            assertPreparedSqlTextError(assertThrows(
+                SQLException.class,
+                () -> prepared.executeUpdate("CREATE TEMP TABLE pgjdbc_bad_ps(i int)")
+            ));
+            assertPreparedSqlTextError(assertThrows(SQLException.class, () -> prepared.execute("SELECT 2")));
+            assertPreparedSqlTextError(assertThrows(SQLException.class, () -> prepared.addBatch("SELECT 2")));
         }
     }
 
@@ -868,5 +872,13 @@ class PgjdbcInspiredPreparedStatementTest {
                 assertFalse(resultSet.next());
             }
         }
+    }
+
+    private void assertPreparedSqlTextError(SQLException error) {
+        assertEquals(
+            "Can't use query methods that take a query string on a PreparedStatement.",
+            error.getMessage()
+        );
+        assertEquals("42809", error.getSQLState());
     }
 }

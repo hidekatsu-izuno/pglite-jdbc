@@ -23,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import org.postgresql.util.PSQLException;
 import org.postgresql.util.PSQLState;
 
 final class PgStatementHandler implements InvocationHandler {
@@ -183,6 +184,9 @@ final class PgStatementHandler implements InvocationHandler {
                 if (preparedSql != null && (args == null || args.length == 0)) {
                     preparedBatch.add(buildDisplayParams());
                 } else if (args != null && args.length > 0) {
+                    if (preparedSql != null) {
+                        throw preparedStatementSqlTextError();
+                    }
                     sqlBatch.add((String) args[0]);
                 } else {
                     throw new SQLException("addBatch requires SQL for Statement");
@@ -642,12 +646,19 @@ final class PgStatementHandler implements InvocationHandler {
             return typedPreparedProtocolSql();
         }
         if (preparedSql != null) {
-            throw new SQLException(methodName + " does not accept SQL text on a PreparedStatement");
+            throw preparedStatementSqlTextError();
         }
         if (args != null && args.length > 0 && args[0] instanceof String sql) {
             return JdbcCompat.replaceJdbcEscapes(sql, escapeProcessing);
         }
         throw new SQLException(methodName + " requires SQL text");
+    }
+
+    private PSQLException preparedStatementSqlTextError() {
+        return new PSQLException(
+            "Can't use query methods that take a query string on a PreparedStatement.",
+            PSQLState.WRONG_OBJECT_TYPE
+        );
     }
 
     private String typedPreparedProtocolSql() {
