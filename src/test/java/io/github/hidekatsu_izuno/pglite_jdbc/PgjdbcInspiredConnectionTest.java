@@ -2,6 +2,8 @@ package io.github.hidekatsu_izuno.pglite_jdbc;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -196,6 +198,28 @@ class PgjdbcInspiredConnectionTest {
                 "insert into example(name) values ($1)\nRETURNING \"generated id\"",
                 returning.query.getNativeSql()
             );
+        }
+    }
+
+    @Test
+    void queryExecutorCreatesFastpathParameterListsLikePgjdbc() throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
+            var queryExecutor = connection.unwrap(org.postgresql.core.BaseConnection.class).getQueryExecutor();
+            var parameters = queryExecutor.createFastpathParameters(2);
+
+            parameters.setIntParameter(1, 7);
+            parameters.setBytea(2, new byte[] { 1, 2, 3, 4 }, 1, 2);
+
+            assertEquals(2, parameters.getParameterCount());
+            assertEquals(2, parameters.getInParameterCount());
+            assertEquals(0, parameters.getOutParameterCount());
+            assertEquals(7, parameters.getValues()[0]);
+            assertArrayEquals(new byte[] { 2, 3 }, (byte[]) parameters.getValues()[1]);
+
+            var copy = parameters.copy();
+            parameters.clear();
+            assertEquals(7, copy.getValues()[0]);
+            assertNull(parameters.getValues()[0]);
         }
     }
 

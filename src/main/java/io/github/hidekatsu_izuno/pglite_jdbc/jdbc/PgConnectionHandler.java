@@ -3,6 +3,8 @@ package io.github.hidekatsu_izuno.pglite_jdbc.jdbc;
 import io.github.hidekatsu_izuno.pglite_jdbc.core.QueryExecutor;
 import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_;
+import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -1251,6 +1253,17 @@ public final class PgConnectionHandler implements InvocationHandler {
         var parameterCount = nativeQueries.stream()
             .mapToInt(query -> query.bindPositions.length)
             .sum();
+        return createParameterListProxy(parameterCount);
+    }
+
+    private org.postgresql.core.ParameterList createParameterListProxy(int parameterCount) {
+        return createParameterListProxy(new Object[parameterCount], new int[parameterCount]);
+    }
+
+    private org.postgresql.core.ParameterList createParameterListProxy(Object[] initialValues, int[] initialTypeOids) {
+        var values = initialValues.clone();
+        var typeOids = initialTypeOids.clone();
+        var parameterCount = values.length;
         return (org.postgresql.core.ParameterList) Proxy.newProxyInstance(
             PgConnectionHandler.class.getClassLoader(),
             new Class<?>[] { org.postgresql.core.ParameterList.class },
@@ -1266,15 +1279,120 @@ public final class PgConnectionHandler implements InvocationHandler {
                 return switch (method.getName()) {
                     case "getParameterCount", "getInParameterCount" -> parameterCount;
                     case "getOutParameterCount" -> 0;
-                    case "getTypeOIDs" -> new int[parameterCount];
-                    case "copy" -> createParameterListProxy(nativeQueries);
-                    case "clear" -> null;
-                    case "toString" -> "?";
-                    case "getValues" -> new Object[parameterCount];
+                    case "getTypeOIDs" -> typeOids.clone();
+                    case "setIntParameter" -> {
+                        setParameterValue(values, typeOids, (Integer) args[0], args[1], parameterTypeOid(args));
+                        yield null;
+                    }
+                    case "setLiteralParameter", "setStringParameter", "setBinaryParameter", "setNull" -> {
+                        setParameterValue(values, typeOids, (Integer) args[0], args[1], parameterTypeOid(args));
+                        yield null;
+                    }
+                    case "setBytea" -> {
+                        setByteaParameter(values, typeOids, args);
+                        yield null;
+                    }
+                    case "setText" -> {
+                        setParameterValue(values, typeOids, (Integer) args[0], readAllBytes((InputStream) args[1]), 0);
+                        yield null;
+                    }
+                    case "copy" -> copyParameterList(values, typeOids);
+                    case "clear" -> {
+                        java.util.Arrays.fill(values, null);
+                        java.util.Arrays.fill(typeOids, 0);
+                        yield null;
+                    }
+                    case "toString" -> parameterToString(values, (Integer) args[0]);
+                    case "appendAll" -> {
+                        appendParameterList(values, typeOids, (org.postgresql.core.ParameterList) args[0]);
+                        yield null;
+                    }
+                    case "getValues" -> values.clone();
                     default -> JdbcCompat.defaultReturn(method.getReturnType());
                 };
             }
         );
+    }
+
+    private org.postgresql.core.ParameterList copyParameterList(Object[] values, int[] typeOids) {
+        return createParameterListProxy(values, typeOids);
+    }
+
+    private void setParameterValue(Object[] values, int[] typeOids, int index, Object value, int typeOid)
+        throws SQLException {
+        validateParameterListIndex(values, index);
+        values[index - 1] = value;
+        typeOids[index - 1] = typeOid;
+    }
+
+    private void setByteaParameter(Object[] values, int[] typeOids, Object[] args) throws SQLException {
+        var index = (Integer) args[0];
+        if (args[1] instanceof byte[] bytes) {
+            var offset = args.length > 2 && args[2] instanceof Integer value ? value : 0;
+            var length = args.length > 3 && args[3] instanceof Integer value ? value : bytes.length - offset;
+            setParameterValue(
+                values,
+                typeOids,
+                index,
+                java.util.Arrays.copyOfRange(bytes, offset, offset + length),
+                0
+            );
+            return;
+        }
+        if (args[1] instanceof InputStream inputStream) {
+            setParameterValue(values, typeOids, index, readAllBytes(inputStream), 0);
+            return;
+        }
+        setParameterValue(values, typeOids, index, args[1], 0);
+    }
+
+    private int parameterTypeOid(Object[] args) {
+        return args.length > 2 && args[2] instanceof Integer typeOid ? typeOid : 0;
+    }
+
+    private byte[] readAllBytes(InputStream inputStream) throws SQLException {
+        try {
+            return inputStream.readAllBytes();
+        } catch (IOException exception) {
+            throw new SQLException("Failed to read parameter stream", exception);
+        }
+    }
+
+    private String parameterToString(Object[] values, int index) throws SQLException {
+        validateParameterListIndex(values, index);
+        var value = values[index - 1];
+        if (value == null) {
+            return "NULL";
+        }
+        if (value instanceof byte[] bytes) {
+            return "\\x" + java.util.HexFormat.of().formatHex(bytes);
+        }
+        return value.toString();
+    }
+
+    private void appendParameterList(
+        Object[] values,
+        int[] typeOids,
+        org.postgresql.core.ParameterList source
+    ) throws SQLException {
+        var sourceValues = source.getValues();
+        var sourceTypes = source.getTypeOIDs();
+        if (sourceValues.length > values.length) {
+            throw new PSQLException("Added parameters index out of range", PSQLState.INVALID_PARAMETER_VALUE);
+        }
+        for (var i = 0; i < sourceValues.length; i++) {
+            values[i] = sourceValues[i];
+            typeOids[i] = i < sourceTypes.length ? sourceTypes[i] : 0;
+        }
+    }
+
+    private void validateParameterListIndex(Object[] values, int index) throws SQLException {
+        if (index < 1 || index > values.length) {
+            throw new PSQLException(
+                "The column index is out of range: " + index + ", number of columns: " + values.length + ".",
+                PSQLState.INVALID_PARAMETER_VALUE
+            );
+        }
     }
 
     private boolean getStandardConformingStrings() {
@@ -1334,6 +1452,7 @@ public final class PgConnectionHandler implements InvocationHandler {
                         true,
                         (String[]) args[1]
                     );
+                    case "createFastpathParameters" -> createParameterListProxy((Integer) args[0]);
                     case "startCopy" -> startCopy((String) args[0]);
                     case "wrap" -> wrapNativeQueries((List<org.postgresql.core.NativeQuery>) args[0]);
                     case "getProtocolVersion" -> org.postgresql.core.ProtocolVersion.v3_0;
