@@ -231,6 +231,13 @@ class OrgPostgresqlCompatibilityTest {
             try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
                 var xml = connection.createSQLXML();
                 assertEquals(org.postgresql.jdbc.PgSQLXML.class, xml.getClass());
+                var uninitializedError = assertThrows(SQLException.class, xml::getString);
+                assertEquals(
+                    "This SQLXML object has not been initialized, so you cannot retrieve data from it.",
+                    uninitializedError.getMessage()
+                );
+                assertEquals("55000", uninitializedError.getSQLState());
+
                 xml.setString("<root><value>42</value></root>");
                 try (var statement = connection.prepareStatement("SELECT ?::xml AS payload")) {
                     statement.setSQLXML(1, xml);
@@ -242,6 +249,9 @@ class OrgPostgresqlCompatibilityTest {
                     }
                 }
                 xml.free();
+                var freedError = assertThrows(SQLException.class, xml::getString);
+                assertEquals("This SQLXML object has already been freed.", freedError.getMessage());
+                assertEquals("55000", freedError.getSQLState());
             }
         });
     }
