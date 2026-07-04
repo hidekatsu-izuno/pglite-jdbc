@@ -71,6 +71,32 @@ class PgjdbcInspiredDatabaseMetaDataTest {
     }
 
     @Test
+    void databaseMetadataUnsupportedMethodsMatchPgjdbc() throws Exception {
+        var metadata = connection.getMetaData();
+
+        assertPgjdbcMetadataNotImplemented(
+            "getRowIdLifetime()",
+            () -> metadata.getRowIdLifetime()
+        );
+        assertPgjdbcMetadataNotImplemented(
+            "getPseudoColumns(String, String, String, String)",
+            () -> metadata.getPseudoColumns(null, null, null, null)
+        );
+        assertPgjdbcMetadataNotImplemented(
+            "getSuperTypes(String,String,String)",
+            () -> metadata.getSuperTypes(null, null, null)
+        );
+        assertPgjdbcMetadataNotImplemented(
+            "getSuperTables(String,String,String,String)",
+            () -> metadata.getSuperTables(null, null, null)
+        );
+        assertPgjdbcMetadataNotImplemented(
+            "getAttributes(String,String,String,String)",
+            () -> metadata.getAttributes(null, null, null, null)
+        );
+    }
+
+    @Test
     void databaseMetadataReportsTablesColumnsAndTypeInfo() throws Exception {
         org.junit.jupiter.api.Assertions.assertTimeout(Duration.ofSeconds(180), () -> {
             try (var statement = connection.createStatement()) {
@@ -1458,6 +1484,20 @@ class PgjdbcInspiredDatabaseMetaDataTest {
             assertEquals(1, columnPrivileges.findColumn("table_cat"));
             assertEquals(8, columnPrivileges.findColumn("is_grantable"));
         }
+    }
+
+    private void assertPgjdbcMetadataNotImplemented(String method, ThrowingSqlCall call) {
+        var error = assertThrows(java.sql.SQLFeatureNotSupportedException.class, call::run);
+        assertEquals(
+            "Method org.postgresql.jdbc.PgDatabaseMetaData." + method + " is not yet implemented.",
+            error.getMessage()
+        );
+        assertEquals(org.postgresql.util.PSQLState.NOT_IMPLEMENTED.getState(), error.getSQLState());
+    }
+
+    @FunctionalInterface
+    private interface ThrowingSqlCall {
+        void run() throws Exception;
     }
 
     private String currentDatabase() throws Exception {

@@ -7,11 +7,13 @@ import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.postgresql.util.PSQLState;
 
 final class PgDatabaseMetaDataHandler implements InvocationHandler {
     private final PgConnectionHandler connection;
@@ -149,6 +151,17 @@ final class PgDatabaseMetaDataHandler implements InvocationHandler {
             case "getTablePrivileges" -> getTablePrivileges(args);
             case "getColumnPrivileges" -> getColumnPrivileges(args);
             case "getClientInfoProperties" -> getClientInfoProperties();
+            case "getRowIdLifetime" -> throw pgjdbcNotImplemented("getRowIdLifetime()");
+            case "getPseudoColumns" -> throw pgjdbcNotImplemented(
+                "getPseudoColumns(String, String, String, String)"
+            );
+            case "getSuperTypes" -> throw pgjdbcNotImplemented("getSuperTypes(String,String,String)");
+            case "getSuperTables" -> throw pgjdbcNotImplemented(
+                "getSuperTables(String,String,String,String)"
+            );
+            case "getAttributes" -> throw pgjdbcNotImplemented(
+                "getAttributes(String,String,String,String)"
+            );
             case "unwrap" -> {
                 var iface = (Class<?>) args[0];
                 if (iface.isInstance(proxy)) {
@@ -159,6 +172,13 @@ final class PgDatabaseMetaDataHandler implements InvocationHandler {
             case "isWrapperFor" -> ((Class<?>) args[0]).isInstance(proxy);
             default -> JdbcCompat.defaultReturn(method.getReturnType());
         };
+    }
+
+    private SQLFeatureNotSupportedException pgjdbcNotImplemented(String methodName) {
+        return new SQLFeatureNotSupportedException(
+            "Method org.postgresql.jdbc.PgDatabaseMetaData." + methodName + " is not yet implemented.",
+            PSQLState.NOT_IMPLEMENTED.getState()
+        );
     }
 
     private ResultSet getClientInfoProperties() {
