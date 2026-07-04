@@ -5,6 +5,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.io.ByteArrayInputStream;
 import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
@@ -317,6 +318,10 @@ final class PgResultSetHandler implements InvocationHandler {
                 ensureNotClosed();
                 yield statement;
             }
+            case "getCursorName" -> {
+                ensureNotClosed();
+                yield null;
+            }
             case "findColumn" -> {
                 ensureNotClosed();
                 yield findColumn((String) args[0]);
@@ -392,6 +397,12 @@ final class PgResultSetHandler implements InvocationHandler {
             case "getBinaryStream", "getAsciiStream" -> {
                 var bytes = JdbcCompat.toBytes(getValue(args[0]));
                 yield bytes == null ? null : new ByteArrayInputStream(bytes);
+            }
+            case "getUnicodeStream" -> {
+                var value = JdbcCompat.stringify(getValue(args[0]));
+                yield value == null
+                    ? null
+                    : new ByteArrayInputStream(value.getBytes(StandardCharsets.UTF_8));
             }
             case "getCharacterStream" -> {
                 var value = JdbcCompat.stringify(getValue(args[0]));

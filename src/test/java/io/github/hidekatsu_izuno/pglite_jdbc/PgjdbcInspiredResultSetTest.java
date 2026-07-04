@@ -10,6 +10,7 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.StringReader;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -169,12 +170,29 @@ class PgjdbcInspiredResultSetTest {
             assertThrows(SQLException.class, () -> resultSet.findColumn("value"));
             assertThrows(SQLException.class, () -> resultSet.getObject("value"));
             assertThrows(SQLException.class, resultSet::getStatement);
+            assertThrows(SQLException.class, resultSet::getCursorName);
             assertThrows(SQLException.class, resultSet::clearWarnings);
             assertThrows(SQLException.class, () -> resultSet.setFetchSize(1));
             assertThrows(SQLException.class, () -> resultSet.setFetchDirection(ResultSet.FETCH_FORWARD));
             assertThrows(SQLException.class, resultSet::rowUpdated);
             assertThrows(SQLException.class, () -> resultSet.updateInt(1, 1));
             assertThrows(SQLException.class, resultSet::moveToInsertRow);
+        }
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    void resultSetCursorNameAndUnicodeStreamMatchPgjdbc() throws Exception {
+        try (var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("SELECT 'caf\u00e9'::text AS value, NULL::text AS nil")) {
+            assertTrue(resultSet.next());
+            assertNull(resultSet.getCursorName());
+            assertEquals("caf\u00e9", new String(resultSet.getUnicodeStream(1).readAllBytes(), StandardCharsets.UTF_8));
+            assertEquals(
+                "caf\u00e9",
+                new String(resultSet.getUnicodeStream("value").readAllBytes(), StandardCharsets.UTF_8)
+            );
+            assertNull(resultSet.getUnicodeStream("nil"));
         }
     }
 
