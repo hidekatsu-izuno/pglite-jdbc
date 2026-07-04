@@ -47,6 +47,30 @@ class PgjdbcInspiredDatabaseMetaDataTest {
     }
 
     @Test
+    void databaseMetadataClientInfoPropertiesMatchPgjdbc() throws Exception {
+        var metadata = connection.getMetaData();
+
+        try (var properties = metadata.getClientInfoProperties()) {
+            var propertiesMetadata = properties.getMetaData();
+            assertEquals(4, propertiesMetadata.getColumnCount());
+            assertEquals("NAME", propertiesMetadata.getColumnLabel(1));
+            assertEquals("MAX_LEN", propertiesMetadata.getColumnLabel(2));
+            assertEquals("DEFAULT_VALUE", propertiesMetadata.getColumnLabel(3));
+            assertEquals("DESCRIPTION", propertiesMetadata.getColumnLabel(4));
+
+            assertTrue(properties.next());
+            assertEquals("ApplicationName", properties.getString("NAME"));
+            assertEquals(63, properties.getInt("MAX_LEN"));
+            assertEquals("", properties.getString("DEFAULT_VALUE"));
+            assertEquals(
+                "The name of the application currently utilizing the connection.",
+                properties.getString("DESCRIPTION")
+            );
+            assertFalse(properties.next());
+        }
+    }
+
+    @Test
     void databaseMetadataReportsTablesColumnsAndTypeInfo() throws Exception {
         org.junit.jupiter.api.Assertions.assertTimeout(Duration.ofSeconds(180), () -> {
             try (var statement = connection.createStatement()) {

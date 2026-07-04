@@ -148,6 +148,7 @@ final class PgDatabaseMetaDataHandler implements InvocationHandler {
             case "getProcedures" -> getProcedures(args);
             case "getTablePrivileges" -> getTablePrivileges(args);
             case "getColumnPrivileges" -> getColumnPrivileges(args);
+            case "getClientInfoProperties" -> getClientInfoProperties();
             case "unwrap" -> {
                 var iface = (Class<?>) args[0];
                 if (iface.isInstance(proxy)) {
@@ -158,6 +159,15 @@ final class PgDatabaseMetaDataHandler implements InvocationHandler {
             case "isWrapperFor" -> ((Class<?>) args[0]).isInstance(proxy);
             default -> JdbcCompat.defaultReturn(method.getReturnType());
         };
+    }
+
+    private ResultSet getClientInfoProperties() {
+        var row = new LinkedHashMap<String, Object>();
+        row.put("NAME", "ApplicationName");
+        row.put("MAX_LEN", 63);
+        row.put("DEFAULT_VALUE", "");
+        row.put("DESCRIPTION", "The name of the application currently utilizing the connection.");
+        return result(clientInfoPropertyColumns(), List.of(row));
     }
 
     private ResultSet getTables(Object[] args) throws SQLException {
@@ -1481,6 +1491,15 @@ final class PgDatabaseMetaDataHandler implements InvocationHandler {
             new Column("SQL_DATA_TYPE", 23),
             new Column("SQL_DATETIME_SUB", 23),
             new Column("NUM_PREC_RADIX", 23)
+        );
+    }
+
+    private List<Column> clientInfoPropertyColumns() {
+        return List.of(
+            new Column("NAME", 1043),
+            new Column("MAX_LEN", 23),
+            new Column("DEFAULT_VALUE", 1043),
+            new Column("DESCRIPTION", 1043)
         );
     }
 }
