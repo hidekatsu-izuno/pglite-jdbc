@@ -9,6 +9,7 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.SQLClientInfoException;
+import java.sql.SQLFeatureNotSupportedException;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
 
@@ -97,6 +98,26 @@ class PgjdbcInspiredConnectionTest {
             SQLException.class,
             () -> pgConnection.addDataType("closed_type", org.postgresql.util.PGobject.class)
         );
+    }
+
+    @Test
+    void connectionReplicationApiShapeMatchesPgjdbc() throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
+            var pgConnection = connection.unwrap(org.postgresql.PGConnection.class);
+            var replication = pgConnection.getReplicationAPI();
+            assertTrue(replication instanceof org.postgresql.replication.PGReplicationConnectionImpl);
+
+            var baseConnection = connection.unwrap(org.postgresql.core.BaseConnection.class);
+            var protocol = baseConnection.getReplicationProtocol();
+            assertTrue(protocol instanceof org.postgresql.core.ReplicationProtocol);
+
+            var error = assertThrows(
+                SQLFeatureNotSupportedException.class,
+                () -> replication.replicationStream().logical().withSlotName("slot").start()
+            );
+            assertEquals("Replication is not supported by PGlite", error.getMessage());
+            assertEquals("0A000", error.getSQLState());
+        }
     }
 
     @Test

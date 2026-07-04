@@ -85,6 +85,7 @@ public final class PgConnectionHandler implements InvocationHandler {
         fieldMetadataCache = new LruCache<>(0, 0, false);
     private final Timer sharedTimer = new Timer(true);
     private final org.postgresql.core.QueryExecutor coreQueryExecutor = createCoreQueryExecutor();
+    private final org.postgresql.core.ReplicationProtocol replicationProtocol = createReplicationProtocol();
 
     private PgConnectionHandler(
         QueryExecutor queryExecutor,
@@ -451,8 +452,8 @@ public final class PgConnectionHandler implements InvocationHandler {
             case "getCopyAPI" -> getCopyAPI();
             case "getFastpathAPI" -> getFastpathAPI();
             case "getLargeObjectAPI" -> getLargeObjectAPI();
-            case "getReplicationAPI" -> throw new UnsupportedOperationException(
-                "Replication is not supported by PGlite"
+            case "getReplicationAPI" -> new org.postgresql.replication.PGReplicationConnectionImpl(
+                (org.postgresql.core.BaseConnection) self
             );
             case "execSQLQuery" -> execSqlQuery((String) args[0]);
             case "execSQLUpdate" -> {
@@ -460,7 +461,7 @@ public final class PgConnectionHandler implements InvocationHandler {
                 yield null;
             }
             case "getQueryExecutor" -> coreQueryExecutor;
-            case "getReplicationProtocol" -> unsupportedCore("getReplicationProtocol");
+            case "getReplicationProtocol" -> replicationProtocol;
             case "getObject" -> getObjectValue((String) args[0], (String) args[1], (byte[]) args[2]);
             case "getEncoding" -> org.postgresql.core.Encoding.getJVMEncoding("UTF-8");
             case "getTypeInfo" -> typeInfo;
@@ -1183,6 +1184,27 @@ public final class PgConnectionHandler implements InvocationHandler {
                         "Core QueryExecutor method is not supported: " + method.getName()
                     );
                 };
+            }
+        );
+    }
+
+    private org.postgresql.core.ReplicationProtocol createReplicationProtocol() {
+        return (org.postgresql.core.ReplicationProtocol) Proxy.newProxyInstance(
+            PgConnectionHandler.class.getClassLoader(),
+            new Class<?>[] { org.postgresql.core.ReplicationProtocol.class },
+            (proxy, method, args) -> {
+                if (method.getDeclaringClass() == Object.class) {
+                    return switch (method.getName()) {
+                        case "toString" -> "PgReplicationProtocol";
+                        case "hashCode" -> System.identityHashCode(proxy);
+                        case "equals" -> proxy == args[0];
+                        default -> null;
+                    };
+                }
+                throw new SQLFeatureNotSupportedException(
+                    "Replication is not supported by PGlite",
+                    PSQLState.NOT_IMPLEMENTED.getState()
+                );
             }
         );
     }
