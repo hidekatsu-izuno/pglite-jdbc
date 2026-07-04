@@ -42,6 +42,10 @@ public class initdb {
                 return null;
             }
 
+            default String __wasiDataRoot() {
+                return null;
+            }
+
             default Integer _pgl_chdir(int path) {
                 return null;
             }
@@ -222,6 +226,7 @@ public class initdb {
             log(debug, "initdberr", text);
         };
         runtimeOpts.__wasiRoot = pg.Module().FS().__root();
+        runtimeOpts.__wasiDataRoot = pg.Module().__wasiDataRoot();
         runtimeOpts.wasmModule = wasmModule;
         runtimeOpts.onRuntimeInitialized = () -> {
             if (runtimeInitialized[0] != null) {
@@ -403,6 +408,9 @@ public class initdb {
         return initdbModFactory.create(runtimeOpts).then(initDbMod -> {
             log(debug, "calling initdb.main with", Arrays.toString(args));
             var result = initDbMod.callMain(args);
+            if (isWasi(pg.Module().__wasi()) && origHeapU8[0] != null) {
+                pg.Module().HEAPU8().set(origHeapU8[0]);
+            }
 
             return new ExecResult(
                 result,
@@ -447,7 +455,8 @@ public class initdb {
                 "UTF8",
                 "--locale=C.UTF-8",
                 "--locale-provider=libc",
-                "--auth=trust"
+                "--auth=trust",
+                "--no-sync"
             )
         );
         args.addAll(Arrays.asList(extraArgs));

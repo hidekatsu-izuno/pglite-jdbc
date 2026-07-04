@@ -267,36 +267,19 @@ public class pglite extends base implements interface_.PGliteInterface {
         }
 
         if (!this.mod.FS().analyzePath(initdb.PGDATA + "/PG_VERSION").exists()) {
-            var stagedInitdbData = overrides.__wasiDataRoot != null;
-            var initdbOverrides = new postgresMod.PartialPostgresMod();
-            initdbOverrides.__wasiRoot = stagedInitdbData
-                ? createTempDirectory("pglite-initdb-wasi-")
-                : overrides.__wasiRoot;
-            initdbOverrides.__wasiDataRoot = stagedInitdbData ? null : overrides.__wasiDataRoot;
-            initdbOverrides.INITIAL_MEMORY = overrides.INITIAL_MEMORY;
-            initdbOverrides.print = overrides.print;
-            initdbOverrides.printErr = overrides.printErr;
-            var initdbMod = (initdbModFactory.InitdbMod) PostgresModFactory.create(initdbOverrides);
             var initdbResult = await(initdb.getInitdb(
                 new initdb.InitdbOptions(
-                    new InitdbAdapter(initdbMod),
+                    new InitdbAdapter(this.mod),
                     TRACE_INIT && this.debug == 0 ? 1 : this.debug,
                     null,
                     null
                 )
             ));
-            initdbMod._pgl_shutdown();
             traceInit("init:initdb-done status=" + initdbResult.exitCode());
             if (initdbResult.exitCode() != 0) {
                 throw new IllegalStateException(
                     "INITDB failed: status=" + initdbResult.exitCode()
                         + " stderr=" + initdbResult.stderr()
-                );
-            }
-            if (stagedInitdbData) {
-                copyDirectory(
-                    Path.of(initdbOverrides.__wasiRoot).resolve("data"),
-                    Path.of(overrides.__wasiDataRoot)
                 );
             }
         } else {
@@ -468,6 +451,11 @@ public class pglite extends base implements interface_.PGliteInterface {
         @Override
         public Object __wasi() {
             return asInitdbMod().__wasi();
+        }
+
+        @Override
+        public String __wasiDataRoot() {
+            return asEndive().__wasiDataRoot();
         }
 
         @Override

@@ -908,6 +908,10 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
         return true;
     }
 
+    public String __wasiDataRoot() {
+        return dataRoot.toString();
+    }
+
     public void _pgl_freopen(int path, int mode, int fd) {
         callIfExists("pgl_freopen", path, mode, fd);
     }
