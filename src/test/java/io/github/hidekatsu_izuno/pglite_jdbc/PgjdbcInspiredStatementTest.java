@@ -472,6 +472,23 @@ class PgjdbcInspiredStatementTest {
     }
 
     @Test
+    void baseStatementExecutesCachedQueryLikePgjdbc() throws Exception {
+        var baseConnection = connection.unwrap(org.postgresql.core.BaseConnection.class);
+        var cachedQuery = baseConnection.createQuery("select 42 as answer", false, true);
+
+        try (var statement = connection.createStatement()) {
+            var baseStatement = statement.unwrap(org.postgresql.core.BaseStatement.class);
+            assertTrue(baseStatement.executeWithFlags(cachedQuery, 0));
+
+            try (var resultSet = statement.getResultSet()) {
+                assertTrue(resultSet.next());
+                assertEquals(42, resultSet.getInt("answer"));
+                assertFalse(resultSet.next());
+            }
+        }
+    }
+
+    @Test
     void statementPoolableStateMatchesPgjdbc() throws Exception {
         var statement = connection.createStatement();
 

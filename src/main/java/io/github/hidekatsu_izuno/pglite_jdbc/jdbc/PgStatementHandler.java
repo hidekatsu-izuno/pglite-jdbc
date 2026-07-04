@@ -302,6 +302,9 @@ final class PgStatementHandler implements InvocationHandler {
                 if (args[0] instanceof String sql) {
                     yield execute(sql, args);
                 }
+                if (args[0] instanceof org.postgresql.core.CachedQuery cachedQuery) {
+                    yield execute(cachedQuery.query.getNativeSql(), null);
+                }
                 yield execute(resolveSql(name, null), null);
             }
             case "getLastOID" -> 0L;
