@@ -125,6 +125,18 @@ class PgjdbcInspiredConnectionTest {
     }
 
     @Test
+    void connectionEscapingMatchesPgjdbc() throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
+            var pgConnection = connection.unwrap(org.postgresql.PGConnection.class);
+
+            assertEquals("\"needs\"\"quote\"", pgConnection.escapeIdentifier("needs\"quote"));
+            assertEquals("it''s ok", pgConnection.escapeLiteral("it's ok"));
+            assertThrows(SQLException.class, () -> pgConnection.escapeIdentifier("bad\0identifier"));
+            assertThrows(SQLException.class, () -> pgConnection.escapeLiteral("bad\0literal"));
+        }
+    }
+
+    @Test
     void statementOptionValidationMatchesPgjdbc() throws Exception {
         try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
             var typeError = assertThrows(

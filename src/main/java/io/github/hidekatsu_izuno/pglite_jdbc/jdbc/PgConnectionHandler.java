@@ -32,6 +32,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import java.util.logging.Logger;
+import org.postgresql.core.Utils;
 import org.postgresql.jdbc.AutoSave;
 import org.postgresql.jdbc.PreferQueryMode;
 import org.postgresql.util.LruCache;
@@ -439,8 +440,8 @@ public final class PgConnectionHandler implements InvocationHandler {
                 yield null;
             }
             case "getQueryTimeout" -> queryTimeout;
-            case "escapeIdentifier" -> '"' + String.valueOf(args[0]).replace("\"", "\"\"") + '"';
-            case "escapeLiteral" -> '\'' + String.valueOf(args[0]).replace("'", "''") + '\'';
+            case "escapeIdentifier" -> Utils.escapeIdentifier(null, (String) args[0]).toString();
+            case "escapeLiteral" -> Utils.escapeLiteral(null, (String) args[0], true).toString();
             case "getCopyAPI" -> getCopyAPI();
             case "getFastpathAPI" -> getFastpathAPI();
             case "getLargeObjectAPI" -> getLargeObjectAPI();
