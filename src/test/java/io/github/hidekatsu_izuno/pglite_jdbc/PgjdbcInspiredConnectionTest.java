@@ -200,6 +200,11 @@ class PgjdbcInspiredConnectionTest {
                 "insert into example(name) values ($1)\nRETURNING \"generated id\"",
                 returning.query.getNativeSql()
             );
+
+            var callable = queryExecutor.borrowCallableQuery("{ ? = call abs(?) }");
+            assertTrue(callable.isFunction);
+            assertEquals("select * from abs($1,$2)  as result", callable.query.getNativeSql());
+            assertEquals(2, callable.query.createParameterList().getParameterCount());
         }
     }
 

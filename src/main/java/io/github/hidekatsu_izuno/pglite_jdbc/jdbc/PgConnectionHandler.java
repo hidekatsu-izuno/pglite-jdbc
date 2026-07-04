@@ -1236,6 +1236,26 @@ public final class PgConnectionHandler implements InvocationHandler {
         return new org.postgresql.core.CachedQuery(sql, wrapNativeQueries(nativeQueries), false);
     }
 
+    private org.postgresql.core.CachedQuery createCallableCachedQuery(String sql) throws SQLException {
+        var callInfo = org.postgresql.core.Parser.modifyJdbcCall(
+            sql,
+            getStandardConformingStrings(),
+            180000,
+            org.postgresql.jdbc.EscapeSyntaxCallMode.SELECT
+        );
+        var parsedSql = callInfo.getSql();
+        var nativeQueries = org.postgresql.core.Parser.parseJdbcSql(
+            parsedSql,
+            getStandardConformingStrings(),
+            true,
+            true,
+            false,
+            true,
+            new String[0]
+        );
+        return new org.postgresql.core.CachedQuery(sql, wrapNativeQueries(nativeQueries), callInfo.isFunction());
+    }
+
     private Object createQueryKey(
         String sql,
         boolean escapeProcessing,
@@ -1590,7 +1610,7 @@ public final class PgConnectionHandler implements InvocationHandler {
                     );
                     case "createQueryByKey", "borrowQueryByKey" -> createCachedQueryByKey(args[0]);
                     case "borrowQuery" -> createCachedQuery((String) args[0], true, true, new String[0]);
-                    case "borrowCallableQuery" -> createCachedQuery((String) args[0], true, true, new String[0]);
+                    case "borrowCallableQuery" -> createCallableCachedQuery((String) args[0]);
                     case "borrowReturningQuery" -> createCachedQuery(
                         (String) args[0],
                         true,
