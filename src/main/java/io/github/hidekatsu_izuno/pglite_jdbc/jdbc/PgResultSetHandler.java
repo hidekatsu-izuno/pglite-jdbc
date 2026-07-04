@@ -521,6 +521,10 @@ final class PgResultSetHandler implements InvocationHandler {
             case "updateBlob" -> updateBlobNotImplemented(types);
             case "updateClob" -> updateClobNotImplemented(types);
             case "updateNClob" -> updateNClobNotImplemented(types);
+            case "updateNCharacterStream" -> updateNCharacterStreamNotImplemented(types);
+            case "updateCharacterStream" -> updateCharacterStreamNotImplemented(types);
+            case "updateBinaryStream" -> updateBinaryStreamNotImplemented(types);
+            case "updateAsciiStream" -> updateAsciiStreamNotImplemented(types);
             default -> null;
         };
     }
@@ -562,6 +566,42 @@ final class PgResultSetHandler implements InvocationHandler {
             return "updateNClob(int, Reader, long)";
         }
         return "updateNClob(int, Reader)";
+    }
+
+    private String updateNCharacterStreamNotImplemented(Class<?>[] types) {
+        if (types.length >= 3) {
+            return types[2] == int.class
+                ? "updateNCharacterStream(int, Reader, int)"
+                : "updateNCharacterStream(int, Reader, long)";
+        }
+        return "updateNCharacterStream(int, Reader)";
+    }
+
+    private String updateCharacterStreamNotImplemented(Class<?>[] types) {
+        if (types.length >= 3 && types[2] == int.class) {
+            return null;
+        }
+        return types.length >= 3
+            ? "updateCharacterStream(int, Reader, long)"
+            : "updateCharacterStream(int, Reader)";
+    }
+
+    private String updateBinaryStreamNotImplemented(Class<?>[] types) {
+        if (types.length >= 3 && types[2] == int.class) {
+            return null;
+        }
+        return types.length >= 3
+            ? "updateBinaryStream(int, InputStream, long)"
+            : "updateBinaryStream(int, InputStream)";
+    }
+
+    private String updateAsciiStreamNotImplemented(Class<?>[] types) {
+        if (types.length >= 3 && types[2] == int.class) {
+            return null;
+        }
+        return types.length >= 3
+            ? "updateAsciiStream(int, InputStream, long)"
+            : "updateAsciiStream(int, InputStream)";
     }
 
     private void ensureNotClosed() throws SQLException {

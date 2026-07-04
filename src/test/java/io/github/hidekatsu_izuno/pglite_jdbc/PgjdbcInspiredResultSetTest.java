@@ -259,6 +259,24 @@ class PgjdbcInspiredResultSetTest {
             assertPgjdbcResultSetNotImplemented("updateClob(int, Reader)", () -> resultSet.updateClob("value", new StringReader("x")));
             assertPgjdbcResultSetNotImplemented("updateClob(int, Reader, long)", () -> resultSet.updateClob(1, new StringReader("x"), 1L));
             assertPgjdbcResultSetNotImplemented("updateClob(int, Reader, long)", () -> resultSet.updateClob("value", new StringReader("x"), 1L));
+            assertPgjdbcResultSetNotImplemented("updateNCharacterStream(int, Reader, long)", () -> resultSet.updateNCharacterStream(1, new StringReader("x"), 1));
+            assertPgjdbcResultSetNotImplemented("updateNCharacterStream(int, Reader, long)", () -> resultSet.updateNCharacterStream("value", new StringReader("x"), 1));
+            assertPgjdbcResultSetNotImplemented("updateNCharacterStream(int, Reader)", () -> resultSet.updateNCharacterStream(1, new StringReader("x")));
+            assertPgjdbcResultSetNotImplemented("updateNCharacterStream(int, Reader)", () -> resultSet.updateNCharacterStream("value", new StringReader("x")));
+            assertPgjdbcResultSetNotImplemented("updateNCharacterStream(int, Reader, long)", () -> resultSet.updateNCharacterStream(1, new StringReader("x"), 1L));
+            assertPgjdbcResultSetNotImplemented("updateNCharacterStream(int, Reader, long)", () -> resultSet.updateNCharacterStream("value", new StringReader("x"), 1L));
+            assertPgjdbcResultSetNotImplemented("updateCharacterStream(int, Reader)", () -> resultSet.updateCharacterStream(1, new StringReader("x")));
+            assertPgjdbcResultSetNotImplemented("updateCharacterStream(int, Reader)", () -> resultSet.updateCharacterStream("value", new StringReader("x")));
+            assertPgjdbcResultSetNotImplemented("updateCharacterStream(int, Reader, long)", () -> resultSet.updateCharacterStream(1, new StringReader("x"), 1L));
+            assertPgjdbcResultSetNotImplemented("updateCharacterStream(int, Reader, long)", () -> resultSet.updateCharacterStream("value", new StringReader("x"), 1L));
+            assertPgjdbcResultSetNotImplemented("updateBinaryStream(int, InputStream)", () -> resultSet.updateBinaryStream(1, new ByteArrayInputStream(new byte[] { 1 })));
+            assertPgjdbcResultSetNotImplemented("updateBinaryStream(int, InputStream)", () -> resultSet.updateBinaryStream("value", new ByteArrayInputStream(new byte[] { 1 })));
+            assertPgjdbcResultSetNotImplemented("updateBinaryStream(int, InputStream, long)", () -> resultSet.updateBinaryStream(1, new ByteArrayInputStream(new byte[] { 1 }), 1L));
+            assertPgjdbcResultSetNotImplemented("updateBinaryStream(int, InputStream, long)", () -> resultSet.updateBinaryStream("value", new ByteArrayInputStream(new byte[] { 1 }), 1L));
+            assertPgjdbcResultSetNotImplemented("updateAsciiStream(int, InputStream)", () -> resultSet.updateAsciiStream(1, new ByteArrayInputStream(new byte[] { 1 })));
+            assertPgjdbcResultSetNotImplemented("updateAsciiStream(int, InputStream)", () -> resultSet.updateAsciiStream("value", new ByteArrayInputStream(new byte[] { 1 })));
+            assertPgjdbcResultSetNotImplemented("updateAsciiStream(int, InputStream, long)", () -> resultSet.updateAsciiStream(1, new ByteArrayInputStream(new byte[] { 1 }), 1L));
+            assertPgjdbcResultSetNotImplemented("updateAsciiStream(int, InputStream, long)", () -> resultSet.updateAsciiStream("value", new ByteArrayInputStream(new byte[] { 1 }), 1L));
         }
     }
 
