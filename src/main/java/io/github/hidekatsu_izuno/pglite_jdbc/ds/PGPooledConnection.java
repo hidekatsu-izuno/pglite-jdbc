@@ -20,19 +20,26 @@ import org.postgresql.util.PSQLState;
 
 public class PGPooledConnection implements PooledConnection {
     private final Connection physicalConnection;
+    private final boolean defaultAutoCommit;
     private final List<ConnectionEventListener> connectionListeners = new CopyOnWriteArrayList<>();
     private final List<StatementEventListener> statementListeners = new CopyOnWriteArrayList<>();
     private volatile Connection logicalConnection;
     private volatile boolean closed;
 
     public PGPooledConnection(Connection physicalConnection) {
+        this(physicalConnection, true);
+    }
+
+    public PGPooledConnection(Connection physicalConnection, boolean defaultAutoCommit) {
         this.physicalConnection = physicalConnection;
+        this.defaultAutoCommit = defaultAutoCommit;
     }
 
     @Override
     public Connection getConnection() throws SQLException {
         ensureOpen();
         closeLogicalConnectionIfNeeded();
+        physicalConnection.setAutoCommit(defaultAutoCommit);
         logicalConnection = wrapLogicalConnection();
         return logicalConnection;
     }
