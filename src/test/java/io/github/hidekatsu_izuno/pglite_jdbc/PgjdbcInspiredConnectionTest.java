@@ -147,4 +147,23 @@ class PgjdbcInspiredConnectionTest {
             assertEquals("22023", preparedTypeError.getSQLState());
         }
     }
+
+    @Test
+    void savepointAutoCommitValidationMatchesPgjdbc() throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
+            var unnamedError = assertThrows(SQLException.class, connection::setSavepoint);
+            assertEquals("Cannot establish a savepoint in auto-commit mode.", unnamedError.getMessage());
+            assertEquals("25P01", unnamedError.getSQLState());
+
+            var namedError = assertThrows(SQLException.class, () -> connection.setSavepoint("named"));
+            assertEquals("Cannot establish a savepoint in auto-commit mode.", namedError.getMessage());
+            assertEquals("25P01", namedError.getSQLState());
+
+            connection.setAutoCommit(false);
+            var savepoint = connection.setSavepoint("named");
+            connection.rollback(savepoint);
+            connection.releaseSavepoint(savepoint);
+            connection.rollback();
+        }
+    }
 }

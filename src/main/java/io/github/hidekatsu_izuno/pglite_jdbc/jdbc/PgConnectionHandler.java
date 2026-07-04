@@ -722,7 +722,10 @@ public final class PgConnectionHandler implements InvocationHandler {
     private void createSavepoint(PgSavepoint savepoint) throws SQLException {
         ensureOpen();
         if (autoCommit) {
-            throw new SQLException("Cannot establish a savepoint when autoCommit is true");
+            throw new PSQLException(
+                "Cannot establish a savepoint in auto-commit mode.",
+                PSQLState.NO_ACTIVE_SQL_TRANSACTION
+            );
         }
         ensureTransactionIfNeeded();
         execControl("SAVEPOINT " + savepointIdentifier(savepoint));
