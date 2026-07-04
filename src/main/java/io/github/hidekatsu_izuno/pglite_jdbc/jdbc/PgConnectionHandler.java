@@ -34,6 +34,7 @@ import java.util.function.Consumer;
 import java.util.logging.Logger;
 import org.postgresql.core.Utils;
 import org.postgresql.jdbc.AutoSave;
+import org.postgresql.jdbc.PSQLSavepoint;
 import org.postgresql.jdbc.PreferQueryMode;
 import org.postgresql.util.LruCache;
 import org.postgresql.util.PSQLException;
@@ -708,21 +709,18 @@ public final class PgConnectionHandler implements InvocationHandler {
     }
 
     private Savepoint setSavepoint() throws SQLException {
-        var savepoint = PgSavepoint.unnamed(nextSavepointId++);
+        var savepoint = new PSQLSavepoint(nextSavepointId++);
         createSavepoint(savepoint);
         return savepoint;
     }
 
     private Savepoint setSavepoint(String name) throws SQLException {
-        if (name == null || name.isBlank()) {
-            throw new PSQLException("Savepoint name must not be empty", PSQLState.INVALID_PARAMETER_VALUE);
-        }
-        var savepoint = PgSavepoint.named(nextSavepointId++, name);
+        var savepoint = new PSQLSavepoint(name);
         createSavepoint(savepoint);
         return savepoint;
     }
 
-    private void createSavepoint(PgSavepoint savepoint) throws SQLException {
+    private void createSavepoint(PSQLSavepoint savepoint) throws SQLException {
         ensureOpen();
         if (autoCommit) {
             throw new PSQLException(
@@ -731,40 +729,34 @@ public final class PgConnectionHandler implements InvocationHandler {
             );
         }
         ensureTransactionIfNeeded();
-        execControl("SAVEPOINT " + savepointIdentifier(savepoint));
+        execControl("SAVEPOINT " + savepoint.getPGName());
     }
 
     private void rollbackToSavepoint(Savepoint savepoint) throws SQLException {
         var pgSavepoint = asPgSavepoint(savepoint);
-        pgSavepoint.ensureActive();
         ensureOpen();
         if (autoCommit) {
             throw new SQLException("Cannot rollback to a savepoint when autoCommit is true");
         }
-        execControl("ROLLBACK TO SAVEPOINT " + savepointIdentifier(pgSavepoint));
+        execControl("ROLLBACK TO SAVEPOINT " + pgSavepoint.getPGName());
         txOpen = true;
     }
 
     private void releaseSavepoint(Savepoint savepoint) throws SQLException {
         var pgSavepoint = asPgSavepoint(savepoint);
-        pgSavepoint.ensureActive();
         ensureOpen();
         if (autoCommit) {
             throw new SQLException("Cannot release a savepoint when autoCommit is true");
         }
-        execControl("RELEASE SAVEPOINT " + savepointIdentifier(pgSavepoint));
-        pgSavepoint.markReleased();
+        execControl("RELEASE SAVEPOINT " + pgSavepoint.getPGName());
+        pgSavepoint.invalidate();
     }
 
-    private PgSavepoint asPgSavepoint(Savepoint savepoint) throws SQLException {
-        if (savepoint instanceof PgSavepoint pgSavepoint) {
+    private PSQLSavepoint asPgSavepoint(Savepoint savepoint) throws SQLException {
+        if (savepoint instanceof PSQLSavepoint pgSavepoint) {
             return pgSavepoint;
         }
         throw new SQLException("Savepoint was not created by this connection");
-    }
-
-    private String savepointIdentifier(PgSavepoint savepoint) {
-        return '"' + savepoint.sqlIdentifier().replace("\"", "\"\"") + '"';
     }
 
     private void setSchema(String schema) throws SQLException {

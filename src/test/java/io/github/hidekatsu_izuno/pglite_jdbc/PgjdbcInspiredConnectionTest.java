@@ -189,8 +189,16 @@ class PgjdbcInspiredConnectionTest {
 
             connection.setAutoCommit(false);
             var savepoint = connection.setSavepoint("named");
+            assertTrue(savepoint instanceof org.postgresql.jdbc.PSQLSavepoint);
+            assertEquals("named", savepoint.getSavepointName());
+            var idError = assertThrows(SQLException.class, savepoint::getSavepointId);
+            assertEquals("Cannot retrieve the id of a named savepoint.", idError.getMessage());
+            assertEquals("42809", idError.getSQLState());
             connection.rollback(savepoint);
             connection.releaseSavepoint(savepoint);
+            var releasedError = assertThrows(SQLException.class, savepoint::getSavepointName);
+            assertEquals("Cannot reference a savepoint after it has been released.", releasedError.getMessage());
+            assertEquals("3B000", releasedError.getSQLState());
             connection.rollback();
         }
     }
