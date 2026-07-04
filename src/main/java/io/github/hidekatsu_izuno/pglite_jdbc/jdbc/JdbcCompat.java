@@ -407,11 +407,7 @@ final class JdbcCompat {
         if (decimal == null) {
             return null;
         }
-        try {
-            return decimal.setScale(scale);
-        } catch (ArithmeticException arithmeticException) {
-            throw new SQLException("Bad value for type BigDecimal: " + decimal, arithmeticException);
-        }
+        return decimal.setScale(scale, RoundingMode.HALF_EVEN);
     }
 
     static BigDecimal toBigDecimal(Object value, int scale, RoundingMode roundingMode) throws SQLException {

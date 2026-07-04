@@ -176,6 +176,27 @@ class PgjdbcInspiredResultSetTest {
     }
 
     @Test
+    void resultSetUnsupportedGetterMethodsMatchPgjdbc() throws Exception {
+        try (var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("SELECT 'https://example.test' AS link, 'text' AS label")) {
+            assertTrue(resultSet.next());
+
+            assertPgjdbcResultSetNotImplemented("getURL(int)", () -> resultSet.getURL(1));
+            assertPgjdbcResultSetNotImplemented("getURL(int)", () -> resultSet.getURL("link"));
+            assertPgjdbcResultSetNotImplemented("getRef(int)", () -> resultSet.getRef(1));
+            assertPgjdbcResultSetNotImplemented("getRef(int)", () -> resultSet.getRef("link"));
+            assertPgjdbcResultSetNotImplemented("getRowId(int)", () -> resultSet.getRowId(1));
+            assertPgjdbcResultSetNotImplemented("getRowId(int)", () -> resultSet.getRowId("link"));
+            assertPgjdbcResultSetNotImplemented("getNClob(int)", () -> resultSet.getNClob(1));
+            assertPgjdbcResultSetNotImplemented("getNClob(int)", () -> resultSet.getNClob("link"));
+            assertPgjdbcResultSetNotImplemented("getNString(int)", () -> resultSet.getNString(2));
+            assertPgjdbcResultSetNotImplemented("getNString(int)", () -> resultSet.getNString("label"));
+            assertPgjdbcResultSetNotImplemented("getNCharacterStream(int)", () -> resultSet.getNCharacterStream(2));
+            assertPgjdbcResultSetNotImplemented("getNCharacterStream(int)", () -> resultSet.getNCharacterStream("label"));
+        }
+    }
+
+    @Test
     void resultSetUpdateStatusDefaultsAndReadOnlyUpdatesAreRejectedLikePgjdbc() throws Exception {
         try (var statement = connection.createStatement();
              var resultSet = statement.executeQuery("SELECT 1 AS value")) {
@@ -705,7 +726,7 @@ class PgjdbcInspiredResultSetTest {
              var resultSet = statement.executeQuery("SELECT 1 AS value")) {
             assertEquals(ResultSet.TYPE_SCROLL_SENSITIVE, resultSet.getType());
             assertEquals(ResultSet.CONCUR_UPDATABLE, resultSet.getConcurrency());
-            assertEquals(ResultSet.HOLD_CURSORS_OVER_COMMIT, resultSet.getHoldability());
+            assertPgjdbcResultSetNotImplemented("getHoldability()", resultSet::getHoldability);
             assertEquals(statement, resultSet.getStatement());
         }
 
@@ -718,8 +739,22 @@ class PgjdbcInspiredResultSetTest {
              var resultSet = prepared.executeQuery()) {
             assertEquals(ResultSet.TYPE_SCROLL_INSENSITIVE, resultSet.getType());
             assertEquals(ResultSet.CONCUR_READ_ONLY, resultSet.getConcurrency());
-            assertEquals(ResultSet.CLOSE_CURSORS_AT_COMMIT, resultSet.getHoldability());
+            assertPgjdbcResultSetNotImplemented("getHoldability()", resultSet::getHoldability);
             assertEquals(prepared, resultSet.getStatement());
         }
+    }
+
+    private void assertPgjdbcResultSetNotImplemented(String method, ThrowingSqlCall call) {
+        var error = assertThrows(java.sql.SQLFeatureNotSupportedException.class, call::run);
+        assertEquals(
+            "Method org.postgresql.jdbc.PgResultSet." + method + " is not yet implemented.",
+            error.getMessage()
+        );
+        assertEquals(org.postgresql.util.PSQLState.NOT_IMPLEMENTED.getState(), error.getSQLState());
+    }
+
+    @FunctionalInterface
+    private interface ThrowingSqlCall {
+        void run() throws Exception;
     }
 }

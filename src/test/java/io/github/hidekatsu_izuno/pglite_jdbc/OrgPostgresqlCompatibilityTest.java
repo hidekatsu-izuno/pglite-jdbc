@@ -253,9 +253,9 @@ class OrgPostgresqlCompatibilityTest {
                 statement.setBigDecimal(3, new BigDecimal("12.345"));
                 try (var resultSet = statement.executeQuery()) {
                     assertTrue(resultSet.next());
-                    assertEquals(new URL("https://example.test/path?q=1"), resultSet.getURL("link"));
-                    assertEquals("unicode label", resultSet.getNString("label"));
-                    assertThrows(SQLException.class, () -> resultSet.getBigDecimal("amount", 2));
+                    assertPgjdbcResultSetNotImplemented("getURL(int)", () -> resultSet.getURL("link"));
+                    assertPgjdbcResultSetNotImplemented("getNString(int)", () -> resultSet.getNString("label"));
+                    assertEquals(new BigDecimal("12.34"), resultSet.getBigDecimal("amount", 2));
                 }
             }
         });
@@ -633,5 +633,19 @@ class OrgPostgresqlCompatibilityTest {
                 }
             }
         });
+    }
+
+    private void assertPgjdbcResultSetNotImplemented(String method, ThrowingSqlCall call) {
+        var error = assertThrows(java.sql.SQLFeatureNotSupportedException.class, call::run);
+        assertEquals(
+            "Method org.postgresql.jdbc.PgResultSet." + method + " is not yet implemented.",
+            error.getMessage()
+        );
+        assertEquals(org.postgresql.util.PSQLState.NOT_IMPLEMENTED.getState(), error.getSQLState());
+    }
+
+    @FunctionalInterface
+    private interface ThrowingSqlCall {
+        void run() throws Exception;
     }
 }

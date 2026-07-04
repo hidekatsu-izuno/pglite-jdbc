@@ -5,10 +5,9 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.io.ByteArrayInputStream;
 import java.io.StringReader;
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
 import java.sql.SQLWarning;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -351,10 +350,11 @@ final class PgResultSetHandler implements InvocationHandler {
                 var value = getValue(args[0]);
                 yield value == null ? null : new PgBlob(baseConnection(), JdbcCompat.toBytes(value));
             }
-            case "getClob", "getNClob" -> {
+            case "getClob" -> {
                 var value = getValue(args[0]);
                 yield value == null ? null : new PgClob(baseConnection(), JdbcCompat.stringify(value));
             }
+            case "getNClob" -> throw pgjdbcNotImplemented("getNClob(int)");
             case "getSQLXML" -> {
                 var value = getValue(args[0]);
                 yield value == null
@@ -364,7 +364,8 @@ final class PgResultSetHandler implements InvocationHandler {
                         JdbcCompat.stringify(value)
                     );
             }
-            case "getString", "getNString" -> truncateString(columnIndex(args[0]), getValue(args[0]));
+            case "getString" -> truncateString(columnIndex(args[0]), getValue(args[0]));
+            case "getNString" -> throw pgjdbcNotImplemented("getNString(int)");
             case "getBoolean" -> JdbcCompat.toBoolean(getValue(args[0]));
             case "getByte" -> JdbcCompat.toByte(getValue(args[0]));
             case "getShort" -> JdbcCompat.toShort(getValue(args[0]));
@@ -376,15 +377,18 @@ final class PgResultSetHandler implements InvocationHandler {
                 ? JdbcCompat.toBigDecimal(getValue(args[0]), scale)
                 : JdbcCompat.toBigDecimal(getValue(args[0]));
             case "getBytes" -> truncateBytes(columnIndex(args[0]), JdbcCompat.toBytes(getValue(args[0])));
-            case "getURL" -> toUrl(getValue(args[0]));
+            case "getURL" -> throw pgjdbcNotImplemented("getURL(int)");
+            case "getRef" -> throw pgjdbcNotImplemented("getRef(int)");
+            case "getRowId" -> throw pgjdbcNotImplemented("getRowId(int)");
             case "getBinaryStream", "getAsciiStream" -> {
                 var bytes = JdbcCompat.toBytes(getValue(args[0]));
                 yield bytes == null ? null : new ByteArrayInputStream(bytes);
             }
-            case "getCharacterStream", "getNCharacterStream" -> {
+            case "getCharacterStream" -> {
                 var value = JdbcCompat.stringify(getValue(args[0]));
                 yield value == null ? null : new StringReader(value);
             }
+            case "getNCharacterStream" -> throw pgjdbcNotImplemented("getNCharacterStream(int)");
             case "getDate" -> {
                 var value = getValue(args[0]);
                 if (value == null) {
@@ -441,7 +445,7 @@ final class PgResultSetHandler implements InvocationHandler {
             }
             case "getHoldability" -> {
                 ensureNotClosed();
-                yield holdability;
+                throw pgjdbcNotImplemented("getHoldability()");
             }
             case "setFetchSize" -> {
                 ensureNotClosed();
@@ -488,6 +492,13 @@ final class PgResultSetHandler implements InvocationHandler {
                 yield JdbcCompat.defaultReturn(method.getReturnType());
             }
         };
+    }
+
+    private SQLFeatureNotSupportedException pgjdbcNotImplemented(String methodName) {
+        return new SQLFeatureNotSupportedException(
+            "Method org.postgresql.jdbc.PgResultSet." + methodName + " is not yet implemented.",
+            PSQLState.NOT_IMPLEMENTED.getState()
+        );
     }
 
     private void ensureNotClosed() throws SQLException {
@@ -665,17 +676,6 @@ final class PgResultSetHandler implements InvocationHandler {
         ensureNotClosed();
         ensureScrollable();
         cursor = -1;
-    }
-
-    private URL toUrl(Object value) throws SQLException {
-        if (value == null) {
-            return null;
-        }
-        try {
-            return new URL(String.valueOf(value));
-        } catch (MalformedURLException exception) {
-            throw new SQLException("Invalid URL value: " + value, exception);
-        }
     }
 
     private org.postgresql.core.BaseConnection baseConnection() throws SQLException {
