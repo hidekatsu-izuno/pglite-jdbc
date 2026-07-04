@@ -1,6 +1,8 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.ds;
 
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -82,47 +84,7 @@ public class PGPooledConnection implements PooledConnection {
     }
 
     private Connection wrapLogicalConnection() {
-        var handler = new java.lang.reflect.InvocationHandler() {
-            private boolean logicalClosed;
-
-            @Override
-            public Object invoke(Object proxy, java.lang.reflect.Method method, Object[] args)
-                throws Throwable {
-                var name = method.getName();
-                if (method.getDeclaringClass() == Object.class) {
-                    return switch (name) {
-                        case "toString" -> "PGPooledConnection.LogicalConnection";
-                        case "hashCode" -> System.identityHashCode(proxy);
-                        case "equals" -> proxy == args[0];
-                        default -> method.invoke(this, args);
-                    };
-                }
-
-                if ("close".equals(name)) {
-                    if (!logicalClosed) {
-                        logicalClosed = true;
-                        logicalConnection = null;
-                        fireConnectionClosed();
-                    }
-                    return null;
-                }
-
-                if (logicalClosed) {
-                    throw new SQLException("Connection is closed");
-                }
-
-                try {
-                    return method.invoke(physicalConnection, args);
-                } catch (InvocationTargetException e) {
-                    var cause = e.getCause();
-                    if (cause instanceof SQLException sqlException) {
-                        fireConnectionError(sqlException);
-                        throw sqlException;
-                    }
-                    throw cause;
-                }
-            }
-        };
+        var handler = new LogicalConnectionHandler();
 
         return (Connection) Proxy.newProxyInstance(
             PGPooledConnection.class.getClassLoader(),
@@ -159,6 +121,47 @@ public class PGPooledConnection implements PooledConnection {
         var event = new ConnectionEvent(this, e);
         for (var listener : connectionListeners) {
             listener.connectionErrorOccurred(event);
+        }
+    }
+
+    private final class LogicalConnectionHandler implements InvocationHandler {
+        private boolean logicalClosed;
+
+        @Override
+        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+            var name = method.getName();
+            if (method.getDeclaringClass() == Object.class) {
+                return switch (name) {
+                    case "toString" -> "PGPooledConnection.LogicalConnection";
+                    case "hashCode" -> System.identityHashCode(proxy);
+                    case "equals" -> proxy == args[0];
+                    default -> method.invoke(this, args);
+                };
+            }
+
+            if ("close".equals(name)) {
+                if (!logicalClosed) {
+                    logicalClosed = true;
+                    logicalConnection = null;
+                    fireConnectionClosed();
+                }
+                return null;
+            }
+
+            if (logicalClosed) {
+                throw new SQLException("Connection is closed");
+            }
+
+            try {
+                return method.invoke(physicalConnection, args);
+            } catch (InvocationTargetException e) {
+                var cause = e.getCause();
+                if (cause instanceof SQLException sqlException) {
+                    fireConnectionError(sqlException);
+                    throw sqlException;
+                }
+                throw cause;
+            }
         }
     }
 }
