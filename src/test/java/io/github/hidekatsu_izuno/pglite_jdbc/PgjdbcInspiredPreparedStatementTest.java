@@ -593,25 +593,18 @@ class PgjdbcInspiredPreparedStatementTest {
 
     @Test
     void preparedStatementAsciiStreamAndBigDecimalScaleFollowPgjdbcCases() throws Exception {
-        try (var prepared = connection.prepareStatement("SELECT ?::text AS body, ?::numeric AS amount")) {
-            prepared.setAsciiStream(
-                1,
-                new ByteArrayInputStream("abc".getBytes(StandardCharsets.US_ASCII)),
-                3
-            );
-            prepared.setObject(2, new BigDecimal("123.456"), Types.NUMERIC, 1);
-
+        try (var prepared = connection.prepareStatement("SELECT ?::numeric AS amount")) {
+            prepared.setObject(1, new BigDecimal("123.456"), Types.NUMERIC, 1);
             try (var resultSet = prepared.executeQuery()) {
                 assertTrue(resultSet.next());
-                assertEquals("abc", resultSet.getString("body"));
                 assertEquals(new BigDecimal("123.5"), resultSet.getBigDecimal("amount"));
                 assertFalse(resultSet.next());
             }
         }
 
         try (var prepared = connection.prepareStatement("SELECT ?::text AS body")) {
-            assertThrows(
-                SQLException.class,
+            assertPgjdbcPreparedNotImplemented(
+                "setAsciiStream(int, InputStream, long)",
                 () -> prepared.setAsciiStream(
                     1,
                     new ByteArrayInputStream("xy".getBytes(StandardCharsets.US_ASCII)),
@@ -622,16 +615,16 @@ class PgjdbcInspiredPreparedStatementTest {
     }
 
     @Test
-    void preparedStatementCharacterStreamLengthMustBeSatisfiedAndConnectionRemainsUsable() throws Exception {
+    void preparedStatementCharacterStreamLengthOverloadIsUnsupportedLikePgjdbc() throws Exception {
         try (var prepared = connection.prepareStatement("SELECT ?::text AS body")) {
-            assertThrows(
-                SQLException.class,
+            assertPgjdbcPreparedNotImplemented(
+                "setCharacterStream(int, Reader, long)",
                 () -> prepared.setCharacterStream(1, new StringReader("xy"), 3)
             );
         }
 
         try (var prepared = connection.prepareStatement("SELECT ?::text AS body")) {
-            prepared.setCharacterStream(1, new StringReader("abc"), 3);
+            prepared.setCharacterStream(1, new StringReader("abc"));
             try (var resultSet = prepared.executeQuery()) {
                 assertTrue(resultSet.next());
                 assertEquals("abc", resultSet.getString("body"));
@@ -903,6 +896,29 @@ class PgjdbcInspiredPreparedStatementTest {
             assertPgjdbcPreparedNotImplemented(
                 "setNClob(int, Reader)",
                 () -> prepared.setNClob(1, new StringReader("value"))
+            );
+            assertPgjdbcPreparedNotImplemented(
+                "setAsciiStream(int, InputStream, long)",
+                () -> prepared.setAsciiStream(
+                    1,
+                    new ByteArrayInputStream("value".getBytes(StandardCharsets.US_ASCII)),
+                    5L
+                )
+            );
+            assertPgjdbcPreparedNotImplemented(
+                "setAsciiStream(int, InputStream)",
+                () -> prepared.setAsciiStream(
+                    1,
+                    new ByteArrayInputStream("value".getBytes(StandardCharsets.US_ASCII))
+                )
+            );
+            assertPgjdbcPreparedNotImplemented(
+                "setClob(int, Reader, long)",
+                () -> prepared.setClob(1, new StringReader("value"), 5L)
+            );
+            assertPgjdbcPreparedNotImplemented(
+                "setClob(int, Reader)",
+                () -> prepared.setClob(1, new StringReader("value"))
             );
             assertPgjdbcPreparedNotImplemented(
                 "setURL(int,URL)",

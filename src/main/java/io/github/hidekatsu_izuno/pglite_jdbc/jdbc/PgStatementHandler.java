@@ -343,6 +343,17 @@ final class PgStatementHandler implements InvocationHandler {
             );
             case "setNClob" -> throw pgjdbcPreparedNotImplemented(preparedNClobSignature(method));
             case "setURL" -> throw pgjdbcPreparedNotImplemented("setURL(int,URL)");
+            case "setAsciiStream" -> throw pgjdbcPreparedNotImplemented(preparedAsciiStreamSignature(method));
+            case "setCharacterStream" -> {
+                if (hasDeclaredStreamLength(method)) {
+                    throw pgjdbcPreparedNotImplemented("setCharacterStream(int, Reader, long)");
+                }
+            }
+            case "setClob" -> {
+                if (isReaderParameter(method)) {
+                    throw pgjdbcPreparedNotImplemented(preparedClobReaderSignature(method));
+                }
+            }
             default -> {
             }
         }
@@ -653,6 +664,10 @@ final class PgStatementHandler implements InvocationHandler {
             && length.longValue() >= 0
             && length.longValue() != Integer.MAX_VALUE
             && length.longValue() != Long.MAX_VALUE;
+    }
+
+    private boolean hasDeclaredStreamLength(Method method) {
+        return method != null && method.getParameterCount() >= 3;
     }
 
     private String resolveSql(String methodName, Object[] args) throws SQLException {
@@ -1126,6 +1141,22 @@ final class PgStatementHandler implements InvocationHandler {
             return "setNClob(int, NClob)";
         }
         return "setNClob(int, Reader)";
+    }
+
+    private String preparedAsciiStreamSignature(Method method) {
+        return method.getParameterTypes().length >= 3
+            ? "setAsciiStream(int, InputStream, long)"
+            : "setAsciiStream(int, InputStream)";
+    }
+
+    private String preparedClobReaderSignature(Method method) {
+        return method.getParameterTypes().length >= 3
+            ? "setClob(int, Reader, long)"
+            : "setClob(int, Reader)";
+    }
+
+    private boolean isReaderParameter(Method method) {
+        return method.getParameterTypes()[1] == Reader.class;
     }
 
     private ResultSet executeQuery(String sql) throws SQLException {
