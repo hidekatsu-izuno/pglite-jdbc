@@ -457,6 +457,21 @@ class PgjdbcInspiredStatementTest {
     }
 
     @Test
+    void statementPoolableStateMatchesPgjdbc() throws Exception {
+        var statement = connection.createStatement();
+
+        assertFalse(statement.isPoolable());
+        statement.setPoolable(true);
+        assertTrue(statement.isPoolable());
+        statement.setPoolable(false);
+        assertFalse(statement.isPoolable());
+
+        statement.close();
+        assertThrows(SQLException.class, () -> statement.setPoolable(true));
+        assertThrows(SQLException.class, statement::isPoolable);
+    }
+
+    @Test
     void statementJdbcEscapeProcessingFollowsPgjdbc() throws Exception {
         assertEquals("SELECT ('a'||'b')", connection.nativeSQL("SELECT {fn concat('a','b')}"));
 

@@ -58,6 +58,7 @@ final class PgStatementHandler implements InvocationHandler {
     private int prepareThreshold;
     private boolean adaptiveFetch;
     private boolean closeOnCompletion;
+    private boolean poolable;
     private boolean escapeProcessing = true;
 
     private PgStatementHandler(
@@ -237,7 +238,11 @@ final class PgStatementHandler implements InvocationHandler {
                 escapeProcessing = (Boolean) args[0];
                 yield null;
             }
-            case "setCursorName", "setPoolable" -> null;
+            case "setCursorName" -> null;
+            case "setPoolable" -> {
+                poolable = (Boolean) args[0];
+                yield null;
+            }
             case "closeOnCompletion" -> {
                 closeOnCompletion = true;
                 yield null;
@@ -250,7 +255,7 @@ final class PgStatementHandler implements InvocationHandler {
             case "getResultSetConcurrency" -> resultSetConcurrency;
             case "getResultSetType" -> resultSetType;
             case "getResultSetHoldability" -> resultSetHoldability;
-            case "isPoolable" -> false;
+            case "isPoolable" -> poolable;
             case "isCloseOnCompletion" -> closeOnCompletion;
             case "getLargeUpdateCount" -> (long) updateCount;
             case "setLargeMaxRows", "getLargeMaxRows" -> throw pgjdbcNotImplemented(name);
