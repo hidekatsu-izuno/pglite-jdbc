@@ -155,6 +155,14 @@ public final class PgConnectionHandler implements InvocationHandler {
         return readOnly;
     }
 
+    int serverMajorVersion() {
+        return serverVersionPart(0);
+    }
+
+    int serverMinorVersion() {
+        return serverVersionPart(1);
+    }
+
     int getPrepareThresholdInternal() {
         return prepareThreshold;
     }
@@ -689,6 +697,22 @@ public final class PgConnectionHandler implements InvocationHandler {
         }
         var trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private int serverVersionPart(int index) {
+        var version = parameterStatuses.get("server_version");
+        if (version == null) {
+            return 0;
+        }
+        var parts = version.split("\\.", 3);
+        if (index >= parts.length) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(parts[index]);
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
     }
 
     private void ensureOpen() throws SQLException {

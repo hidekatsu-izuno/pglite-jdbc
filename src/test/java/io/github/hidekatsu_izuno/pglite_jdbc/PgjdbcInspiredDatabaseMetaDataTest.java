@@ -291,6 +291,9 @@ class PgjdbcInspiredDatabaseMetaDataTest {
         assertFalse(metadata.othersUpdatesAreVisible(ResultSet.TYPE_FORWARD_ONLY));
         assertFalse(metadata.othersDeletesAreVisible(ResultSet.TYPE_FORWARD_ONLY));
         assertFalse(metadata.othersInsertsAreVisible(ResultSet.TYPE_FORWARD_ONLY));
+        assertFalse(metadata.updatesAreDetected(ResultSet.TYPE_FORWARD_ONLY));
+        assertFalse(metadata.deletesAreDetected(ResultSet.TYPE_FORWARD_ONLY));
+        assertFalse(metadata.insertsAreDetected(ResultSet.TYPE_FORWARD_ONLY));
     }
 
     @Test
@@ -462,6 +465,19 @@ class PgjdbcInspiredDatabaseMetaDataTest {
         assertEquals(DatabaseMetaData.sqlStateSQL, metadata.getSQLStateType());
         assertTrue(metadata.locatorsUpdateCopy());
         assertFalse(metadata.supportsStatementPooling());
+    }
+
+    @Test
+    void databaseMetadataVersionAndJdbc43DefaultsMatchPgjdbc() throws Exception {
+        var metadata = connection.getMetaData();
+
+        assertEquals(18, metadata.getDatabaseMajorVersion());
+        assertEquals(3, metadata.getDatabaseMinorVersion());
+        assertEquals(4, metadata.getJDBCMajorVersion());
+        assertEquals(2, metadata.getJDBCMinorVersion());
+        assertEquals(0L, metadata.getMaxLogicalLobSize());
+        assertTrue(metadata.supportsRefCursors());
+        assertFalse(metadata.supportsSharding());
     }
 
     @Test

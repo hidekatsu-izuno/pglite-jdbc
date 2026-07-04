@@ -123,12 +123,22 @@ final class PgDatabaseMetaDataHandler implements InvocationHandler {
             case "getMaxColumnNameLength", "getMaxCursorNameLength", "getMaxSchemaNameLength",
                 "getMaxProcedureNameLength", "getMaxCatalogNameLength", "getMaxTableNameLength",
                 "getMaxUserNameLength" -> 63;
+            case "getMaxCharLiteralLength", "getMaxBinaryLiteralLength",
+                "getMaxColumnsInGroupBy", "getMaxColumnsInOrderBy", "getMaxColumnsInSelect",
+                "getMaxIndexLength", "getMaxStatementLength", "getMaxStatements",
+                "getMaxTablesInSelect" -> 0;
             case "getMaxColumnsInIndex" -> 32;
             case "getMaxColumnsInTable" -> 1600;
             case "getMaxConnections" -> 8192;
             case "getMaxRowSize" -> 1073741824;
             case "doesMaxRowSizeIncludeBlobs" -> false;
             case "getDefaultTransactionIsolation" -> Connection.TRANSACTION_READ_COMMITTED;
+            case "getDatabaseMajorVersion" -> connection.serverMajorVersion();
+            case "getDatabaseMinorVersion" -> connection.serverMinorVersion();
+            case "getJDBCMajorVersion" -> org.postgresql.util.DriverInfo.JDBC_MAJOR_VERSION;
+            case "getJDBCMinorVersion" -> org.postgresql.util.DriverInfo.JDBC_MINOR_VERSION;
+            case "getMaxLogicalLobSize" -> 0L;
+            case "supportsRefCursors" -> true;
             case "isReadOnly" -> connection.readOnly();
             case "getTables" -> getTables(args);
             case "getColumns" -> getColumns(args);
