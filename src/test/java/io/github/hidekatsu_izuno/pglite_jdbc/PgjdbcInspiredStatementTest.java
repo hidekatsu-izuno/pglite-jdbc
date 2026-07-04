@@ -438,6 +438,25 @@ class PgjdbcInspiredStatementTest {
     }
 
     @Test
+    void pgStatementPrepareThresholdMatchesPgjdbc() throws Exception {
+        try (var statement = connection.createStatement()) {
+            var pgStatement = statement.unwrap(org.postgresql.PGStatement.class);
+
+            pgStatement.setPrepareThreshold(-1);
+            assertEquals(1, pgStatement.getPrepareThreshold());
+            assertFalse(pgStatement.isUseServerPrepare());
+
+            pgStatement.setUseServerPrepare(true);
+            assertEquals(1, pgStatement.getPrepareThreshold());
+            assertFalse(pgStatement.isUseServerPrepare());
+
+            pgStatement.setUseServerPrepare(false);
+            assertEquals(0, pgStatement.getPrepareThreshold());
+            assertFalse(pgStatement.isUseServerPrepare());
+        }
+    }
+
+    @Test
     void statementJdbcEscapeProcessingFollowsPgjdbc() throws Exception {
         assertEquals("SELECT ('a'||'b')", connection.nativeSQL("SELECT {fn concat('a','b')}"));
 

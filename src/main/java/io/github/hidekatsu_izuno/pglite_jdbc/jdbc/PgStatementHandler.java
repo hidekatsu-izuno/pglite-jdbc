@@ -300,7 +300,8 @@ final class PgStatementHandler implements InvocationHandler {
             }
             case "getLastOID" -> 0L;
             case "setPrepareThreshold" -> {
-                prepareThreshold = (Integer) args[0];
+                var threshold = (Integer) args[0];
+                prepareThreshold = threshold < 0 ? 1 : threshold;
                 yield null;
             }
             case "getPrepareThreshold" -> prepareThreshold;
@@ -308,7 +309,7 @@ final class PgStatementHandler implements InvocationHandler {
                 prepareThreshold = Boolean.TRUE.equals(args[0]) ? 1 : 0;
                 yield null;
             }
-            case "isUseServerPrepare" -> prepareThreshold != 0;
+            case "isUseServerPrepare" -> false;
             case "setAdaptiveFetch" -> {
                 adaptiveFetch = (Boolean) args[0];
                 yield null;
