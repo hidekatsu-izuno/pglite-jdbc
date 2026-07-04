@@ -8,7 +8,7 @@ final class PgLargeObjectManagerAdapter extends org.postgresql.largeobject.Large
         super(connection);
     }
 
-    static org.postgresql.largeobject.LargeObjectManager create(PgConnection connection)
+    static org.postgresql.largeobject.LargeObjectManager create(PgConnectionHandler connection)
         throws SQLException {
         return new PgLargeObjectManagerAdapter((org.postgresql.core.BaseConnection)connection.proxy());
     }

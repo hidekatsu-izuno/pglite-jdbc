@@ -23,9 +23,9 @@ import org.postgresql.util.ByteStreamWriter;
 
 final class PgCopyManagerAdapter extends org.postgresql.copy.CopyManager {
     private static final int BUFFER_SIZE = 65536;
-    private final PgConnection connection;
+    private final PgConnectionHandler connection;
 
-    PgCopyManagerAdapter(PgConnection connection) throws SQLException {
+    PgCopyManagerAdapter(PgConnectionHandler connection) throws SQLException {
         super((org.postgresql.core.BaseConnection) connection.proxy());
         this.connection = connection;
     }
@@ -113,13 +113,13 @@ final class PgCopyManagerAdapter extends org.postgresql.copy.CopyManager {
     }
 
     private static final class CopyInOp implements CopyIn {
-        private final PgConnection connection;
+        private final PgConnectionHandler connection;
         private final String sql;
         private final List<byte[]> bufferedChunks = new ArrayList<>();
         private boolean active = true;
         private long handledRowCount = -1L;
 
-        private CopyInOp(PgConnection connection, String sql) throws SQLException {
+        private CopyInOp(PgConnectionHandler connection, String sql) throws SQLException {
             this.connection = connection;
             this.sql = sql;
         }
@@ -224,7 +224,7 @@ final class PgCopyManagerAdapter extends org.postgresql.copy.CopyManager {
         private final long handledRowCount;
         private boolean active = true;
 
-        private CopyOutOp(PgConnection connection, String sql) throws SQLException {
+        private CopyOutOp(PgConnectionHandler connection, String sql) throws SQLException {
             var stage = executeStage(
                 connection,
                 "copyOut.begin",
@@ -298,7 +298,7 @@ final class PgCopyManagerAdapter extends org.postgresql.copy.CopyManager {
     }
 
     private static interface_.ExecProtocolResult executeStage(
-        PgConnection connection,
+        PgConnectionHandler connection,
         String stage,
         byte[] payload,
         boolean throwOnError

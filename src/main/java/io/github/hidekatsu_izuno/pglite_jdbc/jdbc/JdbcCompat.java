@@ -58,7 +58,7 @@ final class JdbcCompat {
             return '\0';
         }
         if (returnType == ResultSet.class) {
-            return PgResultSet.create(null, List.of(), List.of());
+            return PgResultSetHandler.create(null, List.of(), List.of());
         }
         if (returnType == ResultSetMetaData.class) {
             return PgResultSetMetaData.create(List.of());

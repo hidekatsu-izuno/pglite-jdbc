@@ -2,7 +2,7 @@ package io.github.hidekatsu_izuno.pglite_jdbc;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.core.ConnectionFactory;
 import io.github.hidekatsu_izuno.pglite_jdbc.core.QueryExecutor;
-import io.github.hidekatsu_izuno.pglite_jdbc.jdbc.PgConnection;
+import io.github.hidekatsu_izuno.pglite_jdbc.jdbc.PgConnectionHandler;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
@@ -68,7 +68,7 @@ public class Driver implements java.sql.Driver {
         var user = getOrDefault(properties, PROP_USER, "postgres");
         var database = getOrDefault(properties, PROP_DATABASE, "template1");
         QueryExecutor queryExecutor = ConnectionFactory.openConnection(url, properties);
-        return PgConnection.create(queryExecutor, url, user, database, properties);
+        return PgConnectionHandler.create(queryExecutor, url, user, database, properties);
     }
 
     @Override

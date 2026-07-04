@@ -15,9 +15,9 @@ final class PgFastpathAdapter extends Fastpath {
     private static final Field BYTES_START_FIELD = field("bytesStart");
     private static final Field BYTES_LENGTH_FIELD = field("bytesLength");
 
-    private final PgConnection connection;
+    private final PgConnectionHandler connection;
 
-    PgFastpathAdapter(PgConnection connection) {
+    PgFastpathAdapter(PgConnectionHandler connection) {
         super((org.postgresql.core.BaseConnection) connection.proxy());
         this.connection = connection;
     }

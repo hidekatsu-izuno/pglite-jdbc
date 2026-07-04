@@ -19,8 +19,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-final class PgResultSet implements InvocationHandler {
-    private final PgConnection connection;
+final class PgResultSetHandler implements InvocationHandler {
+    private final PgConnectionHandler connection;
     private final java.sql.Statement statement;
     private final List<Column> columns;
     private final List<List<Object>> rows;
@@ -36,8 +36,8 @@ final class PgResultSet implements InvocationHandler {
     private int fetchDirection;
     private SQLWarning warnings;
 
-    private PgResultSet(
-        PgConnection connection,
+    private PgResultSetHandler(
+        PgConnectionHandler connection,
         java.sql.Statement statement,
         List<Column> columns,
         List<List<Object>> rows,
@@ -75,7 +75,7 @@ final class PgResultSet implements InvocationHandler {
     }
 
     static ResultSet create(
-        PgConnection connection,
+        PgConnectionHandler connection,
         java.sql.Statement statement,
         List<Column> columns,
         List<Map<String, Object>> rows
@@ -95,7 +95,7 @@ final class PgResultSet implements InvocationHandler {
     }
 
     static ResultSet create(
-        PgConnection connection,
+        PgConnectionHandler connection,
         java.sql.Statement statement,
         List<Column> columns,
         List<Map<String, Object>> rows,
@@ -118,7 +118,7 @@ final class PgResultSet implements InvocationHandler {
     }
 
     static ResultSet create(
-        PgConnection connection,
+        PgConnectionHandler connection,
         java.sql.Statement statement,
         List<Column> columns,
         List<List<Object>> rows,
@@ -130,12 +130,12 @@ final class PgResultSet implements InvocationHandler {
         int fetchDirection
     ) {
         return (ResultSet) Proxy.newProxyInstance(
-            PgResultSet.class.getClassLoader(),
+            PgResultSetHandler.class.getClassLoader(),
             new Class<?>[] {
                 ResultSet.class,
                 org.postgresql.PGRefCursorResultSet.class,
             },
-            new PgResultSet(
+            new PgResultSetHandler(
                 connection,
                 statement,
                 columns,
@@ -151,7 +151,7 @@ final class PgResultSet implements InvocationHandler {
     }
 
     static ResultSet createArrayRows(
-        PgConnection connection,
+        PgConnectionHandler connection,
         java.sql.Statement statement,
         List<Column> columns,
         List<List<Object>> rows,
@@ -177,7 +177,7 @@ final class PgResultSet implements InvocationHandler {
     }
 
     static ResultSet createMappedRows(
-        PgConnection connection,
+        PgConnectionHandler connection,
         java.sql.Statement statement,
         List<Column> columns,
         List<Map<String, Object>> rows,

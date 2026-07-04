@@ -11,7 +11,7 @@ final class PgResultSetMetaData {
         return create(null, columns);
     }
 
-    static ResultSetMetaData create(PgConnection connection, List<Column> columns) {
+    static ResultSetMetaData create(PgConnectionHandler connection, List<Column> columns) {
         return new org.postgresql.jdbc.PgResultSetMetaData(
             connection == null ? null : connection.baseConnection(),
             fields(columns)

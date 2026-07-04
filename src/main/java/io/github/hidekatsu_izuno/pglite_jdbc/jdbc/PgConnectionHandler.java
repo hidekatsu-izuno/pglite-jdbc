@@ -35,7 +35,7 @@ import org.postgresql.util.LruCache;
 import org.postgresql.util.PSQLException;
 import org.postgresql.util.PSQLState;
 
-public final class PgConnection implements InvocationHandler {
+public final class PgConnectionHandler implements InvocationHandler {
     private static final org.postgresql.PGNotification[] EMPTY_NOTIFICATIONS =
         new org.postgresql.PGNotification[0];
     private static final org.postgresql.jdbc.TimestampUtils TIMESTAMP_UTILS =
@@ -78,7 +78,7 @@ public final class PgConnection implements InvocationHandler {
     private final Timer sharedTimer = new Timer(true);
     private final org.postgresql.core.QueryExecutor coreQueryExecutor = createCoreQueryExecutor();
 
-    private PgConnection(
+    private PgConnectionHandler(
         QueryExecutor queryExecutor,
         String url,
         String user,
@@ -100,9 +100,9 @@ public final class PgConnection implements InvocationHandler {
         String database,
         Properties properties
     ) throws SQLException {
-        var handler = new PgConnection(queryExecutor, url, user, database, properties);
+        var handler = new PgConnectionHandler(queryExecutor, url, user, database, properties);
         var proxy = (Connection) Proxy.newProxyInstance(
-            PgConnection.class.getClassLoader(),
+            PgConnectionHandler.class.getClassLoader(),
             new Class<?>[] {
                 Connection.class,
                 org.postgresql.PGConnection.class,
@@ -336,7 +336,7 @@ public final class PgConnection implements InvocationHandler {
                 }
                 yield null;
             }
-            case "getMetaData" -> PgDatabaseMetaData.create(this);
+            case "getMetaData" -> PgDatabaseMetaDataHandler.create(this);
             case "setReadOnly" -> {
                 readOnly = (Boolean) args[0];
                 yield null;
@@ -736,7 +736,7 @@ public final class PgConnection implements InvocationHandler {
 
     private ResultSet execSqlQuery(String sql) throws SQLException {
         var result = queryExecutor.query(sql, null);
-        return PgResultSet.create(this, null, JdbcCompat.toColumns(result.fields()), result.rows());
+        return PgResultSetHandler.create(this, null, JdbcCompat.toColumns(result.fields()), result.rows());
     }
 
     private void addDataType(String typeName, Object objectClass) throws SQLException {
@@ -810,12 +810,12 @@ public final class PgConnection implements InvocationHandler {
 
     private java.sql.Statement createStatement(Object[] args) throws SQLException {
         var options = statementOptions(args, 0);
-        return PgStatement.create(this, null, options.type(), options.concurrency(), options.holdability());
+        return PgStatementHandler.create(this, null, options.type(), options.concurrency(), options.holdability());
     }
 
     private java.sql.PreparedStatement prepareStatement(Object[] args) throws SQLException {
         var options = statementOptions(args, 1);
-        return (java.sql.PreparedStatement) PgStatement.create(
+        return (java.sql.PreparedStatement) PgStatementHandler.create(
             this,
             (String) args[0],
             options.type(),
@@ -950,7 +950,7 @@ public final class PgConnection implements InvocationHandler {
 
     private org.postgresql.core.QueryExecutor createCoreQueryExecutor() {
         return (org.postgresql.core.QueryExecutor) Proxy.newProxyInstance(
-            PgConnection.class.getClassLoader(),
+            PgConnectionHandler.class.getClassLoader(),
             new Class<?>[] { org.postgresql.core.QueryExecutor.class },
             (proxy, method, args) -> {
                 if (method.getDeclaringClass() == Object.class) {

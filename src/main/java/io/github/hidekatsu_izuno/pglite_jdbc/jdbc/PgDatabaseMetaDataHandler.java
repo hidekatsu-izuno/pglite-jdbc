@@ -13,18 +13,18 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-final class PgDatabaseMetaData implements InvocationHandler {
-    private final PgConnection connection;
+final class PgDatabaseMetaDataHandler implements InvocationHandler {
+    private final PgConnectionHandler connection;
 
-    private PgDatabaseMetaData(PgConnection connection) {
+    private PgDatabaseMetaDataHandler(PgConnectionHandler connection) {
         this.connection = connection;
     }
 
-    static DatabaseMetaData create(PgConnection connection) {
+    static DatabaseMetaData create(PgConnectionHandler connection) {
         return (DatabaseMetaData) Proxy.newProxyInstance(
-            PgDatabaseMetaData.class.getClassLoader(),
+            PgDatabaseMetaDataHandler.class.getClassLoader(),
             new Class<?>[] { DatabaseMetaData.class },
-            new PgDatabaseMetaData(connection)
+            new PgDatabaseMetaDataHandler(connection)
         );
     }
 
@@ -1123,7 +1123,7 @@ final class PgDatabaseMetaData implements InvocationHandler {
     }
 
     private ResultSet result(List<Column> columns, List<Map<String, Object>> rows) {
-        return PgResultSet.create(null, columns, rows);
+        return PgResultSetHandler.create(null, columns, rows);
     }
 
     private List<Map<String, Object>> query(String sql) throws SQLException {

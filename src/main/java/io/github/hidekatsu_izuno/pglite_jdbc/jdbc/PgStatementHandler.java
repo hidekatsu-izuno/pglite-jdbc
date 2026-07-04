@@ -24,10 +24,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
-final class PgStatement implements InvocationHandler {
+final class PgStatementHandler implements InvocationHandler {
     private record StreamParameter(Object value) {}
 
-    private final PgConnection connection;
+    private final PgConnectionHandler connection;
     private final String preparedSql;
     private final String preparedProtocolSql;
     private final int parameterCount;
@@ -57,8 +57,8 @@ final class PgStatement implements InvocationHandler {
     private boolean closeOnCompletion;
     private boolean escapeProcessing = true;
 
-    private PgStatement(
-        PgConnection connection,
+    private PgStatementHandler(
+        PgConnectionHandler connection,
         String preparedSql,
         int resultSetType,
         int resultSetConcurrency,
@@ -80,7 +80,7 @@ final class PgStatement implements InvocationHandler {
         this.queryTimeout = connection.getQueryTimeoutInternal();
     }
 
-    static Statement create(PgConnection connection, String preparedSql) throws SQLException {
+    static Statement create(PgConnectionHandler connection, String preparedSql) throws SQLException {
         return create(
             connection,
             preparedSql,
@@ -92,7 +92,7 @@ final class PgStatement implements InvocationHandler {
     }
 
     static Statement create(
-        PgConnection connection,
+        PgConnectionHandler connection,
         String preparedSql,
         int resultSetType,
         int resultSetConcurrency,
@@ -109,7 +109,7 @@ final class PgStatement implements InvocationHandler {
     }
 
     static Statement create(
-        PgConnection connection,
+        PgConnectionHandler connection,
         String preparedSql,
         int resultSetType,
         int resultSetConcurrency,
@@ -124,7 +124,7 @@ final class PgStatement implements InvocationHandler {
                 PreparedStatement.class,
                 org.postgresql.core.BaseStatement.class,
             };
-        var handler = new PgStatement(
+        var handler = new PgStatementHandler(
             connection,
             preparedSql,
             resultSetType,
@@ -133,7 +133,7 @@ final class PgStatement implements InvocationHandler {
             preparedGeneratedColumns
         );
         var proxy = (Statement) Proxy.newProxyInstance(
-            PgStatement.class.getClassLoader(),
+            PgStatementHandler.class.getClassLoader(),
             interfaces,
             handler
         );
@@ -263,7 +263,7 @@ final class PgStatement implements InvocationHandler {
             case "executeLargeUpdate" -> (long) executeUpdate(resolveSql(name, args), args);
             case "getGeneratedKeys" -> generatedKeys != null
                 ? generatedKeys
-                : PgResultSet.create(self, List.of(), List.of());
+                : PgResultSetHandler.create(self, List.of(), List.of());
             case "getMetaData" -> {
                 if (preparedSql == null) {
                     yield null;
@@ -1007,10 +1007,10 @@ final class PgStatement implements InvocationHandler {
 
     private void setGeneratedKeys(interface_.Results<Map<String, Object>> result) throws SQLException {
         if (result.fields().isEmpty()) {
-            generatedKeys = PgResultSet.create(self, List.of(), List.of());
+            generatedKeys = PgResultSetHandler.create(self, List.of(), List.of());
             return;
         }
-        generatedKeys = PgResultSet.createMappedRows(
+        generatedKeys = PgResultSetHandler.createMappedRows(
             connection,
             self,
             JdbcCompat.toColumns(result.fields()),
@@ -1193,7 +1193,7 @@ final class PgStatement implements InvocationHandler {
                 setGeneratedKeys(results.getLast());
                 updateCount = JdbcCompat.safeAffectedRows(results.getLast());
             } else {
-                generatedKeys = PgResultSet.create(self, List.of(), List.of());
+                generatedKeys = PgResultSetHandler.create(self, List.of(), List.of());
                 updateCount = -1;
             }
             currentResults = List.of();
@@ -1270,7 +1270,7 @@ final class PgStatement implements InvocationHandler {
             }
             rows.add(row);
         }
-        return PgResultSet.create(connection, self, columns, rows);
+        return PgResultSetHandler.create(connection, self, columns, rows);
     }
 
     private boolean getMoreResults(Object[] args) throws SQLException {
@@ -1309,7 +1309,7 @@ final class PgStatement implements InvocationHandler {
     }
 
     private ResultSet createStatementArrayResultSet(interface_.Results<List<Object>> result) {
-        return PgResultSet.createArrayRows(
+        return PgResultSetHandler.createArrayRows(
             connection,
             self,
             JdbcCompat.toColumns(result.fields()),
