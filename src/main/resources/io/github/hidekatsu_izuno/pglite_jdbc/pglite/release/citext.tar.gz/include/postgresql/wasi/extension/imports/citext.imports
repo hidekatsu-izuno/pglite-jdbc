@@ -1,0 +1,11 @@
+Int64GetDatum
+__memory_base
+hash_bytes
+hash_bytes_extended
+memcmp
+pfree
+pg_detoast_datum_packed
+str_tolower
+strcmp
+strlen
+varstr_cmp

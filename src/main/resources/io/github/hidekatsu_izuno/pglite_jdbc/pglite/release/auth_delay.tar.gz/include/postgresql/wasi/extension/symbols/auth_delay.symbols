@@ -1,0 +1,1 @@
+auth_delay.so _PG_init=pglite_wasi_ext_auth_delay_PG_init 

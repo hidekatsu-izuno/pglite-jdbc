@@ -1,0 +1,1 @@
+pg_overexplain.so _PG_init=pglite_wasi_ext_pg_overexplain_PG_init 

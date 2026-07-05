@@ -5,13 +5,11 @@ import io.github.hidekatsu_izuno.pglite_jdbc.pglite.extensionUtils;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
-import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
-import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
-import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 
 public class tarUtils {
     public enum DumpTarCompressionOptions {
@@ -20,6 +18,7 @@ public class tarUtils {
         auto,
     }
 
+    private static final int TAR_BLOCK_SIZE = 512;
     private static final List<String> COMPRESSED_MIME_TYPES = List.of(
         "application/x-gtar",
         "application/x-tar+gzip",
@@ -190,50 +189,178 @@ public class tarUtils {
     private static byte[] tar(List<TarEntry> files) {
         try {
             var out = new ByteArrayOutputStream();
-            try (var tar = new TarArchiveOutputStream(out)) {
-                tar.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX);
-                for (var file : files) {
-                    var entry = new TarArchiveEntry(file.name());
-                    entry.setMode(file.mode());
-                    entry.setSize(file.size());
-                    entry.setModTime(file.modifyTimeMs());
-                    if (file.type() == tinytar.DIRTYPE) {
-                        entry.setMode(file.mode() | 0x4000);
-                    }
-                    tar.putArchiveEntry(entry);
-                    if (file.type() == tinytar.REGTYPE && file.data().length > 0) {
-                        tar.write(file.data());
-                    }
-                    tar.closeArchiveEntry();
+            for (var file : files) {
+                var name = file.name();
+                if (file.type() == tinytar.DIRTYPE && !name.endsWith("/")) {
+                    name = name + "/";
+                }
+                out.write(tarHeader(name, file.mode(), file.type(), file.modifyTimeMs(), file.data().length));
+                if (file.type() == tinytar.REGTYPE && file.data().length > 0) {
+                    out.write(file.data());
+                    writePadding(out, file.data().length);
                 }
             }
+            out.write(new byte[TAR_BLOCK_SIZE * 2]);
             return out.toByteArray();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
 
+    private static byte[] tarHeader(String name, int mode, int type, long modifyTimeMs, int size) {
+        var header = new byte[TAR_BLOCK_SIZE];
+        var normalized = normalizeTarName(name);
+        var split = splitTarName(normalized);
+        writeString(header, 0, 100, split.name());
+        writeOctal(header, 100, 8, mode);
+        writeOctal(header, 108, 8, 0);
+        writeOctal(header, 116, 8, 0);
+        writeOctal(header, 124, 12, type == tinytar.REGTYPE ? size : 0);
+        writeOctal(header, 136, 12, modifyTimeMs / 1000);
+        for (var i = 148; i < 156; i++) {
+            header[i] = (byte) ' ';
+        }
+        header[156] = (byte) (type == tinytar.DIRTYPE ? '5' : '0');
+        writeString(header, 257, 6, "ustar");
+        writeString(header, 263, 2, "00");
+        writeString(header, 345, 155, split.prefix());
+        writeChecksum(header);
+        return header;
+    }
+
+    private record TarName(String name, String prefix) {}
+
+    private static TarName splitTarName(String name) {
+        var bytes = name.getBytes(StandardCharsets.UTF_8);
+        if (bytes.length <= 100) {
+            return new TarName(name, "");
+        }
+        var slash = name.length();
+        while ((slash = name.lastIndexOf('/', slash - 1)) >= 0) {
+            var prefix = name.substring(0, slash);
+            var suffix = name.substring(slash + 1);
+            if (
+                prefix.getBytes(StandardCharsets.UTF_8).length <= 155
+                    && suffix.getBytes(StandardCharsets.UTF_8).length <= 100
+            ) {
+                return new TarName(suffix, prefix);
+            }
+        }
+        throw new IllegalArgumentException("Tar entry name is too long: " + name);
+    }
+
+    private static String normalizeTarName(String name) {
+        var normalized = name.replace('\\', '/');
+        while (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+        return normalized;
+    }
+
+    private static void writeString(byte[] header, int offset, int length, String value) {
+        var bytes = value.getBytes(StandardCharsets.UTF_8);
+        var count = Math.min(bytes.length, length);
+        System.arraycopy(bytes, 0, header, offset, count);
+    }
+
+    private static void writeOctal(byte[] header, int offset, int length, long value) {
+        var text = Long.toOctalString(Math.max(0, value));
+        var start = offset + length - text.length() - 1;
+        for (var i = offset; i < offset + length; i++) {
+            header[i] = 0;
+        }
+        for (var i = offset; i < start; i++) {
+            header[i] = (byte) '0';
+        }
+        writeString(header, start, text.length(), text);
+        header[offset + length - 1] = 0;
+    }
+
+    private static void writeChecksum(byte[] header) {
+        var sum = 0;
+        for (var value : header) {
+            sum += value & 0xff;
+        }
+        var text = String.format("%06o", sum);
+        writeString(header, 148, 6, text);
+        header[154] = 0;
+        header[155] = (byte) ' ';
+    }
+
+    private static void writePadding(ByteArrayOutputStream out, int size) {
+        var remainder = size % TAR_BLOCK_SIZE;
+        if (remainder > 0) {
+            out.writeBytes(new byte[TAR_BLOCK_SIZE - remainder]);
+        }
+    }
+
     private static List<TarEntry> untar(byte[] tarball) {
         var files = new ArrayList<TarEntry>();
-        try (var in = new TarArchiveInputStream(new ByteArrayInputStream(tarball))) {
-            TarArchiveEntry entry;
-            while ((entry = in.getNextEntry()) != null) {
-                var data = entry.isDirectory() ? new byte[0] : in.readAllBytes();
-                files.add(
-                    new TarEntry(
-                        entry.getName(),
-                        entry.getMode(),
-                        (int) entry.getSize(),
-                        entry.isDirectory() ? tinytar.DIRTYPE : tinytar.REGTYPE,
-                        entry.getModTime().getTime(),
-                        data
-                    )
-                );
+        var offset = 0;
+        try {
+            while (offset + TAR_BLOCK_SIZE <= tarball.length) {
+                var header = java.util.Arrays.copyOfRange(tarball, offset, offset + TAR_BLOCK_SIZE);
+                offset += TAR_BLOCK_SIZE;
+                if (isZeroBlock(header)) {
+                    break;
+                }
+                var name = readString(header, 0, 100);
+                var prefix = readString(header, 345, 155);
+                if (!prefix.isEmpty()) {
+                    name = prefix + "/" + name;
+                }
+                var mode = (int) readOctal(header, 100, 8);
+                var size = (int) readOctal(header, 124, 12);
+                var modifyTimeMs = readOctal(header, 136, 12) * 1000;
+                var typeflag = header[156];
+                var type = typeflag == '5' ? tinytar.DIRTYPE : tinytar.REGTYPE;
+                if (offset + size > tarball.length) {
+                    throw new IllegalArgumentException("File is corrupted");
+                }
+                var data = type == tinytar.REGTYPE
+                    ? java.util.Arrays.copyOfRange(tarball, offset, offset + size)
+                    : new byte[0];
+                offset += size + padding(size);
+                files.add(new TarEntry(name, mode, size, type, modifyTimeMs, data));
             }
             return files;
-        } catch (IOException e) {
+        } catch (RuntimeException e) {
+            if (e.getMessage() != null && e.getMessage().contains("File is corrupted")) {
+                throw e;
+            }
             throw new RuntimeException("File is corrupted", e);
         }
+    }
+
+    private static boolean isZeroBlock(byte[] block) {
+        for (var value : block) {
+            if (value != 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static int padding(int size) {
+        var remainder = size % TAR_BLOCK_SIZE;
+        return remainder == 0 ? 0 : TAR_BLOCK_SIZE - remainder;
+    }
+
+    private static String readString(byte[] header, int offset, int length) {
+        var end = offset;
+        var max = offset + length;
+        while (end < max && header[end] != 0) {
+            end++;
+        }
+        return new String(header, offset, end - offset, StandardCharsets.UTF_8).trim();
+    }
+
+    private static long readOctal(byte[] header, int offset, int length) {
+        var text = readString(header, offset, length).trim();
+        if (text.isEmpty()) {
+            return 0;
+        }
+        return Long.parseLong(text, 8);
     }
 
     private static long dateToUnixTimestamp(Long dateMs) {

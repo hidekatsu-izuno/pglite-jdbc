@@ -1,0 +1,1 @@
+auto_explain.so _PG_init=pglite_wasi_ext_auto_explain_PG_init 

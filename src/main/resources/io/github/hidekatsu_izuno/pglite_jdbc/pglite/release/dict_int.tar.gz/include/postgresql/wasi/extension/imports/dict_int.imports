@@ -1,0 +1,17 @@
+__indirect_function_table
+__memory_base
+__stack_pointer
+__table_base
+__wasi_init_tp
+atoi
+defGetBoolean
+defGetString
+errcode
+errfinish
+errmsg
+errstart_cold
+memory
+palloc0
+pfree
+pnstrdup
+strcmp

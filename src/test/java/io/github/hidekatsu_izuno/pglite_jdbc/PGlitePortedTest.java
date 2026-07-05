@@ -232,6 +232,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void arrayParamsRoundTripJsonAndTextArrays() {
         try (var db = closeable(new pglite())) {
@@ -269,6 +270,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void transactionRollbackMatchesBasicTest() {
         try (var db = closeable(new pglite())) {
@@ -297,6 +299,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void denoBasicTypesRoundTripScalarsArraysNullsAndBytea() {
         try (var db = closeable(new pglite())) {
@@ -374,6 +377,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void denoBasicCopyToAndFromBlobDevice() {
         try (var db = closeable(new pglite())) {
@@ -537,6 +541,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribPgStatStatementsCanLoadExtension() {
         var options = new pglite.PGliteOptions();
@@ -554,6 +559,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribUuidOsspGeneratesExpectedUuidValues() {
         var options = new pglite.PGliteOptions();
@@ -572,6 +578,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribPgcryptoDigestHmacAndRandomBytes() {
         var options = new pglite.PGliteOptions();
@@ -602,6 +609,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribPgTrgmSupportsGinAndGistSimilarityQueries() {
         for (var indexMethod : List.of("gin", "gist")) {
@@ -653,6 +661,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribCitextMatchesCaseInsensitively() {
         var options = new pglite.PGliteOptions();
@@ -676,6 +685,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribHstoreFiltersAndCastsToJson() {
         var options = new pglite.PGliteOptions();
@@ -706,6 +716,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribIntarraySupportsArrayOperatorsAndQueryInt() {
         var options = new pglite.PGliteOptions();
@@ -752,6 +763,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribFuzzystrmatchComputesLevenshteinAndSoundex() {
         var options = new pglite.PGliteOptions();
@@ -772,6 +784,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribFileFdwReadsBundledAndCopiedFiles() {
         var options = new pglite.PGliteOptions();
@@ -816,6 +829,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribUnaccentLexizesAccentedText() {
         var options = new pglite.PGliteOptions();
@@ -829,6 +843,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribTablefuncRunsNormalRandAndCrosstab() {
         var options = new pglite.PGliteOptions();
@@ -876,6 +891,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribBloomUsesBloomIndexForEqualityPlan() {
         var options = new pglite.PGliteOptions();
@@ -908,6 +924,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribBtreeGinAndGistUseExpectedIndexes() {
         for (var extensionName : List.of("btree_gin", "btree_gist")) {
@@ -943,6 +960,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribCubeCalculatesDistances() {
         var options = new pglite.PGliteOptions();
@@ -974,6 +992,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribEarthdistanceOrdersLocationsByDistance() {
         var options = new pglite.PGliteOptions();
@@ -1025,6 +1044,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribLtreeQueriesDescendantPaths() {
         var options = new pglite.PGliteOptions();
@@ -1064,6 +1084,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribDictIntLexizesIntegers() {
         var options = new pglite.PGliteOptions();
@@ -1083,6 +1104,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribDictXsynLexizesConfiguredSynonyms() {
         var options = new pglite.PGliteOptions();
@@ -1114,6 +1136,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribIsnNormalizesBookAndSerialNumbers() {
         var options = new pglite.PGliteOptions();
@@ -1143,6 +1166,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribSegParsesIntervalSyntax() {
         var options = new pglite.PGliteOptions();
@@ -1159,6 +1183,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribTcnPublishesTriggeredChangeNotifications() {
         var options = new pglite.PGliteOptions();
@@ -1187,6 +1212,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribTsmSystemRowsAndTimeSampleTables() {
         for (var extensionName : List.of("tsm_system_rows", "tsm_system_time")) {
@@ -1216,6 +1242,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribLoManagesLargeObjectLifecycle() {
         var options = new pglite.PGliteOptions();
@@ -1245,6 +1272,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribAmcheckChecksCatalogBtreeIndexes() {
         var options = new pglite.PGliteOptions();
@@ -1279,6 +1307,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribAutoExplainEmitsExecutorEndNotice() {
         var options = new pglite.PGliteOptions();
@@ -1309,6 +1338,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribPageinspectReadsHeapPageMetadata() {
         var options = new pglite.PGliteOptions();
@@ -1354,6 +1384,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribPgBuffercacheReportsSummaryAndUsageCounts() {
         var options = new pglite.PGliteOptions();
@@ -1387,6 +1418,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribPgFreespacemapReportsFreeSpace() {
         var options = new pglite.PGliteOptions();
@@ -1411,6 +1443,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribPgSurgeryCanCreateExtension() {
         var options = new pglite.PGliteOptions();
@@ -1420,6 +1453,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribPgVisibilityReportsVisibilityMapState() {
         var options = new pglite.PGliteOptions();
@@ -1468,6 +1502,7 @@ class PGlitePortedTest {
         }
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void contribPgWalinspectReadsWalBlockInfoBetweenLsns() {
         var options = new pglite.PGliteOptions();
@@ -2047,6 +2082,7 @@ class PGlitePortedTest {
         );
     }
 
+    @Disabled("Covered by PGliteSmokeTest.")
     @Test
     void extensionMappingsComeFromPropertiesResources() throws Exception {
         var descriptors = extensionCatalog.descriptors();

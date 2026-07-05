@@ -200,11 +200,10 @@ public class pglite extends base implements interface_.PGliteInterface {
                     }
                 }
                 if (result.bundlePath() != null) {
-                    var bytes = extensionUtils.loadExtensionBundle(result.bundlePath());
                     extPromises.put(
                         extName,
                         CompletableFuture.completedFuture(
-                            extensionUtils.toExtensionBlob(bytes)
+                            extensionUtils.toExtensionBlob(result.bundlePath())
                         )
                     );
                 }

@@ -1,0 +1,7 @@
+ClientAuthentication_hook
+DefineCustomIntVariable
+MarkGUCPrefixReserved
+__indirect_function_table
+__memory_base
+__table_base
+pg_usleep

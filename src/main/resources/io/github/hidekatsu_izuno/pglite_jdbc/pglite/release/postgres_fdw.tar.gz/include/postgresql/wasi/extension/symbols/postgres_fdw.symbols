@@ -1,0 +1,1 @@
+postgres_fdw.so _PG_init=pglite_wasi_ext_postgres_fdw_PG_init postgres_fdw_disconnect postgres_fdw_disconnect_all postgres_fdw_get_connections postgres_fdw_get_connections_1_2 postgres_fdw_handler postgres_fdw_validator 

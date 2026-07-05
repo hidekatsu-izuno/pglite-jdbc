@@ -1,0 +1,17 @@
+DefineCustomBoolVariable
+Int64GetDatum
+MarkGUCPrefixReserved
+__memory_base
+__stack_pointer
+errcode
+errfinish
+errmsg
+errsave_finish
+errsave_start
+errstart_cold
+pg_snprintf
+pstrdup
+set_config_option
+strlen
+strncmp
+toupper

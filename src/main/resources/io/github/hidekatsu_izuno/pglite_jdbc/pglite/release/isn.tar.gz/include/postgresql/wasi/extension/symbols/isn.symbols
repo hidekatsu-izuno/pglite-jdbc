@@ -1,0 +1,1 @@
+isn.so _PG_init=pglite_wasi_ext_isn_PG_init accept_weak_input ean13_in ean13_out is_valid isbn_cast_from_ean13 isbn_in ismn_cast_from_ean13 ismn_in isn_out issn_cast_from_ean13 issn_in make_valid upc_cast_from_ean13 upc_in weak_input_status 

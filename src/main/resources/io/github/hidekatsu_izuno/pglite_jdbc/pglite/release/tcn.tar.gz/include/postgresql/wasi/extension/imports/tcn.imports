@@ -1,0 +1,15 @@
+Async_Notify
+RelationGetIndexList
+ReleaseSysCache
+SPI_getvalue
+SearchSysCache1
+__memory_base
+__stack_pointer
+appendStringInfoChar
+errcode
+errfinish
+errmsg
+errmsg_internal
+errstart_cold
+list_free
+makeStringInfo

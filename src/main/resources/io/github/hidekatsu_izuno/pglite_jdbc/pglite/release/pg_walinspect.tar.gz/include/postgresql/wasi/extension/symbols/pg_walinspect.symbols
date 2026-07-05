@@ -1,0 +1,1 @@
+pg_walinspect.so - pg_get_wal_block_info pg_get_wal_record_info pg_get_wal_records_info pg_get_wal_records_info_till_end_of_wal pg_get_wal_stats pg_get_wal_stats_till_end_of_wal 

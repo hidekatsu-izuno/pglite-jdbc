@@ -1,0 +1,1 @@
+test_decoding.so _PG_init=pglite_wasi_ext_test_decoding_PG_init 

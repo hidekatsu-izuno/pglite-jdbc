@@ -3,17 +3,16 @@ package io.github.hidekatsu_izuno.pglite_jdbc.pglite;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.ArrayBuffer;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.net.JarURLConnection;
+import java.net.URI;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.jar.JarFile;
 import java.util.function.Consumer;
-import java.util.zip.GZIPInputStream;
-import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
-import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 
 public class extensionUtils {
     private extensionUtils() {}
@@ -23,6 +22,10 @@ public class extensionUtils {
 
         default byte[] toByteArray() {
             return new Uint8Array(arrayBuffer()).toByteArray();
+        }
+
+        default URL sourceUrl() {
+            return null;
         }
     }
 
@@ -182,25 +185,30 @@ public class extensionUtils {
         }
     }
 
+    private static final class UrlBlob implements ExtensionBlob {
+        private final URL url;
+
+        private UrlBlob(URL url) {
+            this.url = url;
+        }
+
+        @Override
+        public ArrayBuffer arrayBuffer() {
+            return new Uint8Array(new byte[0]).buffer;
+        }
+
+        @Override
+        public URL sourceUrl() {
+            return this.url;
+        }
+    }
+
     public static ExtensionBlob toExtensionBlob(byte[] data) {
         return new ByteArrayBlob(data != null ? data : new byte[0]);
     }
 
-    public static byte[] loadExtensionBundle(String bundlePath) {
-        var path = Path.of(bundlePath);
-        if (Files.exists(path)) {
-            try {
-                return maybeUnzip(Files.readAllBytes(path));
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        }
-
-        return maybeUnzip(utils.readFile(bundlePath));
-    }
-
-    public static byte[] loadExtensionBundle(URL bundlePath) {
-        return maybeUnzip(utils.readFile(bundlePath));
+    public static ExtensionBlob toExtensionBlob(URL url) {
+        return new UrlBlob(url);
     }
 
     public static Promise<Void> loadExtensions(postgresMod.PostgresMod mod, Consumer<String> log) {
@@ -222,7 +230,7 @@ public class extensionUtils {
                             resolve.run(null);
                             return;
                         }
-                        preloadPromises.addAll(loadExtension(mod, ext, blob.toByteArray(), logger));
+                        preloadPromises.addAll(loadExtension(mod, ext, blob, logger));
                         resolve.run(null);
                     })
                 )
@@ -234,11 +242,11 @@ public class extensionUtils {
     private static List<Promise<Void>> loadExtension(
         postgresMod.PostgresMod mod,
         String ext,
-        byte[] bytes,
+        ExtensionBlob blob,
         Consumer<String> log
     ) {
         var soPreloadPromises = new ArrayList<Promise<Void>>();
-        var entries = untarEntries(maybeUnzip(bytes));
+        var entries = loadExtensionEntries(blob);
         entries.sort((a, b) -> a.name().compareTo(b.name()));
         for (var entry : entries) {
             if (entry.name().endsWith("/")) {
@@ -303,31 +311,78 @@ public class extensionUtils {
         }
     }
 
-    private record TarEntryData(String name, byte[] data) {}
+    private record ExtensionEntryData(String name, byte[] data) {}
 
-    private static List<TarEntryData> untarEntries(byte[] tarBytes) {
-        var entries = new ArrayList<TarEntryData>();
-        try (var tarInput = new TarArchiveInputStream(new ByteArrayInputStream(tarBytes))) {
-            TarArchiveEntry file;
-            while ((file = tarInput.getNextEntry()) != null) {
-                var name = file.getName();
-                if (file.isDirectory() && !name.endsWith("/")) {
-                    name = name + "/";
+    private static List<ExtensionEntryData> loadExtensionEntries(ExtensionBlob blob) {
+        var sourceUrl = blob.sourceUrl();
+        if (sourceUrl == null) {
+            throw new IllegalArgumentException("Extension bundle must be an expanded resource directory");
+        }
+        try {
+            if ("file".equals(sourceUrl.getProtocol())) {
+                var root = Path.of(sourceUrl.toURI());
+                if (Files.isDirectory(root)) {
+                    return loadExtensionEntriesFromDirectory(root);
                 }
-                entries.add(new TarEntryData(name, file.isDirectory() ? new byte[0] : tarInput.readAllBytes()));
             }
-            return entries;
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to untar extension bundle", e);
+            if ("jar".equals(sourceUrl.getProtocol())) {
+                return loadExtensionEntriesFromJar(sourceUrl);
+            }
+            throw new IllegalArgumentException("Unsupported extension bundle URL: " + sourceUrl);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to load expanded extension bundle: " + sourceUrl, e);
         }
     }
 
-    private static byte[] maybeUnzip(byte[] bytes) {
-        try (var gzip = new GZIPInputStream(new ByteArrayInputStream(bytes))) {
-            return gzip.readAllBytes();
-        } catch (IOException ignored) {
-            return bytes;
+    private static List<ExtensionEntryData> loadExtensionEntriesFromDirectory(Path root) throws IOException {
+        var entries = new ArrayList<ExtensionEntryData>();
+        try (var paths = Files.walk(root)) {
+            var iterator = paths.iterator();
+            while (iterator.hasNext()) {
+                var path = iterator.next();
+                if (root.equals(path)) {
+                    continue;
+                }
+                var name = root.relativize(path).toString().replace('\\', '/');
+                if (Files.isDirectory(path)) {
+                    entries.add(new ExtensionEntryData(name + "/", new byte[0]));
+                } else {
+                    entries.add(new ExtensionEntryData(name, Files.readAllBytes(path)));
+                }
+            }
         }
+        return entries;
+    }
+
+    private static List<ExtensionEntryData> loadExtensionEntriesFromJar(URL rootUrl) throws IOException {
+        var entries = new ArrayList<ExtensionEntryData>();
+        var connection = (JarURLConnection) rootUrl.openConnection();
+        var root = connection.getEntryName();
+        if (root == null) {
+            root = "";
+        }
+        if (!root.endsWith("/")) {
+            root = root + "/";
+        }
+        try (var jar = new JarFile(Path.of(URI.create(connection.getJarFileURL().toString())).toFile())) {
+            var jarEntries = jar.entries();
+            while (jarEntries.hasMoreElements()) {
+                var entry = jarEntries.nextElement();
+                var name = entry.getName();
+                if (!name.startsWith(root) || name.equals(root)) {
+                    continue;
+                }
+                var relativeName = name.substring(root.length());
+                if (entry.isDirectory()) {
+                    entries.add(new ExtensionEntryData(relativeName.endsWith("/") ? relativeName : relativeName + "/", new byte[0]));
+                } else {
+                    try (var in = jar.getInputStream(entry)) {
+                        entries.add(new ExtensionEntryData(relativeName, in.readAllBytes()));
+                    }
+                }
+            }
+        }
+        return entries;
     }
 
     private static String dirname(String path) {

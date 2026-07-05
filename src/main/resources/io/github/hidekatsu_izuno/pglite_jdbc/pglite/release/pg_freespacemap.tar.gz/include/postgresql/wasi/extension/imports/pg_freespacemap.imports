@@ -1,0 +1,14 @@
+GetRecordedFreeSpace
+__indirect_function_table
+__memory_base
+__stack_pointer
+__table_base
+__wasi_init_tp
+errcode
+errdetail_relkind_not_supported
+errfinish
+errmsg
+errstart_cold
+memory
+relation_close
+relation_open

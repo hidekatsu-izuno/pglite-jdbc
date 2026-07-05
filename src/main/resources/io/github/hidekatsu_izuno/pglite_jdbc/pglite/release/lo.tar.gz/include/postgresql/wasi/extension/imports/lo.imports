@@ -1,0 +1,14 @@
+DirectFunctionCall1Coll
+SPI_fnumber
+SPI_getvalue
+__indirect_function_table
+__memory_base
+__stack_pointer
+be_lo_unlink
+bms_is_member
+errfinish
+errmsg_internal
+errstart_cold
+pfree
+strcmp
+strtoul

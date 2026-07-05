@@ -1,0 +1,1 @@
+pg_prewarm.so _PG_init=pglite_wasi_ext_pg_prewarm_PG_init autoprewarm_dump_now autoprewarm_start_worker pg_prewarm 
