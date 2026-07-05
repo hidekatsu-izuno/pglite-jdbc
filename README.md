@@ -112,3 +112,10 @@ you may choose either license.
 
 Changes to the [Postgres source](https://github.com/electric-sql/postgres-wasm)
 are licensed under the PostgreSQL License.
+
+<!--
+- mvn verify
+- git tag vX.XX.X && git push origin --tags
+- cancel: git tag -d vX.XX.X && git push origin :refs/tags/vX.XX.X
+- mvn -Prelease clean deploy
+-->
