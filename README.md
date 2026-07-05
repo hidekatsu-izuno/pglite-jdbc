@@ -10,7 +10,7 @@ pglite-jdbc is a library that enables calling pglite (https://github.com/electri
 ## Dependencies
 
 - PGlite WASM artifacts bundled in the application classpath.
-- Endive runtime/WASM/WASI modules for executing the bundled PostgreSQL WASM.
+- Endive runtime/WASM/WASI modules. Endive is the only supported WASM runtime.
 - pgjdbc public API: `org.postgresql:postgresql` (for `org.postgresql.*` compatibility types).
 - Jackson databind for JSON handling.
 
