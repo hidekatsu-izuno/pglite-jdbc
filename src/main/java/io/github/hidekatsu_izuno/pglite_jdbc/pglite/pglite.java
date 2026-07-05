@@ -1068,31 +1068,6 @@ public class pglite extends base implements interface_.PGliteInterface {
         });
     }
 
-    @Override
-    public Promise<interface_.DumpDataDirResult> dumpDataDir(
-        io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.tarUtils.DumpTarCompressionOptions compression
-    ) {
-        return asPromise(() -> dumpDataDirSync(compression));
-    }
-
-    private interface_.DumpDataDirResult dumpDataDirSync(
-        io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.tarUtils.DumpTarCompressionOptions compression
-    ) {
-        var option = compression != null
-            ? compression
-            : io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.tarUtils.DumpTarCompressionOptions.auto;
-        var tarball = await(fs.dumpTar("pgdata", option));
-        var extension =
-            option == io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.tarUtils.DumpTarCompressionOptions.gzip
-                || option == io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.tarUtils.DumpTarCompressionOptions.auto
-                ? ".tgz"
-                : ".tar";
-        var dbname = this.dataDir != null && !this.dataDir.isBlank()
-            ? java.nio.file.Path.of(this.dataDir).getFileName().toString()
-            : "pgdata";
-        return new interface_.DumpDataDirResult(tarball, extension, dbname + extension);
-    }
-
     public Promise<Void> notify(String channel, String payload) {
         return asPromise(() -> {
             var escapedPayload = payload == null ? "" : payload.replace("'", "''");

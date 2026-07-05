@@ -1,7 +1,6 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.extensionUtils;
-import io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.tarUtils.DumpTarCompressionOptions;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.initdb;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.pglite;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.postgresMod;
@@ -31,8 +30,6 @@ public class base {
         Promise<Void> syncToFs(Boolean relaxedDurability);
 
         Promise<Void> initialSyncFs();
-
-        Promise<byte[]> dumpTar(String dbname, DumpTarCompressionOptions compression);
 
         Promise<Void> closeFs();
     }
@@ -71,13 +68,6 @@ public class base {
         @Override
         public Promise<Void> initialSyncFs() {
             return Promise.resolve(null);
-        }
-
-        @Override
-        public Promise<byte[]> dumpTar(String dbname, DumpTarCompressionOptions compression) {
-            return Promise.resolve(
-                tarUtils.dumpTar(pg.Module().FS(), PGDATA, dbname, compression)
-            );
         }
 
         @Override

@@ -2,7 +2,6 @@ package io.github.hidekatsu_izuno.pglite_jdbc.pglite;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.base;
-import io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.tarUtils.DumpTarCompressionOptions;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
 import java.net.URL;
 import java.util.List;
@@ -112,12 +111,6 @@ public class interface_ {
     public record ExecProtocolResult(
         List<messages.BackendMessage> messages,
         byte[] data
-    ) {}
-
-    public record DumpDataDirResult(
-        byte[] tarball,
-        String extension,
-        String filename
     ) {}
 
     public record PGliteOptions(
@@ -233,8 +226,6 @@ public class interface_ {
         );
 
         void offNotification(java.util.function.BiConsumer<String, String> callback);
-
-        Promise<DumpDataDirResult> dumpDataDir(DumpTarCompressionOptions compression);
 
         Promise<Void> refreshArrayTypes();
     }

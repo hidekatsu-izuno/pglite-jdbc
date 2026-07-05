@@ -15,7 +15,6 @@ import io.github.hidekatsu_izuno.pglite_jdbc.pglite.index;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_;
 import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.pglite;
-import io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.tarUtils;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.templating;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.types;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.utils;
@@ -1597,33 +1596,6 @@ class PGlitePortedTest {
             assertEquals("test_user", currentUser.rows().get(0).get("current_user"));
             var owned = pg.<Map<String, Object>>querySync("SELECT * FROM test2;", null, null);
             assertEquals(List.of(Map.of("id", 1.0, "number", 42.0)), owned.rows());
-        }
-    }
-
-    @Test
-    void dumpDataDirProducesTarballMetadata() {
-        try (var db = closeable(new pglite())) {
-            var pg = db.pg();
-            pg.execSync(
-                """
-                CREATE TABLE IF NOT EXISTS test (
-                  id SERIAL PRIMARY KEY,
-                  name TEXT
-                );
-                INSERT INTO test (name) VALUES ('test');
-                """,
-                null
-            );
-
-            var gzip = pg.dumpDataDir(tarUtils.DumpTarCompressionOptions.gzip).join();
-            assertTrue(gzip.tarball().length > 0);
-            assertEquals(".tgz", gzip.extension());
-            assertEquals("pgdata.tgz", gzip.filename());
-
-            var plain = pg.dumpDataDir(tarUtils.DumpTarCompressionOptions.none).join();
-            assertTrue(plain.tarball().length > 0);
-            assertEquals(".tar", plain.extension());
-            assertEquals("pgdata.tar", plain.filename());
         }
     }
 
