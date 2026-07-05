@@ -10,6 +10,15 @@
   <description>JDBC driver for pglite with pgjdbc-compatible APIs.</description>
   <url>https://github.com/hidekatsu-izuno/pglite-jdbc</url>
 
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.release>21</maven.compiler.release>
+    <junit.version>6.1.0</junit.version>
+    <pgjdbc.version>42.7.7</pgjdbc.version>
+    <jackson.version>2.22.0</jackson.version>
+    <endive.version>1.0.0</endive.version>
+  </properties>
+
   <licenses>
     <license>
       <name>Apache License 2.0</name>
@@ -23,14 +32,20 @@
     </license>
   </licenses>
 
-  <properties>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <maven.compiler.release>21</maven.compiler.release>
-    <junit.version>6.1.0</junit.version>
-    <pgjdbc.version>42.7.7</pgjdbc.version>
-    <jackson.version>2.22.0</jackson.version>
-    <endive.version>1.0.0</endive.version>
-  </properties>
+  <developers>
+    <developer>
+      <id>hidekatsu.izuno</id>
+      <name>Hidekatsu Izuno</name>
+      <email>hidekatsu.izuno@gmail.com</email>
+    </developer>
+  </developers>
+
+  <scm>
+    <url>https://github.com/hidekatsu-izuno/pglite-jdbc</url>
+    <connection>scm:git:git://github.com/hidekatsu-izuno/pglite-jdbc.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/hidekatsu-izuno/pglite-jdbc.git</developerConnection>
+    <tag>HEAD</tag>
+  </scm>
 
   <dependencies>
     <dependency>
@@ -94,18 +109,84 @@
           </systemPropertyVariables>
         </configuration>
       </plugin>
+
       <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-jar-plugin</artifactId>
-        <version>3.4.2</version>
+        <artifactId>maven-source-plugin</artifactId>
+        <version>3.3.1</version>
+        <executions>
+          <execution>
+            <id>attach-sources</id>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <version>3.11.2</version>
         <configuration>
-          <archive>
-            <manifestEntries>
-              <Automatic-Module-Name>io.github.hidekatsu_izuno.pglite_jdbc</Automatic-Module-Name>
-            </manifestEntries>
-          </archive>
+          <encoding>${project.build.sourceEncoding}</encoding>
+          <docencoding>${project.build.sourceEncoding}</docencoding>
+          <charset>${project.build.sourceEncoding}</charset>
+          <locale>en_US</locale>
+          <author>true</author>
+          <notimestamp>true</notimestamp>
+          <source>21</source>
+          <detectJavaApiLink>true</detectJavaApiLink>
+          <doclint>none</doclint>
+        </configuration>
+        <executions>
+          <execution>
+            <id>attach-javadocs</id>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.sonatype.central</groupId>
+        <artifactId>central-publishing-maven-plugin</artifactId>
+        <version>0.9.0</version>
+        <extensions>true</extensions>
+        <configuration>
+          <publishingServerId>central-github</publishingServerId>
+          <deploymentName>${project.artifactId}-${project.version}</deploymentName>
+          <autoPublish>true</autoPublish>
+          <waitUntil>published</waitUntil>
         </configuration>
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <profile>
+      <id>release</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>3.2.7</version>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>sign</goal>
+                </goals>
+              </execution>
+            </executions>
+            <configuration>
+              <keyname>${gpg.keyname}</keyname>
+            </configuration>
+          </plugin>
+
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>
