@@ -4,7 +4,7 @@ pglite-jdbc is a library that enables calling pglite (https://github.com/electri
 
 ## Requirements
 
-- Java 21
+- Java 21 or newer
 - Maven
 
 ## Dependencies
