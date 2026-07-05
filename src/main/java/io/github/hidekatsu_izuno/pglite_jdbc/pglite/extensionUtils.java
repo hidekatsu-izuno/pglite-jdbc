@@ -230,8 +230,12 @@ public class extensionUtils {
                             resolve.run(null);
                             return;
                         }
-                        preloadPromises.addAll(loadExtension(mod, ext, blob, logger));
-                        resolve.run(null);
+                        try {
+                            preloadPromises.addAll(loadExtension(mod, ext, blob, logger));
+                            resolve.run(null);
+                        } catch (Throwable e) {
+                            reject.run(e);
+                        }
                     })
                 )
             );
@@ -256,12 +260,14 @@ public class extensionUtils {
                 }
             } else if (!entry.name().startsWith(".")) {
                 var filePath = mod.WASM_PREFIX() + "/" + entry.name();
-                if (entry.name().endsWith(".so")) {
-                    log.accept("pgfs:ext preloading " + filePath);
+                if (isSharedObjectEntry(entry.name())) {
+                    var runtimeFilePath = sharedObjectRuntimePath(filePath);
+                    log.accept("pgfs:ext preloading " + runtimeFilePath);
                     var pathName = entry.name();
                     var lastSlash = pathName.lastIndexOf('/');
-                    var soName = lastSlash >= 0 ? pathName.substring(lastSlash + 1) : pathName;
-                    var dirPath = dirname(filePath);
+                    var entryFileName = lastSlash >= 0 ? pathName.substring(lastSlash + 1) : pathName;
+                    var soName = sharedObjectRuntimeName(entryFileName);
+                    var dirPath = dirname(runtimeFilePath);
                     var soPreload = new Promise<Void>((resolve, reject) -> {
                         mod.FS().createPreloadedFile(
                             dirPath,
@@ -270,12 +276,12 @@ public class extensionUtils {
                             true,
                             true,
                             args -> {
-                                log.accept("pgfs:ext OK " + filePath);
+                                log.accept("pgfs:ext OK " + runtimeFilePath);
                                 resolve.run(null);
                             },
                             args -> {
-                                log.accept("pgfs:ext FAIL " + filePath);
-                                copyToFS(mod.FS(), filePath, entry.data(), null);
+                                log.accept("pgfs:ext FAIL " + runtimeFilePath);
+                                copyToFS(mod.FS(), runtimeFilePath, entry.data(), null);
                                 resolve.run(null);
                             },
                             false
@@ -288,6 +294,18 @@ public class extensionUtils {
             }
         }
         return soPreloadPromises;
+    }
+
+    private static boolean isSharedObjectEntry(String name) {
+        return name.endsWith(".so.wasm");
+    }
+
+    private static String sharedObjectRuntimePath(String path) {
+        return path.endsWith(".so.wasm") ? path.substring(0, path.length() - ".wasm".length()) : path;
+    }
+
+    private static String sharedObjectRuntimeName(String name) {
+        return name.endsWith(".so.wasm") ? name.substring(0, name.length() - ".wasm".length()) : name;
     }
 
     public static void copyToFS(
