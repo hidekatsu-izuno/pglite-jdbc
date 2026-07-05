@@ -24,6 +24,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.net.JarURLConnection;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -220,12 +221,18 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
 
     private void copyInstallDir(String name) throws Exception {
         var target = pgRoot.resolve(name);
-        if (Files.exists(target) || moduleUrl == null || !"file".equals(moduleUrl.getProtocol())) {
+        if (Files.exists(target) || moduleUrl == null) {
             return;
         }
-        var source = Path.of(moduleUrl.toURI()).getParent().resolve(name);
-        if (Files.exists(source)) {
-            copyTree(source, target);
+        if ("file".equals(moduleUrl.getProtocol())) {
+            var source = Path.of(moduleUrl.toURI()).getParent().resolve(name);
+            if (Files.exists(source)) {
+                copyTree(source, target);
+            }
+            return;
+        }
+        if ("jar".equals(moduleUrl.getProtocol())) {
+            copyTreeFromJar(name, target);
         }
     }
 
@@ -238,6 +245,40 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
                 } else {
                     Files.createDirectories(dest.getParent());
                     Files.copy(path, dest, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
+        }
+    }
+
+    private void copyTreeFromJar(String name, Path target) throws Exception {
+        var connection = (JarURLConnection) moduleUrl.openConnection();
+        var root = connection.getEntryName();
+        if (root == null) {
+            return;
+        }
+        var lastSlash = root.lastIndexOf('/');
+        root = lastSlash >= 0 ? root.substring(0, lastSlash + 1) : "";
+        var sourceRoot = root + name + "/";
+        try (var jar = connection.getJarFile()) {
+            var entries = jar.entries();
+            while (entries.hasMoreElements()) {
+                var entry = entries.nextElement();
+                var entryName = entry.getName();
+                if (!entryName.startsWith(sourceRoot)) {
+                    continue;
+                }
+                var relative = entryName.substring(sourceRoot.length());
+                if (relative.isEmpty()) {
+                    continue;
+                }
+                var dest = target.resolve(relative);
+                if (entry.isDirectory()) {
+                    Files.createDirectories(dest);
+                } else {
+                    Files.createDirectories(dest.getParent());
+                    try (var in = jar.getInputStream(entry)) {
+                        Files.copy(in, dest, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    }
                 }
             }
         }
