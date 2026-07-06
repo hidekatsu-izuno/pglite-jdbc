@@ -3,8 +3,10 @@ package io.github.hidekatsu_izuno.pglite_jdbc.pglite.release;
 import run.endive.runtime.ByteArrayMemory;
 import run.endive.runtime.HostFunction;
 import run.endive.runtime.ImportFunction;
+import run.endive.runtime.ImportGlobal;
 import run.endive.runtime.ImportMemory;
 import run.endive.runtime.ImportTag;
+import run.endive.runtime.ImportTable;
 import run.endive.runtime.ImportValues;
 import run.endive.runtime.Instance;
 import run.endive.runtime.Memory;
@@ -13,9 +15,16 @@ import run.endive.wasi.WasiOptions;
 import run.endive.wasi.WasiPreview1;
 import run.endive.wasm.Parser;
 import run.endive.wasm.WasmModule;
+import run.endive.wasm.types.ExternalType;
 import run.endive.wasm.types.FunctionImport;
 import run.endive.wasm.types.FunctionType;
+import run.endive.wasm.types.GlobalImport;
+import run.endive.wasm.types.MemoryImport;
+import run.endive.wasm.types.MutabilityType;
 import run.endive.wasm.types.TagImport;
+import run.endive.wasm.types.TableImport;
+import run.endive.wasm.types.UnknownCustomSection;
+import run.endive.wasm.types.ValType;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.extensionUtils;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.initdbModFactory;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.postgresMod;
@@ -44,6 +53,16 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
     private static final boolean TRACE_ENV_CALLS = Boolean.getBoolean("pglite.trace_env_calls");
     private static final boolean TRACE_EXEC = Boolean.getBoolean("pglite.trace_exec");
     private static final Map<String, WasmModule> MODULE_CACHE = new ConcurrentHashMap<>();
+    private static final java.util.Set<String> PROVIDED_DYNAMIC_LIBRARIES = java.util.Set.of(
+        "libc++.so",
+        "libc++abi.so",
+        "libc.so",
+        "libdl.so",
+        "libwasi-emulated-getpid.so",
+        "libwasi-emulated-mman.so",
+        "libwasi-emulated-process-clocks.so",
+        "libwasi-emulated-signal.so"
+    );
 
     private final postgresMod.PartialPostgresMod overrides;
     private final URL moduleUrl;
@@ -73,6 +92,12 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
     private int callbackPiRegistrations;
     private int callbackIiiRegistrations;
     private int nextTableCallbackSlot = -1;
+    private int nextDynamicHandle = 1;
+    private int dlErrorPtr;
+    private String dlLastError = "";
+    private final Map<String, DynamicLibrary> loadedLibsByName = new HashMap<>();
+    private final Map<Integer, DynamicLibrary> loadedLibsByHandle = new HashMap<>();
+    private final Map<String, run.endive.runtime.GlobalInstance> got = new HashMap<>();
 
     public EndivePostgresMod(postgresMod.PartialPostgresMod overrides, URL moduleUrl) {
         this.overrides = overrides != null ? overrides : new postgresMod.PartialPostgresMod();
@@ -526,10 +551,15 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
             } catch (EmscriptenLongjmp e) {
                 tempRet0 = 0;
                 return 0L;
+            } catch (run.endive.runtime.WasmException e) {
+                throw new ExitStatus(POSTGRES_MAIN_LONGJMP);
             } catch (run.endive.wasm.WasmEngineException e) {
                 if (e.getCause() instanceof EmscriptenLongjmp) {
                     tempRet0 = 0;
                     return 0L;
+                }
+                if (e.getCause() instanceof run.endive.runtime.WasmException) {
+                    throw new ExitStatus(POSTGRES_MAIN_LONGJMP);
                 }
                 if (e.getMessage() != null && e.getMessage().contains("uninitialized element")) {
                     return 0L;
@@ -538,6 +568,11 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
             }
         }
         return switch (name) {
+            case "dlopen" -> dlopen((int) args[0], (int) args[1]);
+            case "dlsym" -> dlsym((int) args[0], (int) args[1]);
+            case "dlerror" -> dlerror();
+            case "dlclose" -> dlclose((int) args[0]);
+            case "arc4random" -> random.nextInt() & 0xffffffffL;
             case "__wasm_setjmp", "__wasm_setjmp_test" -> 0L;
             case "getTempRet0" -> tempRet0;
             case "setTempRet0" -> {
@@ -547,6 +582,493 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
             case "__wasm_longjmp", "emscripten_longjmp" -> throw new EmscriptenLongjmp((int) args[0], (int) args[1]);
             default -> 0L;
         };
+    }
+
+    private long dlopen(int filePtr, int mode) {
+        try {
+            var fileName = normalizeDynamicLibraryName(UTF8ToString(filePtr));
+            var loaded = loadedLibsByName.get(fileName);
+            if (loaded != null) {
+                var handle = nextDynamicHandle++;
+                loadedLibsByHandle.put(handle, loaded);
+                clearDlError();
+                return handle;
+            }
+            var wasmFileName = dynamicLibraryFileName(fileName);
+            var bytes = Files.readAllBytes(fs.resolve(wasmFileName));
+            var library = instantiateDynamicLibrary(wasmFileName, bytes);
+            var handle = nextDynamicHandle++;
+            loadedLibsByName.put(fileName, library);
+            loadedLibsByName.put(wasmFileName, library);
+            loadedLibsByHandle.put(handle, library);
+            clearDlError();
+            if (TRACE_ENV_CALLS) {
+                System.err.println("[env] dlopen " + fileName + " -> " + wasmFileName + " handle=" + handle);
+            }
+            return handle;
+        } catch (Throwable e) {
+            setDlError(e.getMessage() != null ? e.getMessage() : e.toString());
+            if (TRACE_ENV_CALLS) {
+                System.err.println("[env] dlopen failed " + dlLastError);
+            }
+            return 0L;
+        }
+    }
+
+    private long dlsym(int handle, int symbolPtr) {
+        var symbol = UTF8ToString(symbolPtr);
+        var library = loadedLibsByHandle.get(handle);
+        if (library == null) {
+            setDlError("unknown dynamic library handle: " + handle);
+            return 0L;
+        }
+        var value = library.symbol(symbol);
+        if (value == null) {
+            setDlError("dynamic library symbol not found: " + symbol);
+            if (TRACE_ENV_CALLS) {
+                System.err.println("[env] dlsym miss handle=" + handle + " symbol=" + symbol);
+            }
+            return 0L;
+        }
+        clearDlError();
+        if (TRACE_ENV_CALLS) {
+            System.err.println("[env] dlsym handle=" + handle + " symbol=" + symbol + " -> " + value.value());
+        }
+        return value.value();
+    }
+
+    private long dlerror() {
+        return dlErrorPtr;
+    }
+
+    private long dlclose(int handle) {
+        loadedLibsByHandle.remove(handle);
+        clearDlError();
+        return 0L;
+    }
+
+    private void setDlError(String message) {
+        dlLastError = message != null ? message : "";
+        if (dlErrorPtr != 0) {
+            instance.export("free").apply(dlErrorPtr);
+        }
+        dlErrorPtr = writeCString(instance.export("malloc"), dlLastError);
+    }
+
+    private void clearDlError() {
+        dlLastError = "";
+        if (dlErrorPtr != 0) {
+            instance.export("free").apply(dlErrorPtr);
+            dlErrorPtr = 0;
+        }
+    }
+
+    private String normalizeDynamicLibraryName(String fileName) {
+        return Path.of(fileName).normalize().toString().replace('\\', '/');
+    }
+
+    private String dynamicLibraryFileName(String fileName) {
+        if (fs.analyzePath(fileName).exists()) {
+            return fileName;
+        }
+        if (fileName.endsWith(".so")) {
+            var wasmFileName = fileName + ".wasm";
+            if (fs.analyzePath(wasmFileName).exists()) {
+                return wasmFileName;
+            }
+        }
+        return fileName;
+    }
+
+    private DynamicLibrary instantiateDynamicLibrary(String libName, byte[] bytes) throws Exception {
+        var module = Parser.parse(bytes);
+        var metadata = DylinkMetadata.from(module);
+        var memoryAlignment = 1 << metadata.memoryAlign();
+        var memoryBase = metadata.memorySize() != 0
+            ? align(call("malloc", metadata.memorySize() + memoryAlignment + 1), memoryAlignment)
+            : 0;
+        if (memoryBase != 0) {
+            var end = memoryBase + metadata.memorySize();
+            ensureMemory((int) end);
+            memory.write((int) memoryBase, new byte[metadata.memorySize()]);
+        }
+        var table = instance.table(0);
+        var tableBase = metadata.tableSize() != 0 ? table.size() : 0;
+        var tableGrowthNeeded = tableBase + metadata.tableSize() - table.size();
+        if (tableGrowthNeeded > 0) {
+            table.grow(tableGrowthNeeded, 0, instance);
+        }
+        var stackBase = align(call("malloc", 64 * 1024 + 16), 16);
+        ensureMemory((int) stackBase + 64 * 1024);
+        var stackPointer = new run.endive.runtime.GlobalInstance(
+            stackBase + 64 * 1024,
+            0,
+            ValType.I32,
+            MutabilityType.Var
+        );
+
+        var imports = dynamicImports(module, memoryBase, tableBase, stackPointer);
+        var libInstance = Instance.builder(module)
+            .withImportValues(imports)
+            .withInitialize(true)
+            .withStart(false)
+            .build();
+        var library = new DynamicLibrary(libInstance, memoryBase);
+        library.loadExports();
+        mergeSymbols(library.symbols(), true);
+        for (var needed : metadata.neededDynlibs()) {
+            if (!loadedLibsByName.containsKey(needed) && !PROVIDED_DYNAMIC_LIBRARIES.contains(needed)) {
+                throw new IllegalStateException(libName + " needs unsupported dynamic library " + needed);
+            }
+        }
+        resolveGot(library);
+        callDynamicIfExists(libInstance, "__wasm_apply_data_relocs");
+        callDynamicIfExists(libInstance, "_initialize");
+        callDynamicIfExists(libInstance, "__wasm_call_ctors");
+        return library;
+    }
+
+    private ImportValues dynamicImports(
+        WasmModule module,
+        long memoryBase,
+        int tableBase,
+        run.endive.runtime.GlobalInstance stackPointer
+    ) {
+        var functions = new ArrayList<ImportFunction>();
+        var globals = new ArrayList<ImportGlobal>();
+        var memories = new ArrayList<ImportMemory>();
+        var tables = new ArrayList<ImportTable>();
+        var tags = new ArrayList<ImportTag>();
+        var wasiFunctions = new HashMap<String, ImportFunction>();
+        for (var fn : wasi.toHostFunctions()) {
+            wasiFunctions.put(fn.module() + "." + fn.name(), fn);
+        }
+        for (var imp : module.importSection().stream().toList()) {
+            if (imp instanceof FunctionImport fn) {
+                var type = module.typeSection().getType(fn.typeIndex());
+                var wasiFunction = wasiFunctions.get(imp.module() + "." + imp.name());
+                if (wasiFunction != null) {
+                    functions.add(new HostFunction(imp.module(), imp.name(), type, (inst, args) ->
+                        wasiFunction.handle().apply(inst, args)
+                    ));
+                } else {
+                    functions.add(new HostFunction(imp.module(), imp.name(), type, (inst, args) ->
+                        dynamicFunctionCall(imp.name(), type, args)
+                    ));
+                }
+            } else if (imp instanceof MemoryImport) {
+                memories.add(new ImportMemory(imp.module(), imp.name(), memory));
+            } else if (imp instanceof TableImport) {
+                tables.add(new ImportTable(imp.module(), imp.name(), instance.table(0)));
+            } else if (imp instanceof GlobalImport global) {
+                globals.add(new ImportGlobal(imp.module(), imp.name(), dynamicGlobal(imp.name(), global, memoryBase, tableBase, stackPointer)));
+            } else if (imp instanceof TagImport tag) {
+                var type = module.typeSection().getType(tag.tagType().typeIdx());
+                tags.add(new ImportTag(imp.module(), imp.name(), new TagInstance(tag.tagType(), type)));
+            }
+        }
+        return ImportValues.builder()
+            .withFunctions(functions)
+            .withGlobals(globals)
+            .withMemories(memories)
+            .withTables(tables)
+            .withTags(tags)
+            .build();
+    }
+
+    private run.endive.runtime.GlobalInstance dynamicGlobal(
+        String name,
+        GlobalImport global,
+        long memoryBase,
+        int tableBase,
+        run.endive.runtime.GlobalInstance stackPointer
+    ) {
+        return switch (name) {
+            case "__memory_base" -> new run.endive.runtime.GlobalInstance(memoryBase, 0, ValType.I32, global.mutabilityType());
+            case "__table_base" -> new run.endive.runtime.GlobalInstance(tableBase, 0, ValType.I32, global.mutabilityType());
+            case "__stack_pointer" -> stackPointer;
+            default -> got.computeIfAbsent(name, key -> new run.endive.runtime.GlobalInstance(0, 0, ValType.I32, MutabilityType.Var));
+        };
+    }
+
+    private long[] dynamicFunctionCall(String name, FunctionType type, long[] args) {
+        if ("arc4random".equals(name)) {
+            return returned(type, random.nextInt() & 0xffffffffL);
+        }
+        if (name.startsWith("invoke_")) {
+            return returned(type, envCall(name, args));
+        }
+        var resolved = resolveSymbol(name);
+        if (resolved != null && resolved.functionIndex() != null) {
+            var ret = instance.getMachine().call(resolved.functionIndex(), args);
+            return ret != null ? ret : new long[0];
+        }
+        throw new IllegalStateException("unresolved dynamic symbol: " + name);
+    }
+
+    private long[] returned(FunctionType type, long value) {
+        return type.returns().isEmpty() ? new long[0] : new long[] { value };
+    }
+
+    private DynamicSymbol resolveSymbol(String name) {
+        if (isRuntimeProvidedImport(name)) {
+            return DynamicSymbol.function(functionImportIndices.getOrDefault("env." + name, 0));
+        }
+        var exported = exportSymbol(name);
+        if (exported != null) {
+            return exported;
+        }
+        for (var library : loadedLibsByHandle.values()) {
+            var symbol = library.symbol(name);
+            if (symbol != null) {
+                return symbol;
+            }
+        }
+        return null;
+    }
+
+    private DynamicSymbol exportSymbol(String name) {
+        try {
+            var export = instance.module().exportSection();
+            for (var i = 0; i < export.exportCount(); i++) {
+                var entry = export.getExport(i);
+                if (entry.name().equals(name) && entry.exportType() == ExternalType.FUNCTION) {
+                    return DynamicSymbol.function(entry.index());
+                }
+                if (entry.name().equals(name) && entry.exportType() == ExternalType.GLOBAL) {
+                    return DynamicSymbol.value(instance.global(entry.index()).getValue());
+                }
+            }
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+        return null;
+    }
+
+    private void mergeSymbols(Map<String, DynamicSymbol> symbols, boolean replace) {
+        for (var entry : symbols.entrySet()) {
+            var gotGlobal = got.computeIfAbsent(entry.getKey(), key -> new run.endive.runtime.GlobalInstance(0, 0, ValType.I32, MutabilityType.Var));
+            if (replace || gotGlobal.getValue() == 0) {
+                gotGlobal.setValue(entry.getValue().value());
+            }
+        }
+    }
+
+    private void resolveGot(DynamicLibrary library) {
+        for (var entry : got.entrySet()) {
+            if (entry.getValue().getValue() != 0) {
+                continue;
+            }
+            var symbol = library.symbol(entry.getKey());
+            if (symbol == null) {
+                symbol = resolveSymbol(entry.getKey());
+            }
+            if (symbol != null) {
+                entry.getValue().setValue(symbol.value());
+            }
+        }
+    }
+
+    private boolean isRuntimeProvidedImport(String name) {
+        return "__wasm_longjmp".equals(name)
+            || "__wasm_setjmp".equals(name)
+            || "__wasm_setjmp_test".equals(name)
+            || "__cxa_thread_atexit_impl".equals(name)
+            || "pthread_atfork".equals(name)
+            || "emscripten_longjmp".equals(name)
+            || "getTempRet0".equals(name)
+            || "setTempRet0".equals(name);
+    }
+
+    private void callDynamicIfExists(Instance libInstance, String name) {
+        try {
+            libInstance.export(name).apply();
+        } catch (RuntimeException ignored) {
+            // Optional dynamic initializer.
+        }
+    }
+
+    private int ensureDynamicTableFunction(DynamicLibrary library, int functionIndex) {
+        var table = instance.table(0);
+        for (var i = 1; i < table.size(); i++) {
+            if (table.ref(i) == functionIndex && table.instance(i) == library.instance()) {
+                return i;
+            }
+        }
+        var index = table.size();
+        table.grow(1, 0, instance);
+        table.setRef(index, functionIndex, library.instance());
+        return index;
+    }
+
+    private long align(long value, long alignment) {
+        if (alignment <= 1) {
+            return value;
+        }
+        return (value + alignment - 1) & -alignment;
+    }
+
+    private void ensureMemory(int size) {
+        var pageSize = 64 * 1024;
+        var neededPages = (size + pageSize - 1) / pageSize;
+        if (neededPages > memory.pages()) {
+            memory.grow(neededPages - memory.pages());
+        }
+    }
+
+    private record DynamicSymbol(Long value, Integer functionIndex) {
+        static DynamicSymbol value(long value) {
+            return new DynamicSymbol(value, null);
+        }
+
+        static DynamicSymbol function(int functionIndex) {
+            return new DynamicSymbol((long) functionIndex, functionIndex);
+        }
+    }
+
+    private final class DynamicLibrary {
+        private final Instance instance;
+        private final long memoryBase;
+        private final Map<String, DynamicSymbol> symbols = new HashMap<>();
+
+        DynamicLibrary(Instance instance, long memoryBase) {
+            this.instance = instance;
+            this.memoryBase = memoryBase;
+        }
+
+        Instance instance() {
+            return instance;
+        }
+
+        DynamicSymbol symbol(String name) {
+            return symbols.get(name);
+        }
+
+        Map<String, DynamicSymbol> symbols() {
+            return symbols;
+        }
+
+        void loadExports() {
+            var export = instance.module().exportSection();
+            for (var i = 0; i < export.exportCount(); i++) {
+                var entry = export.getExport(i);
+                if (entry.exportType() == ExternalType.FUNCTION) {
+                    symbols.put(entry.name(), DynamicSymbol.value(ensureDynamicTableFunction(this, entry.index())));
+                } else if (entry.exportType() == ExternalType.GLOBAL) {
+                    symbols.put(entry.name(), DynamicSymbol.value(memoryBase + instance.global(entry.index()).getValue()));
+                }
+            }
+        }
+    }
+
+    private record DylinkMetadata(
+        int memorySize,
+        int memoryAlign,
+        int tableSize,
+        int tableAlign,
+        java.util.List<String> neededDynlibs
+    ) {
+        static DylinkMetadata from(WasmModule module) {
+            var section = module.customSection("dylink.0");
+            if (!(section instanceof UnknownCustomSection dylink)) {
+                section = module.customSection("dylink");
+            }
+            if (!(section instanceof UnknownCustomSection dylink)) {
+                return new DylinkMetadata(0, 0, 0, 0, java.util.List.of());
+            }
+            return parse(dylink.bytes());
+        }
+
+        private static DylinkMetadata parse(byte[] bytes) {
+            var reader = new DylinkReader(bytes);
+            if (reader.done()) {
+                return new DylinkMetadata(0, 0, 0, 0, java.util.List.of());
+            }
+            var memorySize = 0;
+            var memoryAlign = 0;
+            var tableSize = 0;
+            var tableAlign = 0;
+            var needed = new ArrayList<String>();
+            if (looksLikeDylink0(bytes)) {
+                while (!reader.done()) {
+                    var type = reader.u32();
+                    var end = reader.position() + reader.u32();
+                    if (type == 1) {
+                        memorySize = reader.u32();
+                        memoryAlign = reader.u32();
+                        tableSize = reader.u32();
+                        tableAlign = reader.u32();
+                    } else if (type == 2) {
+                        var count = reader.u32();
+                        for (var i = 0; i < count; i++) {
+                            needed.add(reader.string());
+                        }
+                    }
+                    reader.position(Math.min(end, bytes.length));
+                }
+            } else {
+                memorySize = reader.u32();
+                memoryAlign = reader.u32();
+                tableSize = reader.u32();
+                tableAlign = reader.u32();
+                var neededCount = reader.done() ? 0 : reader.u32();
+                for (var i = 0; i < neededCount && !reader.done(); i++) {
+                    needed.add(reader.string());
+                }
+            }
+            return new DylinkMetadata(memorySize, memoryAlign, tableSize, tableAlign, needed);
+        }
+
+        private static boolean looksLikeDylink0(byte[] bytes) {
+            if (bytes.length < 2) {
+                return false;
+            }
+            var first = bytes[0] & 0xff;
+            return first == 1 || first == 2 || first == 3 || first == 4;
+        }
+    }
+
+    private static final class DylinkReader {
+        private final byte[] bytes;
+        private int position;
+
+        DylinkReader(byte[] bytes) {
+            this.bytes = bytes;
+        }
+
+        boolean done() {
+            return position >= bytes.length;
+        }
+
+        int position() {
+            return position;
+        }
+
+        void position(int position) {
+            this.position = position;
+        }
+
+        int u32() {
+            var result = 0;
+            var shift = 0;
+            while (position < bytes.length) {
+                var value = bytes[position++] & 0xff;
+                result |= (value & 0x7f) << shift;
+                if ((value & 0x80) == 0) {
+                    return result;
+                }
+                shift += 7;
+            }
+            return result;
+        }
+
+        String string() {
+            var length = u32();
+            var end = Math.min(bytes.length, position + length);
+            var value = new String(bytes, position, end - position, StandardCharsets.UTF_8);
+            position = end;
+            return value;
+        }
     }
 
     private long pgliteCall(String name, long[] args) {
@@ -731,6 +1253,8 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
             if (exit.status != POSTGRES_MAIN_LONGJMP) {
                 throw exit;
             }
+            _PostgresMainLongJmp();
+        } catch (run.endive.runtime.WasmException e) {
             _PostgresMainLongJmp();
         }
     }

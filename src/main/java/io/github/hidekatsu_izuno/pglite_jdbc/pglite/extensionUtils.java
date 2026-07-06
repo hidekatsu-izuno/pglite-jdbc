@@ -261,27 +261,25 @@ public class extensionUtils {
             } else if (!entry.name().startsWith(".")) {
                 var filePath = mod.WASM_PREFIX() + "/" + entry.name();
                 if (isSharedObjectEntry(entry.name())) {
-                    var runtimeFilePath = sharedObjectRuntimePath(filePath);
-                    log.accept("pgfs:ext preloading " + runtimeFilePath);
+                    log.accept("pgfs:ext preloading " + filePath);
                     var pathName = entry.name();
                     var lastSlash = pathName.lastIndexOf('/');
                     var entryFileName = lastSlash >= 0 ? pathName.substring(lastSlash + 1) : pathName;
-                    var soName = sharedObjectRuntimeName(entryFileName);
-                    var dirPath = dirname(runtimeFilePath);
+                    var dirPath = dirname(filePath);
                     var soPreload = new Promise<Void>((resolve, reject) -> {
                         mod.FS().createPreloadedFile(
                             dirPath,
-                            soName,
+                            entryFileName,
                             entry.data(),
                             true,
                             true,
                             args -> {
-                                log.accept("pgfs:ext OK " + runtimeFilePath);
+                                log.accept("pgfs:ext OK " + filePath);
                                 resolve.run(null);
                             },
                             args -> {
-                                log.accept("pgfs:ext FAIL " + runtimeFilePath);
-                                copyToFS(mod.FS(), runtimeFilePath, entry.data(), null);
+                                log.accept("pgfs:ext FAIL " + filePath);
+                                copyToFS(mod.FS(), filePath, entry.data(), null);
                                 resolve.run(null);
                             },
                             false
@@ -298,14 +296,6 @@ public class extensionUtils {
 
     private static boolean isSharedObjectEntry(String name) {
         return name.endsWith(".so.wasm");
-    }
-
-    private static String sharedObjectRuntimePath(String path) {
-        return path.endsWith(".so.wasm") ? path.substring(0, path.length() - ".wasm".length()) : path;
-    }
-
-    private static String sharedObjectRuntimeName(String name) {
-        return name.endsWith(".so.wasm") ? name.substring(0, name.length() - ".wasm".length()) : name;
     }
 
     public static void copyToFS(

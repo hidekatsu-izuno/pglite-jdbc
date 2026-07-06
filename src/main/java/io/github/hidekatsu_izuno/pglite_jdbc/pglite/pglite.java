@@ -627,6 +627,8 @@ public class pglite extends base implements interface_.PGliteInterface {
             while (this.readOffset < input.length || this.mod._pq_buffer_remaining_data() > 0) {
                 this.mod._PostgresMainLoopOnce();
             }
+        } catch (run.endive.runtime.WasmException e) {
+            this.mod._PostgresMainLongJmp();
         } finally {
             this.mod._PostgresSendReadyForQueryIfNecessary();
             this.mod._pgl_pq_flush();
