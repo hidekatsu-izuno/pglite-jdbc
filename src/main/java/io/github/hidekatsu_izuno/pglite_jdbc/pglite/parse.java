@@ -67,13 +67,16 @@ public class parse {
                 }
                 case "commandComplete" -> {
                     var msg = (messages.CommandCompleteMessage) message;
-                    affectedRows += retrieveRowCount(msg);
+                    var commandRowCount = retrieveCommandRowCount(msg);
+                    affectedRows += retrieveAffectedRowCount(msg);
                     resultSets.add(
                         new interface_.Results<>(
                             List.copyOf(currentRows),
                             affectedRows,
                             List.copyOf(currentFields),
-                            blob
+                            blob,
+                            commandRowCount,
+                            msg.text
                         )
                     );
                     currentRows = new ArrayList<>();
@@ -89,7 +92,7 @@ public class parse {
         return resultSets;
     }
 
-    private static int retrieveRowCount(messages.CommandCompleteMessage msg) {
+    private static int retrieveAffectedRowCount(messages.CommandCompleteMessage msg) {
         var parts = msg.text.split(" ");
         if (parts.length == 0) {
             return 0;
@@ -97,6 +100,18 @@ public class parse {
         return switch (parts[0]) {
             case "INSERT" -> parts.length > 2 ? parseInt(parts[2]) : 0;
             case "UPDATE", "DELETE", "COPY", "MERGE" -> parts.length > 1 ? parseInt(parts[1]) : 0;
+            default -> 0;
+        };
+    }
+
+    private static int retrieveCommandRowCount(messages.CommandCompleteMessage msg) {
+        var parts = msg.text.split(" ");
+        if (parts.length == 0) {
+            return 0;
+        }
+        return switch (parts[0]) {
+            case "INSERT" -> parts.length > 2 ? parseInt(parts[2]) : 0;
+            case "SELECT", "UPDATE", "DELETE", "COPY", "MERGE" -> parts.length > 1 ? parseInt(parts[1]) : 0;
             default -> 0;
         };
     }

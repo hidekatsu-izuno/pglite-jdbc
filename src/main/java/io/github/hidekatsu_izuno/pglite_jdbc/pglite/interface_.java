@@ -105,8 +105,14 @@ public class interface_ {
         List<T> rows,
         Integer affectedRows,
         List<Field> fields,
-        byte[] blob
-    ) {}
+        byte[] blob,
+        Integer commandRowCount,
+        String commandTag
+    ) {
+        public Results(List<T> rows, Integer affectedRows, List<Field> fields, byte[] blob) {
+            this(rows, affectedRows, fields, blob, affectedRows, null);
+        }
+    }
 
     public record ExecProtocolResult(
         List<messages.BackendMessage> messages,

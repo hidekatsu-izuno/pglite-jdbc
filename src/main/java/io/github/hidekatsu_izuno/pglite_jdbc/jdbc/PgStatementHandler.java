@@ -1704,7 +1704,7 @@ final class PgStatementHandler implements InvocationHandler {
             currentResults = List.of();
             currentResultIndex = -1;
             currentResultSet = null;
-            updateCount = JdbcCompat.safeAffectedRows(result);
+            updateCount = JdbcCompat.safeCommandRowCount(result);
             return updateCount;
         }
         var results = connection.exec(withGeneratedKeys(sql, generatedColumns), this::addWarning);
@@ -1722,7 +1722,7 @@ final class PgStatementHandler implements InvocationHandler {
         currentResults = List.of();
         currentResultIndex = -1;
         currentResultSet = null;
-        updateCount = results.isEmpty() ? -1 : JdbcCompat.safeAffectedRows(results.getLast());
+        updateCount = results.isEmpty() ? -1 : JdbcCompat.safeCommandRowCount(results.getLast());
         return updateCount;
     }
 
@@ -1755,7 +1755,7 @@ final class PgStatementHandler implements InvocationHandler {
                 }
                 callableResult = null;
                 currentResultSet = null;
-                updateCount = JdbcCompat.safeAffectedRows(result);
+                updateCount = JdbcCompat.safeCommandRowCount(result);
                 return false;
             }
             var result = connection.query(withGeneratedKeys(sql, generatedColumns), buildParams(), this::addWarning);
@@ -1763,7 +1763,7 @@ final class PgStatementHandler implements InvocationHandler {
             currentResultIndex = -1;
             setGeneratedKeys(result);
             currentResultSet = null;
-            updateCount = JdbcCompat.safeAffectedRows(result);
+            updateCount = JdbcCompat.safeCommandRowCount(result);
             return false;
         }
 
@@ -1771,7 +1771,7 @@ final class PgStatementHandler implements InvocationHandler {
             var results = connection.exec(withGeneratedKeys(sql, generatedColumns), this::addWarning);
             if (!results.isEmpty()) {
                 setGeneratedKeys(results.getLast());
-                updateCount = JdbcCompat.safeAffectedRows(results.getLast());
+                updateCount = JdbcCompat.safeCommandRowCount(results.getLast());
             } else {
                 generatedKeys = PgResultSetHandler.create(self, List.of(), List.of());
                 updateCount = -1;
@@ -1828,7 +1828,7 @@ final class PgStatementHandler implements InvocationHandler {
             var sql = typedPreparedProtocolSql();
             for (var i = 0; i < preparedBatch.size(); i++) {
                 var result = connection.query(sql, executionParameters(preparedBatch.get(i)), this::addWarning);
-                out[i] = JdbcCompat.safeAffectedRows(result);
+                out[i] = JdbcCompat.safeCommandRowCount(result);
             }
             preparedBatch.clear();
             currentResults = List.of();
@@ -1841,7 +1841,7 @@ final class PgStatementHandler implements InvocationHandler {
         var out = new int[sqlBatch.size()];
         for (var i = 0; i < sqlBatch.size(); i++) {
             var results = connection.exec(sqlBatch.get(i), this::addWarning);
-            out[i] = results.isEmpty() ? 0 : JdbcCompat.safeAffectedRows(results.getLast());
+            out[i] = results.isEmpty() ? 0 : JdbcCompat.safeCommandRowCount(results.getLast());
         }
         sqlBatch.clear();
         currentResults = List.of();
@@ -1916,7 +1916,7 @@ final class PgStatementHandler implements InvocationHandler {
             return true;
         }
         currentResultSet = null;
-        updateCount = JdbcCompat.safeAffectedRows(result);
+        updateCount = JdbcCompat.safeCommandRowCount(result);
         return false;
     }
 

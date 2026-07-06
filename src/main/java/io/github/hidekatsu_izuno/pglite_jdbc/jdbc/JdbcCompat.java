@@ -234,6 +234,10 @@ final class JdbcCompat {
         return result.affectedRows() != null ? result.affectedRows() : 0;
     }
 
+    static int safeCommandRowCount(interface_.Results<?> result) {
+        return result.commandRowCount() != null ? result.commandRowCount() : safeAffectedRows(result);
+    }
+
     static List<Column> toColumns(List<interface_.Field> fields) {
         if (fields == null || fields.isEmpty()) {
             return List.of();
