@@ -2265,8 +2265,7 @@ class PGlitePortedTest {
             "socket_read",
             "socket_write"
         )));
-        assertEquals(Set.of("system", "popen", "pclose"), importNames(initdbWasm, "pglite"));
-        assertTrue(importNames(initdbWasm, "env").contains("blob_read"));
+        assertEquals(Set.of("blob_read", "popen", "pclose"), importNames(initdbWasm, "pglite"));
 
         var pgliteExports = exportNames(pgliteWasm);
         assertTrue(pgliteExports.contains("pgl_startPGlite"));
