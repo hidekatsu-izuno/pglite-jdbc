@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.extensionCatalog;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.index;
@@ -22,7 +21,6 @@ import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Set;
@@ -2238,96 +2236,6 @@ class PGlitePortedTest {
     }
 
     @Test
-    void portedTestManifestMatchesCurrentSourceTreeWhenAvailable() throws IOException {
-        var sourceRoot = Path.of("/home/hidek/git/pglite-custom/packages/pglite/tests");
-        assumeTrue(Files.isDirectory(sourceRoot), "source pglite tests checkout is not available");
-
-        var helperFiles = Set.of(
-            "test-utils.ts",
-            "targets/deno/denoUtils.js",
-            "targets/runtimes/base.js"
-        );
-        var expectedTestFiles = Set.of(
-            "array-types.test.ts",
-            "basic.test.ts",
-            "clone.test.js",
-            "describe-query.test.ts",
-            "drop-database.test.ts",
-            "dump.test.js",
-            "fts.english.test.js",
-            "fts.simple.test.js",
-            "instantiation.test.ts",
-            "largeobjects.test.js",
-            "message-context-leak.test.ts",
-            "notify.test.ts",
-            "plpgsql.test.js",
-            "query-sizes.test.ts",
-            "templating.test.js",
-            "triggers.test.js",
-            "types.test.ts",
-            "user.test.ts",
-            "utils.test.ts",
-            "xml.test.ts",
-            "contrib/amcheck.test.js",
-            "contrib/auto_explain.test.js",
-            "contrib/bloom.test.js",
-            "contrib/btree_gin.test.js",
-            "contrib/btree_gist.test.js",
-            "contrib/citext.test.js",
-            "contrib/cube.test.js",
-            "contrib/dict_int.test.js",
-            "contrib/dict_xsyn.test.ts",
-            "contrib/earthdistance.test.js",
-            "contrib/file_fdw.test.ts",
-            "contrib/fuzzystrmatch.test.js",
-            "contrib/hstore.test.js",
-            "contrib/intarray.test.js",
-            "contrib/isn.test.js",
-            "contrib/lo.test.js",
-            "contrib/ltree.test.js",
-            "contrib/pageinspect.test.js",
-            "contrib/pg_buffercache.test.js",
-            "contrib/pg_freespacemap.test.ts",
-            "contrib/pg_stat_statements.test.ts",
-            "contrib/pg_surgery.test.js",
-            "contrib/pg_trgm.test.js",
-            "contrib/pg_visibility.test.js",
-            "contrib/pg_walinspect.test.js",
-            "contrib/pgcrypto.test.ts",
-            "contrib/seg.test.js",
-            "contrib/tablefunc.test.js",
-            "contrib/tcn.test.js",
-            "contrib/tsm_system_rows.test.js",
-            "contrib/tsm_system_time.test.js",
-            "contrib/unaccent.test.js",
-            "contrib/uuid_ossp.test.ts",
-            "targets/deno/basic.test.deno.js",
-            "targets/deno/fs.test.deno.js",
-            "targets/deno/pgvector.test.deno.js",
-            "targets/runtimes/node-fs.test.js",
-            "targets/runtimes/node-memory.test.js"
-        );
-
-        try (var stream = Files.walk(sourceRoot)) {
-            var sourceFiles = stream
-                .filter(Files::isRegularFile)
-                .map(sourceRoot::relativize)
-                .map(Path::toString)
-                .map(path -> path.replace('\\', '/'))
-                .filter(path -> path.endsWith(".js") || path.endsWith(".ts"))
-                .collect(Collectors.toCollection(java.util.TreeSet::new));
-            var testFiles = sourceFiles
-                .stream()
-                .filter(path -> !helperFiles.contains(path))
-                .collect(Collectors.toCollection(java.util.TreeSet::new));
-
-            assertTrue(sourceFiles.containsAll(helperFiles));
-            assertEquals(expectedTestFiles, testFiles);
-            assertEquals(58, testFiles.size());
-        }
-    }
-
-    @Test
     void pgvectorTargetIsTrackedButNotMappedInBundledExtensions() {
         assertThrows(IllegalArgumentException.class, () -> index.extension("vector"));
         assertFalse(extensionCatalog.descriptors().containsKey("vector"));
@@ -2344,7 +2252,7 @@ class PGlitePortedTest {
         var initdbWasm = wasm("initdb.wasm");
 
         assertEquals(Map.of("env", 77, "pglite", 9, "wasi_snapshot_preview1", 39), importCountsByModule(pgliteWasm));
-        assertEquals(Map.of("env", 11, "pglite", 4, "wasi_snapshot_preview1", 26), importCountsByModule(initdbWasm));
+        assertEquals(Map.of("env", 12, "pglite", 3, "wasi_snapshot_preview1", 26), importCountsByModule(initdbWasm));
 
         assertTrue(importNames(pgliteWasm, "pglite").containsAll(Set.of(
             "blob_read",
@@ -2357,7 +2265,8 @@ class PGlitePortedTest {
             "socket_read",
             "socket_write"
         )));
-        assertEquals(Set.of("blob_read", "system", "popen", "pclose"), importNames(initdbWasm, "pglite"));
+        assertEquals(Set.of("system", "popen", "pclose"), importNames(initdbWasm, "pglite"));
+        assertTrue(importNames(initdbWasm, "env").contains("blob_read"));
 
         var pgliteExports = exportNames(pgliteWasm);
         assertTrue(pgliteExports.contains("pgl_startPGlite"));

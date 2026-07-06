@@ -18,6 +18,7 @@ public class parse {
         var resultSets = new ArrayList<interface_.Results<Object>>();
         var currentRows = new ArrayList<Object>();
         var currentFields = new ArrayList<interface_.Field>();
+        var affectedRows = 0;
         var parsers = new HashMap<Integer, types.Parser>();
         if (defaultParsers != null) {
             parsers.putAll(defaultParsers);
@@ -66,7 +67,7 @@ public class parse {
                 }
                 case "commandComplete" -> {
                     var msg = (messages.CommandCompleteMessage) message;
-                    var affectedRows = retrieveRowCount(msg);
+                    affectedRows += retrieveRowCount(msg);
                     resultSets.add(
                         new interface_.Results<>(
                             List.copyOf(currentRows),
@@ -95,7 +96,7 @@ public class parse {
         }
         return switch (parts[0]) {
             case "INSERT" -> parts.length > 2 ? parseInt(parts[2]) : 0;
-            case "SELECT", "UPDATE", "DELETE", "COPY", "MERGE" -> parts.length > 1 ? parseInt(parts[1]) : 0;
+            case "UPDATE", "DELETE", "COPY", "MERGE" -> parts.length > 1 ? parseInt(parts[1]) : 0;
             default -> 0;
         };
     }
