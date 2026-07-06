@@ -4,14 +4,13 @@ import io.github.hidekatsu_izuno.pglite_jdbc.ds.common.BaseDataSource;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.io.Serializable;
 import java.sql.SQLException;
 import javax.sql.ConnectionPoolDataSource;
 import javax.sql.PooledConnection;
 
 public class PGConnectionPoolDataSource
     extends BaseDataSource
-    implements ConnectionPoolDataSource, Serializable {
+    implements ConnectionPoolDataSource {
     private static final long serialVersionUID = 1L;
 
     private boolean defaultAutoCommit = true;

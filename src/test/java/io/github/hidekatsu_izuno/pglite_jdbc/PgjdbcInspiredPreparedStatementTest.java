@@ -12,7 +12,7 @@ import java.io.File;
 import java.io.StringReader;
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.net.URL;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -922,7 +922,7 @@ class PgjdbcInspiredPreparedStatementTest {
             );
             assertPgjdbcPreparedNotImplemented(
                 "setURL(int,URL)",
-                () -> prepared.setURL(1, new URL("https://example.test/"))
+                () -> prepared.setURL(1, URI.create("https://example.test/").toURL())
             );
         }
     }

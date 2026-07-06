@@ -16,7 +16,6 @@ import java.sql.SQLFeatureNotSupportedException;
 import java.sql.ResultSet;
 import java.sql.Savepoint;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.SQLWarning;
 import java.util.Collections;
 import java.util.HashMap;
@@ -410,7 +409,7 @@ public final class PgConnectionHandler implements InvocationHandler {
             );
             case "createStruct" -> throw pgjdbcNotImplemented("createStruct(String, Object[])");
             case "setTypeMap" -> {
-                setTypeMap((Map<String, Class<?>>) args[0]);
+                setTypeMap(castTypeMap(args[0]));
                 yield null;
             }
             case "createArrayOf" -> createArrayOf((String) args[0], args[1]);
@@ -776,6 +775,11 @@ public final class PgConnectionHandler implements InvocationHandler {
 
     private void setTypeMap(Map<String, Class<?>> map) {
         typeMap = map;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Class<?>> castTypeMap(Object value) {
+        return (Map<String, Class<?>>) value;
     }
 
     private void ensureTransactionIfNeeded() throws SQLException {
@@ -1175,10 +1179,6 @@ public final class PgConnectionHandler implements InvocationHandler {
         );
     }
 
-    private Object unsupportedCore(String method) throws SQLException {
-        throw new SQLFeatureNotSupportedException(method + " is not supported");
-    }
-
     private SQLFeatureNotSupportedException pgjdbcNotImplemented(String methodName) {
         return new SQLFeatureNotSupportedException(
             "Method org.postgresql.jdbc.PgConnection." + methodName + " is not yet implemented.",
@@ -1308,6 +1308,11 @@ public final class PgConnectionHandler implements InvocationHandler {
             return queries[0];
         }
         return createQueryProxy(nativeQueries, queries);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<org.postgresql.core.NativeQuery> castNativeQueries(Object value) {
+        return (List<org.postgresql.core.NativeQuery>) value;
     }
 
     private org.postgresql.core.Query wrapNativeQuery(org.postgresql.core.NativeQuery nativeQuery) {
@@ -1619,7 +1624,7 @@ public final class PgConnectionHandler implements InvocationHandler {
                     );
                     case "createFastpathParameters" -> createParameterListProxy((Integer) args[0]);
                     case "startCopy" -> startCopy((String) args[0]);
-                    case "wrap" -> wrapNativeQueries((List<org.postgresql.core.NativeQuery>) args[0]);
+                    case "wrap" -> wrapNativeQueries(castNativeQueries(args[0]));
                     case "getProtocolVersion" -> org.postgresql.core.ProtocolVersion.v3_0;
                     case "isReWriteBatchedInsertsEnabled" -> false;
                     case "processNotifies", "sendQueryCancel", "setPreferQueryMode", "setAutoSave",

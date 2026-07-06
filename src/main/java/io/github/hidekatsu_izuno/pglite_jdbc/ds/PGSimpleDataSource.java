@@ -4,10 +4,9 @@ import io.github.hidekatsu_izuno.pglite_jdbc.ds.common.BaseDataSource;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.io.Serializable;
 import javax.sql.DataSource;
 
-public class PGSimpleDataSource extends BaseDataSource implements DataSource, Serializable {
+public class PGSimpleDataSource extends BaseDataSource implements DataSource {
     private static final long serialVersionUID = 1L;
 
     @Override

@@ -457,7 +457,7 @@ class PGlitePortedTest {
         }
 
         try (var reopened = closeable(new pglite(dataDir))) {
-            var result = reopened.pg().<Map<String, Object>>execSync("SELECT * FROM test;", null);
+            var result = reopened.pg().execSync("SELECT * FROM test;", null);
             assertEquals(1, result.size());
             assertEquals(List.of(Map.of("id", 1.0, "name", "test2")), result.get(0).rows());
             assertEquals(0, result.get(0).affectedRows());

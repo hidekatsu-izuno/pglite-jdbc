@@ -459,6 +459,7 @@ class PgjdbcInspiredStatementTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     void pgStatementPrepareThresholdMatchesPgjdbc() throws Exception {
         try (var statement = connection.createStatement()) {
             var pgStatement = statement.unwrap(org.postgresql.PGStatement.class);

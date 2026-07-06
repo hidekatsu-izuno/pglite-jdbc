@@ -508,6 +508,7 @@ class PgjdbcInspiredResultSetTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     void bigDecimalScaleUsesHalfEvenRoundingLikePgjdbc() throws Exception {
         try (var statement = connection.createStatement();
              var resultSet = statement.executeQuery("SELECT 1.125::numeric AS value")) {

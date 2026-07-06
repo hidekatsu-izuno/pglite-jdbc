@@ -11,7 +11,6 @@ import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
 import java.sql.SQLWarning;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -29,7 +28,6 @@ final class PgResultSetHandler implements InvocationHandler {
     private final Map<String, Integer> labelIndex;
     private final int type;
     private final int concurrency;
-    private final int holdability;
     private final int maxFieldSize;
     private int cursor = -1;
     private boolean closed;
@@ -56,7 +54,6 @@ final class PgResultSetHandler implements InvocationHandler {
         this.rows = rows;
         this.type = type;
         this.concurrency = concurrency;
-        this.holdability = holdability;
         this.maxFieldSize = maxFieldSize;
         this.fetchSize = fetchSize;
         this.fetchDirection = fetchDirection;

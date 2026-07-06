@@ -32,6 +32,7 @@ class OrgPostgresqlCompatibilityTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     void shouldExposeOrgPostgresqlInterfaces() throws Exception {
         try (var connection = DriverManager.getConnection(
                 "jdbc:pglite:?defaultRowFetchSize=16&queryTimeout=5&autosave=conservative&preferQueryMode=extended"
@@ -257,6 +258,7 @@ class OrgPostgresqlCompatibilityTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     void shouldSupportAdditionalJdbcValueConversions() throws Exception {
         assertTimeout(Duration.ofSeconds(180), () -> {
             try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000");
@@ -377,6 +379,7 @@ class OrgPostgresqlCompatibilityTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     void shouldExposePgjdbcPublicConnectionSurfaces() throws Exception {
         assertTimeout(Duration.ofSeconds(180), () -> {
             try (var connection = DriverManager.getConnection(

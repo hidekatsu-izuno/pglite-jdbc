@@ -9,6 +9,7 @@ import run.endive.runtime.ImportTag;
 import run.endive.runtime.ImportTable;
 import run.endive.runtime.ImportValues;
 import run.endive.runtime.Instance;
+import run.endive.runtime.GlobalInstance;
 import run.endive.runtime.Memory;
 import run.endive.runtime.TagInstance;
 import run.endive.wasi.WasiOptions;
@@ -83,9 +84,6 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
     private int systemFn;
     private int popenFn;
     private int pcloseFn;
-    private int blobRead;
-    private int blobWrite;
-    private int blobLlseek;
     private postgresMod.DeviceOps blobDevice;
     private int tempRet0;
     private Integer fdBufferMax;
@@ -97,7 +95,7 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
     private String dlLastError = "";
     private final Map<String, DynamicLibrary> loadedLibsByName = new HashMap<>();
     private final Map<Integer, DynamicLibrary> loadedLibsByHandle = new HashMap<>();
-    private final Map<String, run.endive.runtime.GlobalInstance> got = new HashMap<>();
+    private final Map<String, GlobalInstance> got = new HashMap<>();
 
     public EndivePostgresMod(postgresMod.PartialPostgresMod overrides, URL moduleUrl) {
         this.overrides = overrides != null ? overrides : new postgresMod.PartialPostgresMod();
@@ -700,7 +698,7 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
         }
         var stackBase = align(call("malloc", 64 * 1024 + 16), 16);
         ensureMemory((int) stackBase + 64 * 1024);
-        var stackPointer = new run.endive.runtime.GlobalInstance(
+        var stackPointer = globalInstance(
             stackBase + 64 * 1024,
             0,
             ValType.I32,
@@ -776,19 +774,28 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
             .build();
     }
 
-    private run.endive.runtime.GlobalInstance dynamicGlobal(
+    private GlobalInstance dynamicGlobal(
         String name,
         GlobalImport global,
         long memoryBase,
         int tableBase,
-        run.endive.runtime.GlobalInstance stackPointer
+        GlobalInstance stackPointer
     ) {
         return switch (name) {
-            case "__memory_base" -> new run.endive.runtime.GlobalInstance(memoryBase, 0, ValType.I32, global.mutabilityType());
-            case "__table_base" -> new run.endive.runtime.GlobalInstance(tableBase, 0, ValType.I32, global.mutabilityType());
+            case "__memory_base" -> globalInstance(memoryBase, 0, ValType.I32, global.mutabilityType());
+            case "__table_base" -> globalInstance(tableBase, 0, ValType.I32, global.mutabilityType());
             case "__stack_pointer" -> stackPointer;
-            default -> got.computeIfAbsent(name, key -> new run.endive.runtime.GlobalInstance(0, 0, ValType.I32, MutabilityType.Var));
+            default -> got.computeIfAbsent(name, key -> globalInstance(0, 0, ValType.I32, MutabilityType.Var));
         };
+    }
+
+    private GlobalInstance globalInstance(long valueLow, long valueHigh, ValType valType, MutabilityType mutabilityType) {
+        return GlobalInstance.builder()
+            .valueLow(valueLow)
+            .valueHigh(valueHigh)
+            .valType(valType)
+            .mutabilityType(mutabilityType)
+            .build();
     }
 
     private long[] dynamicFunctionCall(String name, FunctionType type, long[] args) {
@@ -847,7 +854,7 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
 
     private void mergeSymbols(Map<String, DynamicSymbol> symbols, boolean replace) {
         for (var entry : symbols.entrySet()) {
-            var gotGlobal = got.computeIfAbsent(entry.getKey(), key -> new run.endive.runtime.GlobalInstance(0, 0, ValType.I32, MutabilityType.Var));
+            var gotGlobal = got.computeIfAbsent(entry.getKey(), key -> globalInstance(0, 0, ValType.I32, MutabilityType.Var));
             if (replace || gotGlobal.getValue() == 0) {
                 gotGlobal.setValue(entry.getValue().value());
             }
@@ -970,7 +977,7 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
     ) {
         static DylinkMetadata from(WasmModule module) {
             var section = module.customSection("dylink.0");
-            if (!(section instanceof UnknownCustomSection dylink)) {
+            if (!(section instanceof UnknownCustomSection)) {
                 section = module.customSection("dylink");
             }
             if (!(section instanceof UnknownCustomSection dylink)) {

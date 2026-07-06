@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 
 class PgjdbcInspiredDataSourceTest {
     @Test
+    @SuppressWarnings("deprecation")
     void baseDataSourceBeanPropertiesAndReferenceMatchPgjdbc() throws Exception {
         var dataSource = new PGSimpleDataSource();
         dataSource.setUrl("jdbc:pglite:?protocolTimeoutMs=5000");

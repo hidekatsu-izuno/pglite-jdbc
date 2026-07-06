@@ -87,6 +87,7 @@ class PgjdbcInspiredConnectionTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     void connectionAddDataTypeValidationMatchesPgjdbc() throws Exception {
         var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000");
         var pgConnection = connection.unwrap(org.postgresql.PGConnection.class);
@@ -209,6 +210,7 @@ class PgjdbcInspiredConnectionTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     void queryExecutorCreatesFastpathParameterListsLikePgjdbc() throws Exception {
         try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
             var queryExecutor = connection.unwrap(org.postgresql.core.BaseConnection.class).getQueryExecutor();

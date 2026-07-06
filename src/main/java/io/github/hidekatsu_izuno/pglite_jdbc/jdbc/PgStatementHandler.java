@@ -386,11 +386,11 @@ final class PgStatementHandler implements InvocationHandler {
             }
             case "createDriverResultSet" -> createDriverResultSet(
                 (org.postgresql.core.Field[]) args[0],
-                (List<org.postgresql.core.Tuple>) args[1]
+                castTuples(args[1])
             );
             case "createResultSet" -> createDriverResultSet(
                 (org.postgresql.core.Field[]) args[1],
-                (List<org.postgresql.core.Tuple>) args[2]
+                castTuples(args[2])
             );
             case "executeWithFlags" -> {
                 if (args[0] instanceof String sql) {
@@ -1849,6 +1849,11 @@ final class PgStatementHandler implements InvocationHandler {
         updateCount = -1;
         currentResultSet = null;
         return out;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<org.postgresql.core.Tuple> castTuples(Object value) {
+        return (List<org.postgresql.core.Tuple>) value;
     }
 
     private ResultSet createDriverResultSet(

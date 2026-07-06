@@ -25,7 +25,6 @@ public final class QueryExecutorImpl implements QueryExecutor {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public interface_.Results<Map<String, Object>> query(String sql, Object[] params) throws SQLException {
         return query(sql, params, null);
     }
@@ -49,7 +48,6 @@ public final class QueryExecutorImpl implements QueryExecutor {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public interface_.Results<List<Object>> queryArray(String sql, Object[] params) throws SQLException {
         return queryArray(sql, params, null);
     }
@@ -99,7 +97,6 @@ public final class QueryExecutorImpl implements QueryExecutor {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public List<interface_.Results<List<Object>>> execArray(String sql) throws SQLException {
         return execArray(sql, null);
     }
