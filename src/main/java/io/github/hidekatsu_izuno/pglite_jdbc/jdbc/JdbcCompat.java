@@ -540,6 +540,14 @@ final class JdbcCompat {
             out.append("NULL");
             return;
         }
+        if (value instanceof byte[] bytes) {
+            out.append("\"\\\\x");
+            for (var b : bytes) {
+                out.append(String.format("%02x", b & 0xff));
+            }
+            out.append('"');
+            return;
+        }
         var valueClass = value.getClass();
         if (value instanceof List<?> || valueClass.isArray()) {
             appendArrayLiteral(out, value);

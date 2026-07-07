@@ -582,6 +582,9 @@ final class PgStatementHandler implements InvocationHandler {
             );
         }
         if (args.length < 3 || value == null) {
+            if (value != null && value.getClass().isArray()) {
+                return arrayParameter(value);
+            }
             return value;
         }
         var targetType = targetSqlType(args[2]);
@@ -670,6 +673,12 @@ final class PgStatementHandler implements InvocationHandler {
         }
         if (value instanceof java.sql.Array array) {
             return Arrays.asList((Object[]) array.getArray());
+        }
+        if (value instanceof Object[] objects && value.getClass().getComponentType() == Object.class) {
+            throw new SQLException("Cannot infer a PostgreSQL array type from Object[]");
+        }
+        if (value.getClass().isArray()) {
+            return Arrays.asList(JdbcCompat.toObjectArray(value));
         }
         return value;
     }

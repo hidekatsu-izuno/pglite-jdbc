@@ -13,8 +13,10 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.SQLClientInfoException;
 import java.sql.SQLFeatureNotSupportedException;
+import java.sql.Types;
 import java.util.HashMap;
 import java.util.Properties;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class PgjdbcInspiredConnectionTest {
@@ -83,6 +85,171 @@ class PgjdbcInspiredConnectionTest {
                 "createStruct(String, Object[])",
                 () -> connection.createStruct("example", new Object[] { "value" })
             );
+        }
+    }
+
+    @Test
+    void connectionCreateArrayOfPrimitiveAndAliasTypesMatchPgjdbc() throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
+            var boolArray = connection.createArrayOf("boolean", new Boolean[] { true, true, false });
+            assertArrayEquals(
+                new Object[] { Boolean.TRUE, Boolean.TRUE, Boolean.FALSE },
+                (Object[]) boolArray.getArray()
+            );
+
+            var intArray = connection.createArrayOf("integer", new Integer[] { 0, -1, 2 });
+            assertEquals("int4", intArray.getBaseTypeName());
+            assertEquals(java.sql.Types.INTEGER, intArray.getBaseType());
+            assertArrayEquals(new Object[] { 0, -1, 2 }, (Object[]) intArray.getArray());
+            assertArrayEquals(new Object[] { -1, 2 }, (Object[]) intArray.getArray(2, 2));
+
+            var doubleArray = connection.createArrayOf("float8", new double[][] {
+                { 3.5d, -4.5d },
+                { 10.0d / 3.0d, 77.0d }
+            });
+            var doubles = (Double[][]) doubleArray.getArray();
+            assertEquals(3.5d, doubles[0][0], 0.00001d);
+            assertEquals(-4.5d, doubles[0][1], 0.00001d);
+            assertEquals(10.0d / 3.0d, doubles[1][0], 0.00001d);
+            assertEquals(77.0d, doubles[1][1], 0.00001d);
+        }
+    }
+
+    @Test
+    void connectionCreateArrayOfStringNullAndUuidTypesMatchPgjdbc() throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
+            var textArray = connection.createArrayOf("text", new String[][] {
+                { "a", "" },
+                { "\\", "\"\\'z" }
+            });
+            var texts = (String[][]) textArray.getArray();
+            assertEquals("a", texts[0][0]);
+            assertEquals("", texts[0][1]);
+            assertEquals("\\", texts[1][0]);
+            assertEquals("\"\\'z", texts[1][1]);
+
+            var nullArray = connection.createArrayOf("float8", null);
+            assertTrue(nullArray != null);
+            assertNull(nullArray.getArray());
+
+            var uuid1 = UUID.fromString("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11");
+            var uuid2 = UUID.fromString("b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22");
+            var uuidArray = connection.createArrayOf("uuid", new UUID[] { uuid1, uuid2 });
+            assertEquals("uuid", uuidArray.getBaseTypeName());
+            assertArrayEquals(new Object[] { uuid1, uuid2 }, (Object[]) uuidArray.getArray());
+        }
+    }
+
+    @Test
+    void connectionCreateArrayOfByteaAndEmptyAliasTypesMatchPgjdbc() throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000")) {
+            var byteaValues = new byte[][] {
+                { 0x01, (byte) 0xff, 0x12 },
+                {},
+                { (byte) 0xac, (byte) 0xe4 },
+                null
+            };
+            var byteaArray = connection.createArrayOf("bytea", byteaValues);
+            var byteaCopy = (byte[][]) byteaArray.getArray();
+            assertEquals(4, byteaCopy.length);
+            assertArrayEquals(byteaValues[0], byteaCopy[0]);
+            assertArrayEquals(byteaValues[1], byteaCopy[1]);
+            assertArrayEquals(byteaValues[2], byteaCopy[2]);
+            assertNull(byteaCopy[3]);
+
+            var emptyInts = connection.createArrayOf("integer", new Integer[0]);
+            assertArrayEquals(new Object[0], (Object[]) emptyInts.getArray());
+            try (var rows = emptyInts.getResultSet()) {
+                assertFalse(rows.next());
+            }
+        }
+    }
+
+    @Test
+    void preparedStatementSetArrayRoundTripsLikePgjdbcArrayTest() throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000");
+             var prepared = connection.prepareStatement("""
+                 SELECT
+                   ?::int4[] AS ints,
+                   ?::text[] AS texts,
+                   ?::uuid[] AS uuids
+                 """)) {
+            var uuid1 = UUID.fromString("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11");
+            var uuid2 = UUID.fromString("b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22");
+
+            prepared.setArray(1, connection.createArrayOf("int4", new Integer[] { 1, 2, 3 }));
+            prepared.setArray(2, connection.createArrayOf("text", new String[] { "left", "right", "\\quoted\"" }));
+            prepared.setArray(3, connection.createArrayOf("uuid", new UUID[] { uuid1, uuid2 }));
+
+            try (var resultSet = prepared.executeQuery()) {
+                assertTrue(resultSet.next());
+                assertArrayEquals(new Object[] { 1, 2, 3 }, (Object[]) resultSet.getArray("ints").getArray());
+
+                assertArrayEquals(
+                    new Object[] { "left", "right", "\\quoted\"" },
+                    (Object[]) resultSet.getArray("texts").getArray()
+                );
+
+                assertArrayEquals(new Object[] { uuid1, uuid2 }, (Object[]) resultSet.getArray("uuids").getArray());
+                assertFalse(resultSet.next());
+            }
+        }
+    }
+
+    @Test
+    void preparedStatementSetByteaArrayRoundTripsLikePgjdbcArrayTest() throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000");
+             var prepared = connection.prepareStatement("SELECT ?::bytea[] AS bytes")) {
+            var byteaValues = new byte[][] {
+                { 0x01, (byte) 0xff, 0x12 },
+                {},
+                { (byte) 0xac, (byte) 0xe4 },
+                null
+            };
+
+            prepared.setArray(1, connection.createArrayOf("bytea", byteaValues));
+            try (var resultSet = prepared.executeQuery()) {
+                assertTrue(resultSet.next());
+                var bytes = (byte[][]) resultSet.getArray("bytes").getArray();
+                assertEquals(4, bytes.length);
+                assertArrayEquals(byteaValues[0], bytes[0]);
+                assertArrayEquals(byteaValues[1], bytes[1]);
+                assertArrayEquals(byteaValues[2], bytes[2]);
+                assertNull(bytes[3]);
+                assertFalse(resultSet.next());
+            }
+        }
+    }
+
+    @Test
+    void preparedStatementSetObjectJavaArraysFollowPgjdbcArrayTest() throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:pglite:?protocolTimeoutMs=5000");
+             var prepared = connection.prepareStatement("SELECT ?::text[] AS values")) {
+            var strings = new String[] { "a", "b", "c" };
+            var objectCopy = java.util.Arrays.copyOf(strings, strings.length, Object[].class);
+
+            assertThrows(SQLException.class, () -> {
+                prepared.setObject(1, objectCopy, Types.ARRAY);
+                prepared.executeQuery().close();
+            });
+            assertThrows(SQLException.class, () -> {
+                prepared.setObject(1, objectCopy);
+                prepared.executeQuery().close();
+            });
+
+            prepared.setObject(1, strings);
+            try (var resultSet = prepared.executeQuery()) {
+                assertTrue(resultSet.next());
+                assertArrayEquals(strings, (Object[]) resultSet.getArray("values").getArray());
+                assertFalse(resultSet.next());
+            }
+
+            prepared.setObject(1, strings, Types.ARRAY);
+            try (var resultSet = prepared.executeQuery()) {
+                assertTrue(resultSet.next());
+                assertArrayEquals(strings, (Object[]) resultSet.getArray("values").getArray());
+                assertFalse(resultSet.next());
+            }
         }
     }
 

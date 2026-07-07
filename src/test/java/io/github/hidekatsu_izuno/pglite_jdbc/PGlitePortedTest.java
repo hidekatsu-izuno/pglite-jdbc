@@ -5,14 +5,12 @@ import run.endive.wasm.WasmModule;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.extensionCatalog;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.index;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_;
-import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.pglite;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.templating;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.types;
@@ -28,7 +26,6 @@ import java.util.TreeMap;
 import java.util.stream.Collectors;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
@@ -1160,14 +1157,6 @@ class PGlitePortedTest {
             names.add(module.exportSection().getExport(i).name());
         }
         return names;
-    }
-
-    private static Map<String, Object> mapOfNullable(Object... entries) {
-        var map = new java.util.LinkedHashMap<String, Object>();
-        for (var i = 0; i < entries.length; i += 2) {
-            map.put((String) entries[i], entries[i + 1]);
-        }
-        return map;
     }
 
     private record Db(pglite pg) implements AutoCloseable {

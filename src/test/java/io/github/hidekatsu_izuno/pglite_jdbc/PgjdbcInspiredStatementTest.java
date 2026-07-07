@@ -599,6 +599,90 @@ class PgjdbcInspiredStatementTest {
     }
 
     @Test
+    void statementJdbcEscapeNumericFunctionsFollowPgjdbc() throws Exception {
+        try (var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("""
+                 SELECT
+                   {fn abs(-2.3)} AS abs_value,
+                   {fn acos(-0.6)} AS acos_value,
+                   {fn atan2(-2.3, 7)} AS atan2_value,
+                   {fn ceiling(-2.3)} AS ceiling_value,
+                   {fn degrees({fn pi()})} AS degrees_value,
+                   {fn exp(-2.3)} AS exp_value,
+                   {fn floor(-2.3)} AS floor_value,
+                   {fn log10(2.3)} AS log10_value,
+                   {fn mod(3, 2)} AS mod_value,
+                   {fn power(7, -2.3)} AS power_value,
+                   {fn radians(-180)} AS radians_value,
+                   {fn round(3.1294, 2)} AS round_value,
+                   {fn sign(-2.3)} AS sign_value,
+                   {fn truncate(3.1294, 2)} AS truncate_value
+                 """)) {
+            assertTrue(resultSet.next());
+            assertEquals(2.3d, resultSet.getDouble("abs_value"), 0.00001d);
+            assertEquals(Math.acos(-0.6d), resultSet.getDouble("acos_value"), 0.00001d);
+            assertEquals(Math.atan2(-2.3d, 7d), resultSet.getDouble("atan2_value"), 0.00001d);
+            assertEquals(-2d, resultSet.getDouble("ceiling_value"), 0.00001d);
+            assertEquals(180d, resultSet.getDouble("degrees_value"), 0.00001d);
+            assertEquals(Math.exp(-2.3d), resultSet.getDouble("exp_value"), 0.00001d);
+            assertEquals(-3d, resultSet.getDouble("floor_value"), 0.00001d);
+            assertEquals(Math.log10(2.3d), resultSet.getDouble("log10_value"), 0.00001d);
+            assertEquals(1, resultSet.getInt("mod_value"));
+            assertEquals(Math.pow(7d, -2.3d), resultSet.getDouble("power_value"), 0.00001d);
+            assertEquals(-Math.PI, resultSet.getDouble("radians_value"), 0.00001d);
+            assertEquals(3.13d, resultSet.getDouble("round_value"), 0.00001d);
+            assertEquals(-1, resultSet.getInt("sign_value"));
+            assertEquals(3.12d, resultSet.getDouble("truncate_value"), 0.00001d);
+            assertFalse(resultSet.next());
+        }
+    }
+
+    @Test
+    void statementJdbcEscapeStringFunctionsFollowPgjdbc() throws Exception {
+        try (var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("""
+                 SELECT
+                   {fn ascii(' test')} AS ascii_value,
+                   {fn char(32)} AS char_value,
+                   {fn concat('ab','cd')} AS concat_value,
+                   {fn lcase('aBcD')} AS lcase_value,
+                   {fn left('1234', 2)} AS left_value,
+                   {fn length('123 ')} AS length_value,
+                   {fn locate('bc', 'abc')} AS locate_value,
+                   {fn locate('bc', 'abc', 3)} AS locate_from_value,
+                   {fn insert('abcdef', 3, 2, 'xxxx')} AS insert_value,
+                   {fn replace('abcdbc', 'bc', 'x')} AS replace_value,
+                   {fn ltrim(' ab')} AS ltrim_value,
+                   {fn repeat('ab', 2)} AS repeat_value,
+                   {fn right('abcde', 2)} AS right_value,
+                   {fn rtrim('ab ')} AS rtrim_value,
+                   {fn space(3)} AS space_value,
+                   {fn substring('abcd', 2, 2)} AS substring_value,
+                   {fn ucase('aBcD')} AS ucase_value
+                 """)) {
+            assertTrue(resultSet.next());
+            assertEquals(32, resultSet.getInt("ascii_value"));
+            assertEquals(" ", resultSet.getString("char_value"));
+            assertEquals("abcd", resultSet.getString("concat_value"));
+            assertEquals("abcd", resultSet.getString("lcase_value"));
+            assertEquals("12", resultSet.getString("left_value"));
+            assertEquals(3, resultSet.getInt("length_value"));
+            assertEquals(2, resultSet.getInt("locate_value"));
+            assertEquals(0, resultSet.getInt("locate_from_value"));
+            assertEquals("abxxxxef", resultSet.getString("insert_value"));
+            assertEquals("axdx", resultSet.getString("replace_value"));
+            assertEquals("ab", resultSet.getString("ltrim_value"));
+            assertEquals("abab", resultSet.getString("repeat_value"));
+            assertEquals("de", resultSet.getString("right_value"));
+            assertEquals("ab", resultSet.getString("rtrim_value"));
+            assertEquals("   ", resultSet.getString("space_value"));
+            assertEquals("bc", resultSet.getString("substring_value"));
+            assertEquals("ABCD", resultSet.getString("ucase_value"));
+            assertFalse(resultSet.next());
+        }
+    }
+
+    @Test
     void statementSyntaxErrorsFollowPgjdbcParserCases() throws Exception {
         try (var statement = connection.createStatement()) {
             assertThrows(

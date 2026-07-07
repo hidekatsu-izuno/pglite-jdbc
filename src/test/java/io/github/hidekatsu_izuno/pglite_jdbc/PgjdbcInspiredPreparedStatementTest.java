@@ -869,6 +869,25 @@ class PgjdbcInspiredPreparedStatementTest {
     }
 
     @Test
+    void preparedStatementJdbcEscapeTimestampAddAcceptsParametersLikePgjdbc() throws Exception {
+        try (var prepared = connection.prepareStatement("""
+            SELECT
+              {fn timestampadd(SQL_TSI_QUARTER, ?, {ts '2020-01-01 00:00:00'})} AS by_quarter,
+              {fn timestampadd(SQL_TSI_MONTH, ?, {ts '2020-01-01 00:00:00'})} AS by_month
+            """)) {
+            prepared.setInt(1, 4);
+            prepared.setInt(2, 12);
+
+            try (var resultSet = prepared.executeQuery()) {
+                assertTrue(resultSet.next());
+                assertEquals(resultSet.getTimestamp("by_quarter"), resultSet.getTimestamp("by_month"));
+                assertEquals(Timestamp.valueOf("2021-01-01 00:00:00"), resultSet.getTimestamp("by_month"));
+                assertFalse(resultSet.next());
+            }
+        }
+    }
+
+    @Test
     void preparedStatementUnsupportedSettersMatchPgjdbc() throws Exception {
         try (var prepared = connection.prepareStatement("SELECT ?::text")) {
             assertPgjdbcPreparedNotImplemented("setRef(int,Ref)", () -> prepared.setRef(1, null));
