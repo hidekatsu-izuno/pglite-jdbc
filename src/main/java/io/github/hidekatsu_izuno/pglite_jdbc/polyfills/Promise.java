@@ -9,6 +9,8 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReferenceArray;
@@ -200,6 +202,11 @@ public final class Promise<T> {
 
     public CompletableFuture<T> toCompletableFuture() {
         return this.future;
+    }
+
+    public T get(long timeout, TimeUnit unit)
+        throws TimeoutException, InterruptedException, ExecutionException {
+        return this.future.get(timeout, unit);
     }
 
     public T join() {

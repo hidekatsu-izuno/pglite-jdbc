@@ -50,7 +50,7 @@ public final class ConnectionFactoryImpl extends ConnectionFactory {
         for (var attempt = 1; attempt <= startupRetries; attempt++) {
             var db = new pglite(options);
             try {
-                db.waitReady().toCompletableFuture().get(timeoutMillis, TimeUnit.MILLISECONDS);
+                db.waitReady().get(timeoutMillis, TimeUnit.MILLISECONDS);
                 return new QueryExecutorImpl(db);
             } catch (Throwable error) {
                 closeQuietly(db);
@@ -117,7 +117,7 @@ public final class ConnectionFactoryImpl extends ConnectionFactory {
 
     private static void closeQuietly(pglite db) {
         try {
-            db.close().toCompletableFuture().get(
+            db.close().get(
                 STARTUP_CLOSE_TIMEOUT_MILLIS,
                 TimeUnit.MILLISECONDS
             );

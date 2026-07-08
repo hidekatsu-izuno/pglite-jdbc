@@ -217,27 +217,16 @@ public class extensionUtils {
         var chain = Promise.resolve((Void) null);
         for (var entry : mod.pg_extensions().entrySet()) {
             var ext = entry.getKey();
+            var blob = entry.getValue();
             chain = chain.then(ignored ->
-                new Promise<Void>((resolve, reject) ->
-                    entry.getValue().whenComplete((blob, error) -> {
-                        if (error != null) {
-                            System.err.println("Failed to fetch extension: " + ext + " " + error);
-                            resolve.run(null);
-                            return;
-                        }
-                        if (blob == null) {
-                            System.err.println("Could not get binary data for extension: " + ext);
-                            resolve.run(null);
-                            return;
-                        }
-                        try {
-                            preloadPromises.addAll(loadExtension(mod, ext, blob, logger));
-                            resolve.run(null);
-                        } catch (Throwable e) {
-                            reject.run(e);
-                        }
-                    })
-                )
+                new Promise<Void>((resolve, reject) -> {
+                    try {
+                        preloadPromises.addAll(loadExtension(mod, ext, blob, logger));
+                        resolve.run(null);
+                    } catch (Throwable e) {
+                        reject.run(e);
+                    }
+                })
             );
         }
         return chain.then(ignored -> Promise.all(preloadPromises).then(x -> null));

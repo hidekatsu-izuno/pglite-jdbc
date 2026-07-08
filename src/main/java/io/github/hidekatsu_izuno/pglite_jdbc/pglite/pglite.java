@@ -17,7 +17,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Semaphore;
@@ -175,8 +174,7 @@ public class pglite extends base implements interface_.PGliteInterface {
             appendWasmStderr(text);
         };
 
-        var extPromises =
-            new ConcurrentHashMap<String, CompletableFuture<extensionUtils.ExtensionBlob>>();
+        var extBlobs = new ConcurrentHashMap<String, extensionUtils.ExtensionBlob>();
         var emscriptenOptions = new ConcurrentHashMap<String, Object>();
         var extSharedPreloadLibraries = new ArrayList<String>();
 
@@ -199,12 +197,7 @@ public class pglite extends base implements interface_.PGliteInterface {
                     }
                 }
                 if (result.bundlePath() != null) {
-                    extPromises.put(
-                        extName,
-                        CompletableFuture.completedFuture(
-                            extensionUtils.toExtensionBlob(result.bundlePath())
-                        )
-                    );
+                    extBlobs.put(extName, extensionUtils.toExtensionBlob(result.bundlePath()));
                 }
                 if (result.sharedPreloadLibraries() != null) {
                     for (var library : result.sharedPreloadLibraries()) {
@@ -222,7 +215,7 @@ public class pglite extends base implements interface_.PGliteInterface {
             }
         }
         overrides.arguments = buildModuleArguments(options, extSharedPreloadLibraries);
-        overrides.pg_extensions = extPromises;
+        overrides.pg_extensions = extBlobs;
         traceInit("init:extensions-setup-done");
 
         var initResult = await(this.fs.init(this, emscriptenOptions));

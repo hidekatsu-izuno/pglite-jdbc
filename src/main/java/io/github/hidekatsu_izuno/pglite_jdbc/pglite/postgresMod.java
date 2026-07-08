@@ -5,7 +5,6 @@ import io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.EndivePostgresMod;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
 import java.net.URL;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 public final class postgresMod {
@@ -16,7 +15,7 @@ public final class postgresMod {
         void setFD_BUFFER_MAX(Integer value);
         Uint8Array HEAP8();
         Uint8Array HEAPU8();
-        Map<String, CompletableFuture<extensionUtils.ExtensionBlob>> pg_extensions();
+        Map<String, extensionUtils.ExtensionBlob> pg_extensions();
         int _pgl_initdb();
         void _pgl_backend();
         void _pgl_setPGliteActive(int active);
@@ -81,7 +80,7 @@ public final class postgresMod {
         public java.util.List<Consumer<PostgresMod>> preInit;
         public java.util.List<Consumer<PostgresMod>> preRun;
         public java.util.List<Consumer<PostgresMod>> postRun;
-        public Map<String, CompletableFuture<extensionUtils.ExtensionBlob>> pg_extensions;
+        public Map<String, extensionUtils.ExtensionBlob> pg_extensions;
         public extensionUtils.EmscriptenFS FS;
         public Integer FD_BUFFER_MAX;
         public URL wasmModuleUrl;

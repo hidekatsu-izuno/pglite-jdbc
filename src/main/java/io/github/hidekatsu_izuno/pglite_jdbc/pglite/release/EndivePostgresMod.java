@@ -42,7 +42,6 @@ import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
@@ -1209,7 +1208,7 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
     }
 
     @Override
-    public Map<String, CompletableFuture<extensionUtils.ExtensionBlob>> pg_extensions() {
+    public Map<String, extensionUtils.ExtensionBlob> pg_extensions() {
         return overrides.pg_extensions != null ? overrides.pg_extensions : Map.of();
     }
 

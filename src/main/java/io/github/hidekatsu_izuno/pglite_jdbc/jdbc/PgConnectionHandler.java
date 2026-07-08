@@ -25,13 +25,12 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TimeZone;
-import java.util.Timer;
+import java.util.TimerTask;
 import java.util.stream.Collectors;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
@@ -57,23 +56,28 @@ public final class PgConnectionHandler implements InvocationHandler {
     private static final org.postgresql.jdbc.TimestampUtils TIMESTAMP_UTILS =
         new org.postgresql.jdbc.TimestampUtils(false, TimeZone::getDefault);
     private static final int UNKNOWN_LENGTH = Integer.MAX_VALUE;
-    private static final Set<Timer> ACTIVE_TIMERS = ConcurrentHashMap.newKeySet();
+    private static final java.lang.reflect.Field TIMER_TASK_CANCELLED_FIELD;
 
     static {
-        Runtime.getRuntime().addShutdownHook(
-            new Thread(
-                () -> {
-                    for (var timer : ACTIVE_TIMERS) {
-                        try {
-                            timer.cancel();
-                        } catch (Throwable ignored) {
-                            // Keep shutdown robust.
-                        }
-                    }
-                },
-                "pglite-jdbc-timer-shutdown"
-            )
-        );
+        java.lang.reflect.Field field = null;
+        try {
+            field = TimerTask.class.getDeclaredField("cancelled");
+            field.setAccessible(true);
+        } catch (Throwable ignored) {
+            // Keep behavior best-effort on JDK differences.
+        }
+        TIMER_TASK_CANCELLED_FIELD = field;
+    }
+
+    private static boolean isTimerTaskCancelled(TimerTask timerTask) {
+        if (timerTask == null || TIMER_TASK_CANCELLED_FIELD == null) {
+            return false;
+        }
+        try {
+            return TIMER_TASK_CANCELLED_FIELD.getBoolean(timerTask);
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     private final QueryExecutor queryExecutor;
@@ -112,7 +116,7 @@ public final class PgConnectionHandler implements InvocationHandler {
     private org.postgresql.core.TypeInfo typeInfo;
     private final LruCache<org.postgresql.jdbc.FieldMetadata.Key, org.postgresql.jdbc.FieldMetadata>
         fieldMetadataCache = new LruCache<>(0, 0, false);
-    private final Timer sharedTimer = createSharedTimer();
+    private final Set<Future<?>> scheduledTimerTasks = ConcurrentHashMap.newKeySet();
     private final org.postgresql.core.QueryExecutor coreQueryExecutor = createCoreQueryExecutor();
     private final org.postgresql.core.ReplicationProtocol replicationProtocol = createReplicationProtocol();
 
@@ -282,7 +286,7 @@ public final class PgConnectionHandler implements InvocationHandler {
             return queryExecutor.getDatabase().execProtocol(
                 message,
                 new interface_.ExecProtocolOptions(false, throwOnError, null)
-            ).toCompletableFuture().get(protocolTimeoutMillis, TimeUnit.MILLISECONDS);
+            ).get(protocolTimeoutMillis, TimeUnit.MILLISECONDS);
         } catch (TimeoutException timeoutException) {
             throw new java.sql.SQLTimeoutException(
                 "Protocol stage timed out: " + stage + " (" + protocolTimeoutMillis + "ms)",
@@ -304,16 +308,9 @@ public final class PgConnectionHandler implements InvocationHandler {
     }
 
     <T> T runProtocolStage(String stage, SqlStage<T> stageCall) throws SQLException {
-        var future = CompletableFuture.supplyAsync(
-            () -> {
-                try {
-                    return stageCall.execute();
-                } catch (SQLException sqlException) {
-                    throw new CompletionException(sqlException);
-                }
-            },
-            io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise.executor()
-        );
+        Future<T> future = io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise
+            .executor()
+            .submit(stageCall::execute);
 
         try {
             return future.get(protocolTimeoutMillis, TimeUnit.MILLISECONDS);
@@ -527,11 +524,32 @@ public final class PgConnectionHandler implements InvocationHandler {
             case "binaryTransferSend" -> false;
             case "isColumnSanitiserDisabled" -> false;
             case "addTimerTask" -> {
-                sharedTimer.schedule((java.util.TimerTask) args[0], (Long) args[1]);
+                var timerTask = (java.util.TimerTask) args[0];
+                var delayMs = (Long) args[1];
+
+                var ref = new java.util.concurrent.atomic.AtomicReference<Future<?>>();
+                var future = io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise.executor().submit(() -> {
+                    try {
+                        Thread.sleep(delayMs);
+                        if (!closed && !isTimerTaskCancelled(timerTask)) {
+                            timerTask.run();
+                        }
+                    } catch (InterruptedException interruptedException) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        var f = ref.get();
+                        if (f != null) {
+                            scheduledTimerTasks.remove(f);
+                        }
+                    }
+                    return null;
+                });
+                ref.set(future);
+                scheduledTimerTasks.add(future);
                 yield null;
             }
             case "purgeTimerTasks" -> {
-                sharedTimer.purge();
+                scheduledTimerTasks.removeIf(Future::isDone);
                 yield null;
             }
             case "getFieldMetadataCache" -> fieldMetadataCache;
@@ -925,17 +943,95 @@ public final class PgConnectionHandler implements InvocationHandler {
             }
             queryExecutor.close();
         } finally {
-            sharedTimer.cancel();
-            ACTIVE_TIMERS.remove(sharedTimer);
+            for (var future : scheduledTimerTasks) {
+                try {
+                    future.cancel(true);
+                } catch (Throwable ignored) {
+                    // Keep shutdown robust.
+                }
+            }
+            scheduledTimerTasks.clear();
+            shutdownCompletableFutureDelayScheduler();
             closed = true;
             txOpen = false;
         }
     }
 
-    private static Timer createSharedTimer() {
-        var timer = new Timer(true);
-        ACTIVE_TIMERS.add(timer);
-        return timer;
+    private static void shutdownCompletableFutureDelayScheduler() {
+        try {
+            // Stop known JDK internal scheduler threads early.
+            for (var thread : Thread.getAllStackTraces().keySet()) {
+                var threadName = thread.getName();
+                if (threadName.contains("CompletableFutureDelayScheduler")) {
+                    try {
+                        thread.interrupt();
+                    } catch (Throwable ignored) {}
+                }
+            }
+
+            var delayerClass = Class.forName("java.util.concurrent.CompletableFuture$Delayer");
+            shutdownExecutorsFromClass(delayerClass);
+
+            Object delayerInstance = null;
+            try {
+                var delayerField = delayerClass.getDeclaredField("delayer");
+                delayerField.setAccessible(true);
+                delayerInstance = delayerField.get(null);
+                shutdownExecutorsFromObject(delayerInstance);
+            } catch (Throwable ignored) {
+                // Best-effort only.
+            }
+
+            // Also try inner classes (static fields).
+            for (var inner : delayerClass.getDeclaredClasses()) {
+                shutdownExecutorsFromClass(inner);
+            }
+
+            // And then try object-held fields for all nested members.
+            if (delayerInstance != null) {
+                for (var inner : delayerInstance.getClass().getDeclaredClasses()) {
+                    shutdownExecutorsFromClass(inner);
+                }
+            }
+        } catch (Throwable ignored) {
+            // Ignore JDK-internal differences and keep shutdown robust.
+        }
+    }
+
+    private static void shutdownExecutorsFromClass(Class<?> clazz) {
+        for (var field : clazz.getDeclaredFields()) {
+            try {
+                field.setAccessible(true);
+                var value = field.get(null);
+                if (value instanceof java.util.concurrent.ScheduledThreadPoolExecutor executor) {
+                    executor.shutdownNow();
+                } else if (value instanceof java.util.concurrent.ExecutorService executorService) {
+                    executorService.shutdownNow();
+                }
+            } catch (Throwable ignored) {
+                // Continue scanning.
+            }
+        }
+    }
+
+    private static void shutdownExecutorsFromObject(Object obj) {
+        if (obj == null) {
+            return;
+        }
+        var clazz = obj.getClass();
+        for (var field : clazz.getDeclaredFields()) {
+            try {
+                field.setAccessible(true);
+                var value = field.get(obj);
+                if (value instanceof java.util.concurrent.ScheduledThreadPoolExecutor executor) {
+                    executor.shutdownNow();
+                } else if (value instanceof java.util.concurrent.ExecutorService executorService) {
+                    executorService.shutdownNow();
+                }
+            } catch (Throwable ignored) {
+                // Continue scanning.
+            }
+        }
     }
 
     private void execControl(String sql) throws SQLException {
