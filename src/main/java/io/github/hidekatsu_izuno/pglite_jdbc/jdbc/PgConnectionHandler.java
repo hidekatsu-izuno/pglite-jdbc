@@ -28,6 +28,7 @@ import java.util.TimeZone;
 import java.util.Timer;
 import java.util.stream.Collectors;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
@@ -56,6 +57,24 @@ public final class PgConnectionHandler implements InvocationHandler {
     private static final org.postgresql.jdbc.TimestampUtils TIMESTAMP_UTILS =
         new org.postgresql.jdbc.TimestampUtils(false, TimeZone::getDefault);
     private static final int UNKNOWN_LENGTH = Integer.MAX_VALUE;
+    private static final Set<Timer> ACTIVE_TIMERS = ConcurrentHashMap.newKeySet();
+
+    static {
+        Runtime.getRuntime().addShutdownHook(
+            new Thread(
+                () -> {
+                    for (var timer : ACTIVE_TIMERS) {
+                        try {
+                            timer.cancel();
+                        } catch (Throwable ignored) {
+                            // Keep shutdown robust.
+                        }
+                    }
+                },
+                "pglite-jdbc-timer-shutdown"
+            )
+        );
+    }
 
     private final QueryExecutor queryExecutor;
     private final String url;
@@ -93,7 +112,7 @@ public final class PgConnectionHandler implements InvocationHandler {
     private org.postgresql.core.TypeInfo typeInfo;
     private final LruCache<org.postgresql.jdbc.FieldMetadata.Key, org.postgresql.jdbc.FieldMetadata>
         fieldMetadataCache = new LruCache<>(0, 0, false);
-    private final Timer sharedTimer = new Timer(true);
+    private final Timer sharedTimer = createSharedTimer();
     private final org.postgresql.core.QueryExecutor coreQueryExecutor = createCoreQueryExecutor();
     private final org.postgresql.core.ReplicationProtocol replicationProtocol = createReplicationProtocol();
 
@@ -906,9 +925,17 @@ public final class PgConnectionHandler implements InvocationHandler {
             }
             queryExecutor.close();
         } finally {
+            sharedTimer.cancel();
+            ACTIVE_TIMERS.remove(sharedTimer);
             closed = true;
             txOpen = false;
         }
+    }
+
+    private static Timer createSharedTimer() {
+        var timer = new Timer(true);
+        ACTIVE_TIMERS.add(timer);
+        return timer;
     }
 
     private void execControl(String sql) throws SQLException {

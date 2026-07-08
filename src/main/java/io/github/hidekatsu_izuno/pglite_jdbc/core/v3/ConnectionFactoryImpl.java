@@ -3,8 +3,10 @@ package io.github.hidekatsu_izuno.pglite_jdbc.core.v3;
 import io.github.hidekatsu_izuno.pglite_jdbc.core.ConnectionFactory;
 import io.github.hidekatsu_izuno.pglite_jdbc.core.QueryExecutor;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.pglite;
+import java.lang.reflect.Field;
 import java.sql.SQLException;
 import java.util.Properties;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -19,6 +21,12 @@ public final class ConnectionFactoryImpl extends ConnectionFactory {
     private static final int DEFAULT_CONNECT_TIMEOUT_SECONDS = 180;
     private static final int DEFAULT_STARTUP_RETRIES = 2;
     private static final long STARTUP_CLOSE_TIMEOUT_MILLIS = 5_000L;
+
+    static {
+        Runtime.getRuntime().addShutdownHook(
+            new Thread(ConnectionFactoryImpl::shutdownCompletableFutureDelayer, "pglite-jdbc-delayer-shutdown")
+        );
+    }
 
     @Override
     public QueryExecutor openConnectionImpl(String url, Properties info) throws SQLException {
@@ -42,7 +50,7 @@ public final class ConnectionFactoryImpl extends ConnectionFactory {
         for (var attempt = 1; attempt <= startupRetries; attempt++) {
             var db = new pglite(options);
             try {
-                db.waitReady().toCompletableFuture().orTimeout(timeoutMillis, TimeUnit.MILLISECONDS).join();
+                db.waitReady().toCompletableFuture().get(timeoutMillis, TimeUnit.MILLISECONDS);
                 return new QueryExecutorImpl(db);
             } catch (Throwable error) {
                 closeQuietly(db);
@@ -109,12 +117,26 @@ public final class ConnectionFactoryImpl extends ConnectionFactory {
 
     private static void closeQuietly(pglite db) {
         try {
-            db.close().toCompletableFuture().orTimeout(
+            db.close().toCompletableFuture().get(
                 STARTUP_CLOSE_TIMEOUT_MILLIS,
                 TimeUnit.MILLISECONDS
-            ).join();
+            );
         } catch (Throwable ignored) {
             // Keep original startup failure.
+        }
+    }
+
+    private static void shutdownCompletableFutureDelayer() {
+        try {
+            var delayerClass = Class.forName("java.util.concurrent.CompletableFuture$Delayer");
+            Field field = delayerClass.getDeclaredField("delayer");
+            field.setAccessible(true);
+            var scheduler = field.get(null);
+            if (scheduler instanceof ScheduledThreadPoolExecutor executor) {
+                executor.shutdownNow();
+            }
+        } catch (Throwable ignored) {
+            // Ignore JDK-internal differences and keep shutdown robust.
         }
     }
 }
