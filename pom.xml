@@ -5,7 +5,7 @@
 
   <groupId>io.github.hidekatsu-izuno</groupId>
   <artifactId>pglite-jdbc</artifactId>
-  <version>0.1.1</version>
+  <version>0.1.2</version>
   <name>PGlite JDBC</name>
   <description>JDBC driver for pglite with pgjdbc-compatible APIs.</description>
   <url>https://github.com/hidekatsu-izuno/pglite-jdbc</url>
