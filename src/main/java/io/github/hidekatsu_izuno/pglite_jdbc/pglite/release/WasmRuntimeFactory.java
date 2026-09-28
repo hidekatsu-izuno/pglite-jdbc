@@ -54,17 +54,6 @@ public final class WasmRuntimeFactory {
     }
 
     private static initdbModFactory.InitdbMod createEndive(PartialPostgresMod overrides, URL moduleUrl) {
-        byte[] wasm;
-        if (overrides != null && overrides.wasmModule != null) {
-            wasm = overrides.wasmModule;
-        } else {
-            try (var input = moduleUrl.openStream()) { wasm = input.readAllBytes(); }
-            catch (java.io.IOException error) { throw new java.io.UncheckedIOException(error); }
-        }
-        if (!hasExceptionHandling(wasm)) {
-            throw new IllegalStateException("The official PGlite Emscripten WASM requires Wasmer and matching compiled artifacts. "
-                + "Endive only supports the legacy WASI build.", WasmerNativeLoader.loadError());
-        }
         return new EndivePostgresMod(overrides, moduleUrl);
     }
 

@@ -15,6 +15,35 @@ import java.util.function.Function;
  * Layouts and return conventions follow @electric-sql/pglite@0.5.3/dist/pglite.js.
  */
 final class EmscriptenHost implements AutoCloseable {
+    interface Heap {
+        int getInt(long pointer);
+        long getLong(long pointer);
+        short getShort(long pointer);
+        void setInt(long pointer, int value);
+        void setLong(long pointer, long value);
+        void setShort(long pointer, short value);
+        void setByte(long pointer, byte value);
+        void setMemory(long pointer, long length, byte value);
+    }
+
+    interface Runtime {
+        Heap emMemory();
+        long emCall(String name, long... args);
+        long emTableCall(int index, long... args);
+        long invokeEmscripten(String signature, long[] args);
+        byte[] emRead(int pointer, int length);
+        void emWrite(int pointer, byte[] bytes);
+        String emString(int pointer);
+        int emGrow(int size);
+        void emExit(int status);
+        long emDlopen(int handle);
+        long emDlsym(int handle, int symbol);
+        long emCallback(String name, long[] args);
+        io.github.hidekatsu_izuno.pglite_jdbc.pglite.postgresMod.DeviceOps emDevice(String path);
+        void print(String text);
+        void printErr(String text);
+    }
+
     static final class Longjmp extends RuntimeException {
         Longjmp() { super("Emscripten longjmp", null, false, false); }
     }
@@ -31,7 +60,7 @@ final class EmscriptenHost implements AutoCloseable {
         List<String> entries;
         ArrayDeque<Byte> pipe;
     }
-    private final WasmerPostgresMod mod;
+    private final Runtime mod;
     private final Function<String, Path> resolve;
     private final Map<String, String> env;
     private final Map<Integer, Descriptor> descriptors = new HashMap<>();
@@ -40,7 +69,7 @@ final class EmscriptenHost implements AutoCloseable {
     private final Map<Integer, Long> timers = new HashMap<>();
     private boolean deliveringTimer;
 
-    EmscriptenHost(WasmerPostgresMod mod, Function<String, Path> resolve, Map<String, String> env) {
+    EmscriptenHost(Runtime mod, Function<String, Path> resolve, Map<String, String> env) {
         this.mod = mod; this.resolve = resolve; this.env = env;
         try {
             Files.createDirectories(resolve.apply("/dev/shm"));

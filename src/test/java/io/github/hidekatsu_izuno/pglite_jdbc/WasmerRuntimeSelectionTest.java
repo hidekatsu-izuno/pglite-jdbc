@@ -40,7 +40,7 @@ class WasmerRuntimeSelectionTest {
     }
 
     @Test
-    void missingLibraryReportsUnsupportedOfficialAbi() throws Exception {
+    void missingLibrarySelectsEndiveForOfficialAbi() throws Exception {
         runSelectionProbe("missing");
     }
 
@@ -80,10 +80,13 @@ class WasmerRuntimeSelectionTest {
             assertThrows(IllegalStateException.class, () -> WasmRuntimeFactory.create(null, null));
             System.clearProperty("pglite.force_wasmer");
             var url = SelectionProbe.class.getClassLoader().getResource(extensionCatalog.RELEASE_RESOURCE_ROOT + "pglite.wasm");
-            var error = assertThrows(IllegalStateException.class, () -> WasmRuntimeFactory.create(null, url));
-            assertTrue(error.getMessage().contains("official PGlite Emscripten WASM requires Wasmer"));
+            try (var runtime = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.WasmProcess) WasmRuntimeFactory.create(null, url)) {
+                assertTrue(runtime instanceof io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.EndivePostgresMod);
+            }
             System.setProperty("pglite.force_endive", "true");
-            assertThrows(IllegalStateException.class, () -> WasmRuntimeFactory.create(null, url));
+            try (var runtime = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.WasmProcess) WasmRuntimeFactory.create(null, url)) {
+                assertTrue(runtime instanceof io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.EndivePostgresMod);
+            }
         }
     }
 

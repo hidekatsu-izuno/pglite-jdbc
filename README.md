@@ -10,7 +10,7 @@ pglite-jdbc is a library that enables calling pglite (https://github.com/electri
 ## Dependencies
 
 - Unmodified WASM and data from official `@electric-sql/pglite@0.5.3`, bundled in the application classpath.
-- Endive runtime/WASM/WASI modules (legacy WASI inputs only).
+- Endive runtime/WASM/WASI modules for pure-Java execution of the official WASM.
 - Wasmer 7.4.2 headless C-API shared libraries, accessed through JNA's JNI bridge.
 - Precompiled Wasmer modules bundled alongside the original PGlite WASM resources.
 - pgjdbc public API: `org.postgresql:postgresql` (for `org.postgresql.*` compatibility types).
@@ -79,7 +79,7 @@ Runtime diagnostic system properties:
 - `pglite.trace_exec`
 - `pglite.native_call_timeout_ms`
 - `pglite.force_wasmer` (require Wasmer; do not fall back to Endive)
-- `pglite.force_endive` (legacy WASI inputs only; incompatible with the bundled official WASM)
+- `pglite.force_endive` (run the bundled official WASM with the pure-Java Endive interpreter)
 - `pglite.wasmer.library` (absolute path to an external Wasmer C-API library; overrides the bundled library)
 
 Wasmer headless runs the official Emscripten binaries on Linux x86-64/AArch64,
@@ -97,8 +97,13 @@ Small generated WASM trampolines adapt Wasmer's C callbacks to function-table
 entries. They are separate from the unchanged upstream binaries. The official
 extension files retain their `.so` filenames; their contents are WebAssembly.
 
-The official Emscripten ABI requires Wasmer. A missing native library or compiled
-artifact produces an explicit error; Endive supports the previous WASI ABI only.
+If the native library or matching compiled artifact is unavailable, execution
+falls back to Endive. Both engines use the same Emscripten host implementation
+and unmodified official WASM. Endive also supports the previous WASI ABI.
+A small Java interpreter subclass restores operand stacks after host exceptions,
+including Emscripten longjmp.
+The interpreter uses more heap and starts more slowly than Wasmer; allow about
+1.8 GiB of Java heap and an 8 MiB thread stack for initialization (`-Xmx1800m -Xss8m`).
 An external compiler-enabled Wasmer library can compile the WASM at runtime.
 
 ## Updating PGlite

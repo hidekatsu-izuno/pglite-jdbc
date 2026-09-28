@@ -27,7 +27,6 @@ import run.endive.wasm.types.TableImport;
 import run.endive.wasm.types.UnknownCustomSection;
 import run.endive.wasm.types.ValType;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.extensionUtils;
-import io.github.hidekatsu_izuno.pglite_jdbc.pglite.initdbModFactory;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.postgresMod;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
 import java.io.ByteArrayInputStream;
@@ -44,7 +43,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
+public final class EndivePostgresMod implements WasmProcess, EmscriptenHost.Runtime {
     private static final int DEFAULT_INITIAL_PAGES = 2048;
     private static final int DEFAULT_MAX_PAGES = 32768;
     private static final int POSTGRES_MAIN_LONGJMP = 100;
@@ -75,6 +74,10 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
     private final Path dataRoot;
     private final SimpleFS fs;
     private final WasiPreview1 wasi;
+    private EmscriptenHost emscripten;
+    private GlobalInstance emscriptenStack;
+    private long mainMemoryBase;
+    private final Map<Integer, Integer> tableCallbacks = new HashMap<>();
     private Memory memory;
     private Instance instance;
     private int nextCallback = 1;
@@ -127,6 +130,11 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
             this.memory = createMemory(this.overrides);
             instantiate();
             runHooks();
+            if (emscripten != null) {
+                callIfExists("__wasm_call_ctors");
+                _pgl_set_popen_fn(addFunction((command, mode) -> (int) openLocaleList(command, mode), "iii"));
+                _pgl_set_pclose_fn(addFunction((stream, ignored) -> _fclose(stream), "ii"));
+            }
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -308,6 +316,10 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
 
     private void instantiate() throws Exception {
         var module = loadModule();
+        if (module.importSection().stream().anyMatch(imp -> "__memory_base".equals(imp.name()))) {
+            instantiateEmscripten(module);
+            return;
+        }
         var functions = new ArrayList<ImportFunction>();
         var wasiFunctions = new HashMap<String, ImportFunction>();
         for (var fn : wasi.toHostFunctions()) {
@@ -355,7 +367,7 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
             .addMemory(new ImportMemory("env", "memory", memory))
             .withTags(tags)
             .build();
-        var builder = Instance.builder(module)
+        var builder = Instance.builder(module).withMachineFactory(EndiveInterpreterMachine::new)
             .withImportValues(imports)
             .withInitialize(true)
             .withStart(false);
@@ -390,6 +402,165 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
         callIfExists("__wasm_call_ctors");
     }
 
+    private void instantiateEmscripten(WasmModule module) {
+        emscripten = new EmscriptenHost(this, fs::resolve, mergedEnv());
+        var metadata = DylinkMetadata.from(module);
+        mainMemoryBase = 1024;
+        var stackTop = align(mainMemoryBase + metadata.memorySize() + 8388608L, 16);
+        emscriptenStack = globalInstance(stackTop, 0, ValType.I32, MutabilityType.Var);
+        var table = new run.endive.runtime.TableInstance(new run.endive.wasm.types.Table(
+            ValType.FuncRef, new run.endive.wasm.types.TableLimits(metadata.tableSize() + 1)), -1);
+        var functions = new ArrayList<ImportFunction>();
+        var globals = new ArrayList<ImportGlobal>();
+        var tables = new ArrayList<ImportTable>();
+        var memories = new ArrayList<ImportMemory>();
+        for (var imp : module.importSection().stream().toList()) {
+            if (imp instanceof FunctionImport fn) {
+                var type = module.typeSection().getType(fn.typeIndex());
+                functionImportIndices.put(imp.module() + "." + imp.name(), functions.size());
+                functions.add(new HostFunction(imp.module(), imp.name(), type,
+                    (inst, args) -> returned(type, emscripten.call(imp.module(), imp.name(), args))));
+            } else if (imp instanceof GlobalImport global) {
+                var value = switch (imp.name()) {
+                    case "__memory_base" -> mainMemoryBase;
+                    case "__table_base" -> 1;
+                    case "__heap_base", "__stack_pointer" -> stackTop;
+                    default -> throw new UnsupportedOperationException("Unknown main global: " + imp.name());
+                };
+                globals.add(new ImportGlobal(imp.module(), imp.name(), imp.name().equals("__stack_pointer")
+                    ? emscriptenStack : globalInstance(value, 0, ValType.I32, global.mutabilityType())));
+            } else if (imp instanceof MemoryImport importedMemory) {
+                memory = new ByteArrayMemory(new run.endive.wasm.types.MemoryLimits(
+                    Math.max(memory.initialPages(), importedMemory.limits().initialPages()), memory.maximumPages()));
+                memories.add(new ImportMemory(imp.module(), imp.name(), memory));
+            } else if (imp instanceof TableImport) {
+                tables.add(new ImportTable(imp.module(), imp.name(), table));
+            }
+        }
+        instance = Instance.builder(module).withMachineFactory(EndiveInterpreterMachine::new).withImportValues(ImportValues.builder()
+            .withFunctions(functions).withGlobals(globals).withMemories(memories).withTables(tables).build())
+            .withInitialize(true).withStart(false).build();
+        callIfExists("__wasm_apply_data_relocs");
+    }
+
+    public EmscriptenHost.Heap emMemory() { return emHeap; }
+    private final EmscriptenHost.Heap emHeap = new EmscriptenHost.Heap() {
+        public int getInt(long p) { return memory.readInt((int) p); }
+        public long getLong(long p) { return memory.readLong((int) p); }
+        public short getShort(long p) { return memory.readShort((int) p); }
+        public void setInt(long p, int v) { memory.writeI32((int) p, v); }
+        public void setLong(long p, long v) { memory.writeLong((int) p, v); }
+        public void setShort(long p, short v) { memory.writeShort((int) p, v); }
+        public void setByte(long p, byte v) { memory.writeByte((int) p, v); }
+        public void setMemory(long p, long n, byte v) { memory.fill(v, (int) p, Math.toIntExact(p + n)); }
+    };
+    public long emCall(String name, long... args) { return call(name, args); }
+    public byte[] emRead(int p, int n) { return memory.readBytes(p, n); }
+    public void emWrite(int p, byte[] bytes) { memory.write(p, bytes); }
+    public String emString(int p) { return UTF8ToString(p); }
+    public int emGrow(int size) { ensureMemory(size); return 1; }
+    public void emExit(int status) { throw new ExitStatus(status); }
+    public postgresMod.DeviceOps emDevice(String path) {
+        var id = fs.devicePaths.get(path);
+        return id == null ? null : fs.devices.get(id);
+    }
+    public long emCallback(String name, long[] args) {
+        return invokeCallback(Integer.parseInt(name), java.util.Arrays.stream(args).mapToInt(v -> (int) v).toArray());
+    }
+    public long emTableCall(int index, long... args) {
+        var table = instance.table(0);
+        var owner = table.instance(index);
+        var result = owner.getMachine().call(table.requiredRef(index), args);
+        return result == null || result.length == 0 ? 0 : result[0];
+    }
+    public long invokeEmscripten(String signature, long[] args) {
+        var savedStack = call("emscripten_stack_get_current");
+        try {
+            return emTableCall((int) args[0], java.util.Arrays.copyOfRange(args, 1, args.length));
+        } catch (EmscriptenHost.Longjmp jump) {
+            call("_emscripten_stack_restore", savedStack);
+            call("setThrew", 1, 0);
+            return 0;
+        }
+    }
+    public long emDlopen(int handle) {
+        var id = (int) dlopen(handle + 36, memory.readInt(handle + 4));
+        if (id == 0) {
+            if (dlErrorPtr != 0) call("__dl_seterr", dlErrorPtr);
+            return 0;
+        }
+        loadedLibsByHandle.put(handle, loadedLibsByHandle.remove(id));
+        return 1;
+    }
+    public long emDlsym(int handle, int symbol) { return dlsym(handle, symbol); }
+
+    private int addEmscriptenCallback(postgresMod.ReadWriteCallback callback, String signature) {
+        var params = signature.length() - 1;
+        if (params < 1 || params > 2 || signature.charAt(0) == 'v') {
+            throw new IllegalArgumentException("Unsupported ReadWriteCallback signature: " + signature);
+        }
+        var id = nextCallback++;
+        callbacks.put(id, callback);
+        try (var input = EndivePostgresMod.class.getResourceAsStream("host/callback-" + params + ".wasm")) {
+            if (input == null) throw new IllegalStateException("Missing callback adapter");
+            var module = Parser.parse(input.readAllBytes());
+            var functions = new ArrayList<ImportFunction>();
+            for (var imp : module.importSection().stream().toList()) {
+                var fn = (FunctionImport) imp;
+                var type = module.typeSection().getType(fn.typeIndex());
+                functions.add(new HostFunction(imp.module(), imp.name(), type,
+                    (inst, args) -> returned(type, emCallback(Integer.toString(id), args))));
+            }
+            var adapter = Instance.builder(module).withMachineFactory(EndiveInterpreterMachine::new).withImportValues(ImportValues.builder().withFunctions(functions).build()).build();
+            var index = ensureDynamicTableFunction(new DynamicLibrary(adapter, 0), module.exportSection().getExport(0).index());
+            tableCallbacks.put(index, id);
+            return index;
+        } catch (IOException error) { throw new java.io.UncheckedIOException(error); }
+    }
+
+    private long openLocaleList(int command, int mode) {
+        if (!"locale -a".equals(UTF8ToString(command)) || !"r".equals(UTF8ToString(mode))) {
+            throw new UnsupportedOperationException("Unsupported child command: " + UTF8ToString(command));
+        }
+        fs.writeFile("/pglite/locale-a", "C\nC.UTF-8\nPOSIX\n".getBytes(StandardCharsets.UTF_8));
+        var path = writeCString(instance.export("malloc"), "/pglite/locale-a");
+        try { return _fopen(path, mode); }
+        finally { call("free", path); }
+    }
+
+    public EndivePostgresMod createProcess(String program) {
+        var options = new postgresMod.PartialPostgresMod();
+        options.thisProgram = program;
+        options.__wasiRoot = root.toString();
+        options.__wasiDataRoot = dataRoot.toString();
+        options.wasmModule = overrides.wasmModule;
+        options.INITIAL_MEMORY = overrides.INITIAL_MEMORY;
+        options.print = overrides.print;
+        options.printErr = overrides.printErr;
+        var url = emscripten != null && program.endsWith("/initdb")
+            ? EndivePostgresMod.class.getResource("initdb.wasm") : moduleUrl;
+        if (emscripten != null && program.endsWith("/initdb")) options.wasmModule = null;
+        return new EndivePostgresMod(options, url);
+    }
+
+    @Override public void print(String text) {
+        if (overrides.print != null) overrides.print.accept(new Object[] {text});
+        if (Boolean.getBoolean("pglite.trace_init")) System.out.print(text);
+    }
+    @Override public void printErr(String text) {
+        if (overrides.printErr != null) overrides.printErr.accept(new Object[] {text});
+        if (Boolean.getBoolean("pglite.trace_init")) System.err.print(text);
+    }
+
+    public void close() {
+        if (emscripten != null) emscripten.close();
+        wasi.close();
+        callbacks.clear();
+        tableCallbacks.clear();
+        loadedLibsByHandle.clear();
+        loadedLibsByName.clear();
+    }
+
     private WasmModule loadModule() throws Exception {
         if (overrides.wasmModule != null) {
             var module = Parser.parse(overrides.wasmModule);
@@ -398,8 +569,8 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
         }
         var cacheKey = moduleUrl.toString();
         return MODULE_CACHE.computeIfAbsent(cacheKey, ignored -> {
-            try {
-                var module = Parser.parse(moduleUrl.openStream().readAllBytes());
+            try (var input = moduleUrl.openStream()) {
+                var module = Parser.parse(input.readAllBytes());
                 growCallbackTables(module);
                 return module;
             } catch (Exception e) {
@@ -695,24 +866,22 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
         if (tableGrowthNeeded > 0) {
             table.grow(tableGrowthNeeded, 0, instance);
         }
-        var stackBase = align(call("malloc", 64 * 1024 + 16), 16);
-        ensureMemory((int) stackBase + 64 * 1024);
-        var stackPointer = globalInstance(
-            stackBase + 64 * 1024,
-            0,
-            ValType.I32,
-            MutabilityType.Var
-        );
+        var stackPointer = emscriptenStack;
+        if (stackPointer == null) {
+            var stackBase = align(call("malloc", 64 * 1024 + 16), 16);
+            ensureMemory((int) stackBase + 64 * 1024);
+            stackPointer = globalInstance(stackBase + 64 * 1024, 0, ValType.I32, MutabilityType.Var);
+        }
 
         var imports = dynamicImports(module, memoryBase, tableBase, stackPointer);
-        var libInstance = Instance.builder(module)
+        var libInstance = Instance.builder(module).withMachineFactory(EndiveInterpreterMachine::new)
             .withImportValues(imports)
             .withInitialize(true)
             .withStart(false)
             .build();
         var library = new DynamicLibrary(libInstance, memoryBase);
         library.loadExports();
-        mergeSymbols(library.symbols(), true);
+        if (emscripten == null) mergeSymbols(library.symbols(), true);
         for (var needed : metadata.neededDynlibs()) {
             if (!loadedLibsByName.containsKey(needed) && !PROVIDED_DYNAMIC_LIBRARIES.contains(needed)) {
                 throw new IllegalStateException(libName + " needs unsupported dynamic library " + needed);
@@ -744,7 +913,15 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
             if (imp instanceof FunctionImport fn) {
                 var type = module.typeSection().getType(fn.typeIndex());
                 var wasiFunction = wasiFunctions.get(imp.module() + "." + imp.name());
-                if (wasiFunction != null) {
+                if (emscripten != null) {
+                    functions.add(new HostFunction(imp.module(), imp.name(), type, (inst, args) -> {
+                        var resolved = resolveSymbol(imp.name());
+                        if (resolved != null && resolved.functionIndex() != null) {
+                            return returned(type, emTableCall(resolved.value().intValue(), args));
+                        }
+                        return returned(type, emscripten.call(imp.module(), imp.name(), args));
+                    }));
+                } else if (wasiFunction != null) {
                     functions.add(new HostFunction(imp.module(), imp.name(), type, (inst, args) ->
                         wasiFunction.handle().apply(inst, args)
                     ));
@@ -817,7 +994,7 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
     }
 
     private DynamicSymbol resolveSymbol(String name) {
-        if (isRuntimeProvidedImport(name)) {
+        if (emscripten == null && isRuntimeProvidedImport(name)) {
             return DynamicSymbol.function(functionImportIndices.getOrDefault("env." + name, 0));
         }
         var exported = exportSymbol(name);
@@ -839,10 +1016,12 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
             for (var i = 0; i < export.exportCount(); i++) {
                 var entry = export.getExport(i);
                 if (entry.name().equals(name) && entry.exportType() == ExternalType.FUNCTION) {
-                    return DynamicSymbol.function(entry.index());
+                    return emscripten != null
+                        ? new DynamicSymbol((long) ensureDynamicTableFunction(new DynamicLibrary(instance, 0), entry.index()), entry.index())
+                        : DynamicSymbol.function(entry.index());
                 }
                 if (entry.name().equals(name) && entry.exportType() == ExternalType.GLOBAL) {
-                    return DynamicSymbol.value(instance.global(entry.index()).getValue());
+                    return DynamicSymbol.value(mainMemoryBase + instance.global(entry.index()).getValue());
                 }
             }
         } catch (RuntimeException ignored) {
@@ -862,16 +1041,9 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
 
     private void resolveGot(DynamicLibrary library) {
         for (var entry : got.entrySet()) {
-            if (entry.getValue().getValue() != 0) {
-                continue;
-            }
-            var symbol = library.symbol(entry.getKey());
-            if (symbol == null) {
-                symbol = resolveSymbol(entry.getKey());
-            }
-            if (symbol != null) {
-                entry.getValue().setValue(symbol.value());
-            }
+            var symbol = resolveSymbol(entry.getKey());
+            if (symbol == null) symbol = library.symbol(entry.getKey());
+            if (symbol != null) entry.getValue().setValue(symbol.value());
         }
     }
 
@@ -887,11 +1059,15 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
     }
 
     private void callDynamicIfExists(Instance libInstance, String name) {
-        try {
-            libInstance.export(name).apply();
-        } catch (RuntimeException ignored) {
-            // Optional dynamic initializer.
+        if (hasExport(libInstance, name)) libInstance.export(name).apply();
+    }
+
+    private boolean hasExport(Instance target, String name) {
+        var exports = target.module().exportSection();
+        for (var i = 0; i < exports.exportCount(); i++) {
+            if (exports.getExport(i).name().equals(name)) return true;
         }
+        return false;
     }
 
     private int ensureDynamicTableFunction(DynamicLibrary library, int functionIndex) {
@@ -959,7 +1135,10 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
             for (var i = 0; i < export.exportCount(); i++) {
                 var entry = export.getExport(i);
                 if (entry.exportType() == ExternalType.FUNCTION) {
-                    symbols.put(entry.name(), DynamicSymbol.value(ensureDynamicTableFunction(this, entry.index())));
+                    var tableIndex = ensureDynamicTableFunction(this, entry.index());
+                    symbols.put(entry.name(), emscripten != null
+                        ? new DynamicSymbol((long) tableIndex, entry.index())
+                        : DynamicSymbol.value(tableIndex));
                 } else if (entry.exportType() == ExternalType.GLOBAL) {
                     symbols.put(entry.name(), DynamicSymbol.value(memoryBase + instance.global(entry.index()).getValue()));
                 }
@@ -998,7 +1177,8 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
             if (looksLikeDylink0(bytes)) {
                 while (!reader.done()) {
                     var type = reader.u32();
-                    var end = reader.position() + reader.u32();
+                    var size = reader.u32();
+                    var end = reader.position() + size;
                     if (type == 1) {
                         memorySize = reader.u32();
                         memoryAlign = reader.u32();
@@ -1162,19 +1342,11 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
     }
 
     private void callIfExists(String name) {
-        try {
-            instance.export(name).apply();
-        } catch (RuntimeException ignored) {
-            // Optional export.
-        }
+        if (hasExport(instance, name)) call(name);
     }
 
     private long callIfExists(String name, long... args) {
-        try {
-            return call(name, args);
-        } catch (RuntimeException ignored) {
-            return 0L;
-        }
+        return hasExport(instance, name) ? call(name, args) : 0;
     }
 
     @Override
@@ -1322,6 +1494,7 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
 
     @Override
     public int addFunction(postgresMod.ReadWriteCallback cb, String signature) {
+        if (emscripten != null) return addEmscriptenCallback(cb, signature);
         var dispatcher = dispatcherImport(signature);
         var functionIndex = functionImportIndices.get(dispatcher);
         if (functionIndex == null) {
@@ -1363,7 +1536,13 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
 
     @Override
     public void removeFunction(int f) {
-        callbacks.remove(f);
+        if (emscripten != null) {
+            var id = tableCallbacks.remove(f);
+            if (id != null) {
+                callbacks.remove(id);
+                instance.table(0).setRef(f, -1, null);
+            }
+        } else callbacks.remove(f);
     }
 
     @Override
@@ -1394,7 +1573,7 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
 
     @Override
     public int callInitdbMain(String[] args) {
-        return callArgv("pglite_initdb_main", "/pglite/bin/initdb", args);
+        return callArgv(emscripten != null ? "__main_argc_argv" : "pglite_initdb_main", "/pglite/bin/initdb", args);
     }
 
     @Override
@@ -1409,7 +1588,6 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
             argvWithProgram.addAll(java.util.Arrays.asList(args));
         }
         var malloc = instance.export("malloc");
-        var free = instance.export("free");
         var ptrs = new ArrayList<Integer>();
         var argv = 0;
         try {
@@ -1430,10 +1608,10 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
             }
         } finally {
             for (var ptr : ptrs) {
-                free.apply(ptr);
+                callIfExists("free", ptr);
             }
             if (argv != 0) {
-                free.apply(argv);
+                callIfExists("free", argv);
             }
         }
     }
@@ -1536,6 +1714,7 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
     }
 
     public Integer _pgl_chdir(int path) {
+        if (emscripten != null) return emscripten.chdir(UTF8ToString(path));
         return (int) callIfExists("pgl_chdir", path);
     }
 
@@ -1661,6 +1840,7 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
         private SimpleFS(Path root) {
             this.root = root;
             this.mounts.put("/", root);
+            this.mounts.put("/data", dataRoot);
         }
 
         @Override

@@ -3,7 +3,6 @@ package io.github.hidekatsu_izuno.pglite_jdbc.pglite.release;
 import com.sun.jna.Memory;
 import com.sun.jna.Pointer;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.extensionUtils;
-import io.github.hidekatsu_izuno.pglite_jdbc.pglite.initdbModFactory;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.postgresMod;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
 import io.github.hidekatsu_izuno.pglite_jdbc.wasmer.WasmerLibrary;
@@ -37,7 +36,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, AutoCloseable {
+public final class WasmerPostgresMod implements WasmProcess, EmscriptenHost.Runtime {
     private static final int WASMER_BACKEND_CRANELIFT = 0;
     private static final int DEFAULT_INITIAL_PAGES = 2048;
     private static final int DEFAULT_MAX_PAGES = 32768;
@@ -522,7 +521,7 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
         callIfExists("__wasm_apply_data_relocs");
     }
 
-    long invokeEmscripten(String signature, long[] args) {
+    public long invokeEmscripten(String signature, long[] args) {
         var savedStack = call("emscripten_stack_get_current");
         var reference = lib.wasm_table_get(dynamicTable(), (int) args[0]);
         if (reference == null) throw new IllegalStateException("Null indirect function " + args[0]);
@@ -539,7 +538,7 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
         }
     }
 
-    long emTableCall(int index, long... args) {
+    public long emTableCall(int index, long... args) {
         var reference = lib.wasm_table_get(dynamicTable(), index);
         if (reference == null) throw new IllegalStateException("Null indirect function " + index);
         var function = lib.wasm_ref_as_func(reference);
@@ -547,14 +546,25 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
         finally { lib.wasm_func_delete(function); lib.wasm_ref_delete(reference); }
     }
 
-    long emCall(String name, long... args) { return call(name, args); }
-    byte[] emRead(int pointer, int length) { return readBytes(pointer, length); }
-    void emWrite(int pointer, byte[] bytes) { writeBytes(pointer, bytes); }
-    String emString(int pointer) { return readCString(pointer); }
-    Pointer emMemory() { refreshMemoryView(); return memoryData; }
-    int emGrow(int size) { ensureMemory(size); return 1; }
-    void emExit(int status) { throw new ExitStatus(status); }
-    postgresMod.DeviceOps emDevice(String path) {
+    public long emCall(String name, long... args) { return call(name, args); }
+    public byte[] emRead(int pointer, int length) { return readBytes(pointer, length); }
+    public void emWrite(int pointer, byte[] bytes) { writeBytes(pointer, bytes); }
+    public String emString(int pointer) { return readCString(pointer); }
+    public EmscriptenHost.Heap emMemory() { return emHeap; }
+    private final EmscriptenHost.Heap emHeap = new EmscriptenHost.Heap() {
+        private Pointer pointer() { refreshMemoryView(); return memoryData; }
+        public int getInt(long p) { return pointer().getInt(p); }
+        public long getLong(long p) { return pointer().getLong(p); }
+        public short getShort(long p) { return pointer().getShort(p); }
+        public void setInt(long p, int v) { pointer().setInt(p, v); }
+        public void setLong(long p, long v) { pointer().setLong(p, v); }
+        public void setShort(long p, short v) { pointer().setShort(p, v); }
+        public void setByte(long p, byte v) { pointer().setByte(p, v); }
+        public void setMemory(long p, long n, byte v) { pointer().setMemory(p, n, v); }
+    };
+    public int emGrow(int size) { ensureMemory(size); return 1; }
+    public void emExit(int status) { throw new ExitStatus(status); }
+    public postgresMod.DeviceOps emDevice(String path) {
         var id = fs.devicePaths.get(path);
         return id == null ? null : fs.devices.get(id);
     }
@@ -756,7 +766,7 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
         nativeResources.add(() -> lib.wasm_extern_vec_delete(exportExterns));
     }
 
-    long emDlopen(int handle) {
+    public long emDlopen(int handle) {
         var id = (int) dlopen(handle + 36, emMemory().getInt(handle + 4));
         if (id == 0) {
             if (dlErrorPtr != 0) call("__dl_seterr", dlErrorPtr);
@@ -766,7 +776,7 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
         return 1;
     }
 
-    long emDlsym(int handle, int symbol) { return dlsym(handle, symbol); }
+    public long emDlsym(int handle, int symbol) { return dlsym(handle, symbol); }
 
     private long dlopen(int filePtr, int mode) {
         try {
@@ -1993,7 +2003,7 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
         return functions;
     }
 
-    long emCallback(String name, long[] args) {
+    public long emCallback(String name, long[] args) {
         return invokeCallback(Integer.parseInt(name), java.util.Arrays.stream(args).mapToInt(v -> (int) v).toArray());
     }
 
