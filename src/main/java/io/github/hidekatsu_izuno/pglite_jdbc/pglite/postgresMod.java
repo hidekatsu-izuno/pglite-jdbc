@@ -31,7 +31,7 @@ public final class postgresMod {
         int _ProcessStartupPacket(int myProcPort, boolean sslDone, boolean gssDone);
         void _pgl_sendConnData();
         int callMain(String[] args);
-        /** Invoke the initdb entry point statically linked into pglite.wasm. */
+        /** Invoke the initdb entry point of this module. */
         default int callInitdbMain(String[] args) {
             throw new UnsupportedOperationException("Postgres module does not expose pglite_initdb_main");
         }

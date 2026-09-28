@@ -239,16 +239,6 @@ ifeq ($(PORTNAME), emscripten)
 #  endif
 endif
 
-ifeq ($(PORTNAME), wasi)
-  comma := ,
-  wasi_export_flags := -Wl$(comma)--export-table -Wl$(comma)--export-memory -Wl$(comma)--export-all --export-table --export-memory --export-all
-  LINK.shared       = $(COMPILER) -shared -Wl,-Bsymbolic -Wl,--import-memory -Wl,--import-table
-  override LDFLAGS := $(filter-out $(wasi_export_flags),$(LDFLAGS))
-  override LDFLAGS_SL := $(filter-out $(wasi_export_flags),$(LDFLAGS_SL))
-  BUILD.exports     = ( $(AWK) '/^[^\#]/ {printf "%s\n",$$1}' $< ) | sort -u >$@
-  exports_file      = $(SHLIB_EXPORTS:%.txt=%.list)
-endif
-
 ##
 ## BUILD
 ##

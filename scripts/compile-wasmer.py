@@ -17,8 +17,8 @@ VERSION = ET.parse(ROOT / 'pom.xml').findtext('m:properties/m:wasmer.version', n
 TARGETS = {'linux-amd64': ('x86_64-unknown-linux-gnu', 'cranelift'),
            'linux-aarch64': ('aarch64-unknown-linux-gnu', 'cranelift'),
            'darwin-arm64': ('aarch64-apple-darwin', 'cranelift'),
-           # Cranelift 7.4.2 panics compiling PGlite EH for the Windows ABI.
-           'windows-amd64': ('x86_64-pc-windows-gnu', 'llvm')}
+           # Official PGlite uses Emscripten longjmp, not WASM EH.
+           'windows-amd64': ('x86_64-pc-windows-gnu', 'cranelift')}
 
 
 def main():
@@ -42,7 +42,11 @@ def main():
                 for entry in previous.get('modules', {}).values():
                     (dest / entry['artifact']).unlink(missing_ok=True)
         manifest = {'version': VERSION, 'target': target, 'compiler': compiler, 'modules': {}}
-        for source in sorted((RESOURCES / 'pglite/release').rglob('*.wasm')):
+        for source in sorted((RESOURCES / 'pglite/release').rglob('*')):
+            if not source.is_file() or source.suffix not in ('.wasm', '.so'):
+                continue
+            if source.read_bytes()[:4] != b'\0asm':
+                continue
             digest = hashlib.sha256(source.read_bytes()).hexdigest()
             output = dest / (digest + '.wasmu.gz')
             if args.force or not output.exists():
@@ -57,6 +61,9 @@ def main():
                 'wasm_sha256': digest, 'artifact': output.name,
                 'artifact_sha256': hashlib.sha256(output.read_bytes()).hexdigest()}
             print(f'{platform}: {source.name}', flush=True)
+        for stale in dest.glob('*.wasmu.gz'):
+            if stale.name not in {entry['artifact'] for entry in manifest['modules'].values()}:
+                stale.unlink()
         (dest / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
 
 

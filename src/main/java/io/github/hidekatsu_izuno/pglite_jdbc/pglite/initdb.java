@@ -171,7 +171,7 @@ public class initdb {
         // Wasmer's WASI descriptor table is native state and cannot be rolled
         // back by restoring linear memory. Endive's in-process WASI has no
         // such state, so retain the full memory-swap lifecycle there.
-        var memorySwap = isWasi(pg.Module().__wasi()) && pg.Module().__pgliteEhProvider() == null;
+        var memorySwap = isWasi(pg.Module().__wasi()) && !(pg.initdbMod() instanceof WasmerPostgresMod);
 
         reopenPgStreams[0] = () -> {
             var pgliteStdinPath = pg.Module().stringToUTF8OnStack(PGSTDIN_PATH);
@@ -389,7 +389,7 @@ public class initdb {
         }
         // Keep the initial backend image for initdb's child backend calls.
         if (memorySwap) origHeapU8[0] = pg.Module().HEAPU8().toByteArray();
-        log(debug, "calling pglite_initdb_main with", Arrays.toString(args));
+        log(debug, "calling initdb main with", Arrays.toString(args));
         var result = initdbMod.callInitdbMain(args);
         // initdb and its emulated children must not leave their allocator and
         // process-exit globals behind for the long-lived backend.
