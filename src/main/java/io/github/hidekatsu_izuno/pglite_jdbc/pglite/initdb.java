@@ -1,7 +1,7 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pglite;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
-import io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.WasmerPostgresMod;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.WasmProcess;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.postgresMod.ReadWriteCallback;
 import java.util.ArrayList;
@@ -168,10 +168,8 @@ public class initdb {
         var callPgMainHolder = new java.util.concurrent.atomic.AtomicReference<java.util.function.Function<String[], Integer>>();
 
         var origHeapU8 = new byte[][] {null};
-        // Wasmer's WASI descriptor table is native state and cannot be rolled
-        // back by restoring linear memory. Endive's in-process WASI has no
-        // such state, so retain the full memory-swap lifecycle there.
-        var memorySwap = isWasi(pg.Module().__wasi()) && pg.Module().__pgliteEhProvider() == null;
+        // Isolated WASM processes own their descriptors as well as linear memory.
+        var memorySwap = isWasi(pg.Module().__wasi()) && !(pg.initdbMod() instanceof WasmProcess);
 
         reopenPgStreams[0] = () -> {
             var pgliteStdinPath = pg.Module().stringToUTF8OnStack(PGSTDIN_PATH);
@@ -191,8 +189,8 @@ public class initdb {
                 "trying to execute " + firstArg
             );
 
-            if (pg.initdbMod() instanceof WasmerPostgresMod nativeMod) {
-                try (var child = nativeMod.createProcess(POSTGRES_EXE_PATH)) {
+            if (pg.initdbMod() instanceof WasmProcess processMod) {
+                try (var child = processMod.createProcess(POSTGRES_EXE_PATH)) {
                     child._pgl_chdir(child.stringToUTF8OnStack(PGDATA));
                     child._pgl_freopen(child.stringToUTF8OnStack(PGSTDIN_PATH), child.stringToUTF8OnStack("r"), 0);
                     child._pgl_freopen(child.stringToUTF8OnStack(PGSTDOUT_PATH), child.stringToUTF8OnStack("w"), 1);
@@ -253,8 +251,8 @@ public class initdb {
             return result;
         });
 
-        var initdbMod = pg.initdbMod() instanceof WasmerPostgresMod nativeMod
-            ? nativeMod.createProcess(INITDB_EXE_PATH) : pg.initdbMod();
+        var initdbMod = pg.initdbMod() instanceof WasmProcess processMod
+            ? processMod.createProcess(INITDB_EXE_PATH) : pg.initdbMod();
         try {
         var env = modEnv(initdbMod);
         env.put("PGDATA", PGDATA);
@@ -389,7 +387,7 @@ public class initdb {
         }
         // Keep the initial backend image for initdb's child backend calls.
         if (memorySwap) origHeapU8[0] = pg.Module().HEAPU8().toByteArray();
-        log(debug, "calling pglite_initdb_main with", Arrays.toString(args));
+        log(debug, "calling initdb main with", Arrays.toString(args));
         var result = initdbMod.callInitdbMain(args);
         // initdb and its emulated children must not leave their allocator and
         // process-exit globals behind for the long-lived backend.
@@ -397,8 +395,8 @@ public class initdb {
         initdbMod.resetAfterProcExit();
         return Promise.resolve(new ExecResult(result, stderrOutput.toString(), stdoutOutput.toString(), PGDATA));
         } finally {
-            if (initdbMod != pg.initdbMod() && initdbMod instanceof WasmerPostgresMod nativeMod) {
-                nativeMod.close();
+            if (initdbMod != pg.initdbMod() && initdbMod instanceof WasmProcess processMod) {
+                processMod.close();
             }
         }
     }

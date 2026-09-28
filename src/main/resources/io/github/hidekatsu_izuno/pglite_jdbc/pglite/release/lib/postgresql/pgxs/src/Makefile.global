@@ -63,8 +63,8 @@ endif
 endif
 else # not PGXS
 vpath_build = no
-abs_top_builddir = /home/hidek/git/pglite-custom/postgres-pglite
-abs_top_srcdir = /home/hidek/git/pglite-custom/postgres-pglite
+abs_top_builddir = /home/runner/_work/pglite/pglite/postgres-pglite
+abs_top_srcdir = /home/runner/_work/pglite/pglite/postgres-pglite
 
 ifneq ($(vpath_build),yes)
 top_srcdir = $(top_builddir)
@@ -221,8 +221,8 @@ python_version		=
 
 krb_srvtab = 
 
-ICU_CFLAGS		= -I/home/hidek/git/pglite-custom/.bin/pglite-wasi/libs/include
-ICU_LIBS		= -L/home/hidek/git/pglite-custom/.bin/pglite-wasi/libs/lib -licui18n -licuuc -licudata
+ICU_CFLAGS		= -I/install/libs/include
+ICU_LIBS		= -L/install/libs/lib -licui18n -licuuc -licudata
 
 LIBNUMA_CFLAGS		= 
 LIBNUMA_LIBS		= 
@@ -236,7 +236,7 @@ TCL_LIB_SPEC		=
 TCL_INCLUDE_SPEC	= 
 TCL_SHARED_BUILD	= 
 
-PTHREAD_CFLAGS		= -pthreads -D_REENTRANT -D_THREAD_SAFE
+PTHREAD_CFLAGS		= -pthread -D_REENTRANT -D_THREAD_SAFE
 PTHREAD_LIBS		= 
 
 LLVM_BINPATH = 
@@ -250,8 +250,8 @@ BITCODE_CXXFLAGS =  -O2
 
 # Compilers
 
-CPP = /home/hidek/bin/wasi-sdk-33.0-x86_64-linux/bin/clang --target=wasm32-wasip1 -E
-CPPFLAGS =  -D_GNU_SOURCE -D__PGLITE_WASI__  -I/home/hidek/git/pglite-custom/.bin/pglite-wasi/libs/include -I/home/hidek/git/pglite-custom/.bin/pglite-wasi/libs/include/libxml2 -I/src/build/toolchain/install/include/libxml2
+CPP = /emsdk/upstream/emscripten/emcc -E
+CPPFLAGS =  -D_GNU_SOURCE -D_GNU_SOURCE -D_GNU_SOURCE -D_GNU_SOURCE  -I/install/libs/include -I/install/libs/include/libxml2
 PG_SYSROOT = 
 
 override CPPFLAGS += $(ICU_CFLAGS) $(LIBNUMA_CFLAGS) $(LIBURING_CFLAGS)
@@ -265,11 +265,11 @@ override CPPFLAGS := -I$(top_builddir)/src/include $(CPPFLAGS)
 endif
 endif # not PGXS
 
-CC = /home/hidek/bin/wasi-sdk-33.0-x86_64-linux/bin/clang --target=wasm32-wasip1
+CC = /emsdk/upstream/emscripten/emcc
 GCC = yes
 SUN_STUDIO_CC = no
-CXX = /home/hidek/bin/wasi-sdk-33.0-x86_64-linux/bin/clang++ --target=wasm32-wasip1
-CFLAGS = -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Werror=vla -Werror=unguarded-availability-new -Wendif-labels -Wmissing-format-attribute -Wcast-function-type -Wformat-security -Wmissing-variable-declarations -fno-strict-aliasing -fwrapv -fexcess-precision=standard -Wno-unused-command-line-argument -Wno-compound-token-split-by-macro -Wno-format-truncation -Wno-cast-function-type-strict -D__PGLITE__ -D__PGLITE_WASI__ -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_MMAN -D_WASI_EMULATED_GETPID -D_WASI_EMULATED_PROCESS_CLOCKS -fvisibility=hidden -mllvm -wasm-enable-sjlj -mllvm -wasm-use-legacy-eh=false -Wno-declaration-after-statement -Wno-macro-redefined -Wno-unused-function -Wno-missing-prototypes -Wno-incompatible-pointer-types -O2 -Dsystem=pgl_system -Dpopen=pgl_popen -Dpclose=pgl_pclose -Dgeteuid=pgl_geteuid -Dgetuid=pgl_getuid -Dgetegid=pgl_getegid -Dgetpwuid=pgl_getpwuid -Dgetpwnam=pgl_getpwnam -Dgetppid=pgl_getppid -Dsetsid=pgl_setsid -Dfork=pgl_fork -Dwait=pgl_wait -Dwaitpid=pgl_waitpid -Dpipe=pgl_pipe -Ddup=pgl_dup -Ddup2=pgl_dup2 -Dexecl=pgl_execl -Dexecv=pgl_execv -Dpthread_is_threaded_np=pgl_pthread_is_threaded_np -Dsigemptyset=pgl_sigemptyset -Dsigfillset=pgl_sigfillset -Dsigaddset=pgl_sigaddset -Dsigdelset=pgl_sigdelset -Dexit=pgl_exit -Dopen=pgl_open -Dread=pgl_read_fd -Dwrite=pgl_write_fd -Dlseek=pgl_lseek -Dclose=pgl_close -Dwcstombs_l=pgl_wcstombs_l -Dmbstowcs_l=pgl_mbstowcs_l -Dchdir=pgl_chdir -Dstat=pgl_stat -Dmkdir=pgl_mkdir -Dopendir=pgl_opendir -Dunlink=pgl_unlink -Drename=pgl_rename -Dbacktrace=pgl_backtrace -Dbacktrace_symbols=pgl_backtrace_symbols -Dbacktrace_symbols_fd=pgl_backtrace_symbols_fd -Dsetproctitle=pgl_setproctitle -Dsetproctitle_fast=pgl_setproctitle_fast -Dsetitimer=pgl_setitimer -Dalarm=pgl_alarm -UHAVE_GETRLIMIT -UHAVE_SYNCFS -Dchmod=pgl_chmod -Dmunmap=pgl_munmap -Dfcntl=pgl_fcntl -Datexit=pgl_atexit -Dsocket=pgl_socket -Dsetsockopt=pgl_setsockopt -Dgetsockopt=pgl_getsockopt -Dgetsockname=pgl_getsockname -Drecv=pgl_recv -Dsend=pgl_send -Dconnect=pgl_connect -Dpoll=pgl_poll -Dshmget=pgl_shmget -Dshmat=pgl_shmat -Dshmdt=pgl_shmdt -Dshmctl=pgl_shmctl
+CXX = /emsdk/upstream/emscripten/em++
+CFLAGS = -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Werror=vla -Werror=unguarded-availability-new -Wendif-labels -Wmissing-format-attribute -Wcast-function-type -Wformat-security -Wmissing-variable-declarations -fno-strict-aliasing -fwrapv -fexcess-precision=standard -Wno-unused-command-line-argument -Wno-compound-token-split-by-macro -Wno-format-truncation -Wno-cast-function-type-strict -m32 -sWASM_BIGINT -fpic -sENVIRONMENT=node,web,worker -sSUPPORT_LONGJMP=emscripten -Wno-declaration-after-statement -Wno-macro-redefined -Wno-unused-function -Wno-missing-prototypes -Wno-incompatible-pointer-types -O2 -D__PGLITE__ -Dsystem=pgl_system -Dpopen=pgl_popen -Dpclose=pgl_pclose -Dgeteuid=pgl_geteuid -Dgetuid=pgl_getuid -Dgetpwuid=pgl_getpwuid -Dexit=pgl_exit -Dmunmap=pgl_munmap -Dfcntl=pgl_fcntl -Datexit=pgl_atexit -Dsetsockopt=pgl_setsockopt -Dgetsockopt=pgl_getsockopt -Dgetsockname=pgl_getsockname -Drecv=pgl_recv -Dsend=pgl_send -Dconnect=pgl_connect -Dpoll=pgl_poll -Dshmget=pgl_shmget -Dshmat=pgl_shmat -Dshmdt=pgl_shmdt -Dshmctl=pgl_shmctl -Dlongjmp=pgl_longjmp -Dsiglongjmp=pgl_siglongjmp
 CFLAGS_SL = -fPIC
 # *_MODULE are for flags applied to extension libraries
 CFLAGS_SL_MODULE =  -fvisibility=hidden
@@ -293,11 +293,11 @@ FLEX = /usr/bin/flex
 FLEXFLAGS =  $(LFLAGS)
 DTRACE = 
 DTRACEFLAGS = 
-ZIC = /usr/sbin/zic
+ZIC = 
 
 # Linking
 
-AR = /home/hidek/bin/wasi-sdk-33.0-x86_64-linux/bin/llvm-ar
+AR = /emsdk/upstream/emscripten/emar
 AROPT = crs
 LIBS = -lxslt -lxml2 -lz -lm 
 LDAP_LIBS_FE = 
@@ -324,14 +324,14 @@ ifdef PGXS
 else
   LDFLAGS_INTERNAL = -L$(top_builddir)/src/port -L$(top_builddir)/src/common
 endif
-LDFLAGS = $(LDFLAGS_INTERNAL) --no-wasm-opt -Wl,--allow-undefined -Wl,--export-table -Wl,--export-memory -Wl,--strip-debug -Wl,--export=__main_argc_argv -Wl,--export-if-defined=pglite_initdb_main -Wl,--export-if-defined=__wasm_call_ctors -Wl,--export-if-defined=__wasm_init_memory -Wl,--export-if-defined=__wasi_init_tp -Wl,--export-if-defined=__stack_pointer -Wl,--export-if-defined=malloc -Wl,--export-if-defined=free -Wl,--export-if-defined=fopen -Wl,--export-if-defined=fclose -Wl,--export-if-defined=fflush -Wl,--export-if-defined=pgl_freopen -Wl,--export-if-defined=pgl_chdir -lwasi-emulated-signal -lwasi-emulated-mman -lwasi-emulated-getpid -lwasi-emulated-process-clocks  -L/home/hidek/git/pglite-custom/.bin/pglite-wasi/libs/lib -L/src/build/toolchain/install/lib
+LDFLAGS = $(LDFLAGS_INTERNAL) -sWASM_BIGINT -sUSE_PTHREADS=0  -L/install/libs/lib
 
-LDFLAGS_EX = --no-wasm-opt -Wl,--allow-undefined -Wl,--export-table -Wl,--export-memory -Wl,--strip-debug -Wl,--export=__main_argc_argv -Wl,--export-if-defined=pglite_initdb_main -Wl,--export-if-defined=__wasm_call_ctors -Wl,--export-if-defined=__wasm_init_memory -Wl,--export-if-defined=__wasi_init_tp -Wl,--export-if-defined=__stack_pointer -Wl,--export-if-defined=malloc -Wl,--export-if-defined=free -Wl,--export-if-defined=fopen -Wl,--export-if-defined=fclose -Wl,--export-if-defined=fflush -Wl,--export-if-defined=pgl_freopen -Wl,--export-if-defined=pgl_chdir -lwasi-emulated-signal -lwasi-emulated-mman -lwasi-emulated-getpid -lwasi-emulated-process-clocks /home/hidek/git/pglite-custom/postgres-pglite/pglite/src/pglitec/pglitec.o
-LDFLAGS_EX_BE = 
+LDFLAGS_EX = -sINITIAL_MEMORY=64MB -sWASM_BIGINT -sSUPPORT_LONGJMP=emscripten -sFORCE_FILESYSTEM=1 -sUSE_PTHREADS=0 -sEXIT_RUNTIME=1 -sENVIRONMENT=node,web,worker -sMAIN_MODULE=2 -sMODULARIZE=1 -sEXPORT_ES6=1 -sEXPORT_NAME=Module -sALLOW_TABLE_GROWTH -sALLOW_MEMORY_GROWTH -sERROR_ON_UNDEFINED_SYMBOLS=0 -sEXPORTED_RUNTIME_METHODS=addFunction,removeFunction,FS,MEMFS,PROXYFS,callMain,ENV,UTF8ToString,stringToNewUTF8,stringToUTF8OnStack -sINVOKE_RUN=0 -sEXPORTED_FUNCTIONS=_main,_fgets,_fputs,_pclose,_fopen,_fclose,_fflush,___errno_location,_strerror /home/runner/_work/pglite/pglite/postgres-pglite/pglite/src/pglitec/pglitec.o -lproxyfs.js
+LDFLAGS_EX_BE =  -Wl,--export-dynamic
 # LDFLAGS_SL might have already been assigned by calling makefile
-LDFLAGS_SL += --no-wasm-opt -shared -Wl,--allow-undefined -Wl,--export-table -Wl,--export-all -Wl,--strip-debug -lwasi-emulated-signal -lwasi-emulated-mman -lwasi-emulated-getpid -lwasi-emulated-process-clocks
+LDFLAGS_SL += -shared -sSIDE_MODULE=1 -Wno-unused-function
 WINDRES = 
-X = .wasm
+X = .js
 
 # Perl
 
@@ -345,7 +345,7 @@ perl_embed_ldflags	=
 
 # Miscellaneous
 
-AWK	= gawk
+AWK	= mawk
 LN_S	= ln -s
 LIBCURL_CPPFLAGS = 
 LIBCURL_LDFLAGS = 
@@ -528,9 +528,9 @@ MKDIR_P = /usr/bin/mkdir -p
 
 missing		= $(SHELL) $(top_srcdir)/config/missing
 
-STRIP		= /home/hidek/bin/wasi-sdk-33.0-x86_64-linux/bin/llvm-strip
-STRIP_STATIC_LIB = /home/hidek/bin/wasi-sdk-33.0-x86_64-linux/bin/llvm-strip --strip-unneeded
-STRIP_SHARED_LIB = /home/hidek/bin/wasi-sdk-33.0-x86_64-linux/bin/llvm-strip --strip-unneeded
+STRIP		= strip
+STRIP_STATIC_LIB = strip --strip-unneeded
+STRIP_SHARED_LIB = strip --strip-unneeded
 
 # Documentation
 
@@ -557,12 +557,12 @@ WANTED_LANGUAGES =
 #
 
 # Name of the "template"
-PORTNAME= wasi
+PORTNAME= emscripten
 
-build_os = linux-gnux32
+build_os = linux-gnu
 
-host_tuple = wasm32-unknown-wasip1
-host_os = wasip1
+host_tuple = wasm32-unknown-linux-gnu
+host_os = linux-gnu
 host_cpu = wasm32
 
 # Backend stack size limit has to be hard-wired on Windows (it's in bytes)
@@ -784,7 +784,7 @@ endif
 # substitute implementations of C library routines (see src/port/)
 # note we already included -L.../src/port in LDFLAGS above
 
-LIBOBJS = 
+LIBOBJS =  ${LIBOBJDIR}getpeereid$U.o ${LIBOBJDIR}timingsafe_bcmp$U.o
 
 # files needed for the chosen CRC-32C implementation
 PG_CRC32C_OBJS = pg_crc32c_sb8.o

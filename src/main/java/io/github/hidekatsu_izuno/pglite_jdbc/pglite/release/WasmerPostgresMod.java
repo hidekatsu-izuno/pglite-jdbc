@@ -3,7 +3,6 @@ package io.github.hidekatsu_izuno.pglite_jdbc.pglite.release;
 import com.sun.jna.Memory;
 import com.sun.jna.Pointer;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.extensionUtils;
-import io.github.hidekatsu_izuno.pglite_jdbc.pglite.initdbModFactory;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.postgresMod;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
 import io.github.hidekatsu_izuno.pglite_jdbc.wasmer.WasmerLibrary;
@@ -37,7 +36,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, AutoCloseable {
+public final class WasmerPostgresMod implements WasmProcess, EmscriptenHost.Runtime {
     private static final int WASMER_BACKEND_CRANELIFT = 0;
     private static final int DEFAULT_INITIAL_PAGES = 2048;
     private static final int DEFAULT_MAX_PAGES = 32768;
@@ -61,6 +60,7 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
     private final URL moduleUrl;
     private final WasmerLibrary lib;
     private final Map<Integer, postgresMod.ReadWriteCallback> callbacks = new HashMap<>();
+    private final Map<Integer, Integer> tableCallbacks = new HashMap<>();
     private final Map<Integer, Integer> semaphores = new HashMap<>();
     private final SecureRandom random = new SecureRandom();
     private final Path root;
@@ -73,7 +73,6 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
     private final WasmerRuntimeContext context;
     private final boolean ownsContext;
 
-    private Pointer engine;
     private Pointer store;
     private Pointer module;
     private Pointer instance;
@@ -93,6 +92,10 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
     private int longjmpFunctionIndex;
     private int dlErrorPtr;
 
+    private final Map<String, Pointer> emscriptenFunctions = new HashMap<>();
+    private EmscriptenHost emscripten;
+    private Pointer emscriptenStack;
+    private int mainMemoryBase;
     private int nextCallback = 1;
     private int socketRead;
     private int socketWrite;
@@ -121,7 +124,6 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
                 this.context = new WasmerRuntimeContext(this.lib);
                 this.ownsContext = true;
             }
-            this.engine = context.engine;
             this.store = context.store;
             this.root = resolveRoot(this.overrides);
             this.pgRoot = root.resolve("pglite");
@@ -138,6 +140,10 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
             runHooks();
             runOnWasmerThread(() -> {
                 callIfExists("__wasm_call_ctors");
+                if (emscripten != null) {
+                    _pgl_set_popen_fn(addFunction((command, mode) -> (int) openLocaleList(command, mode), "iii"));
+                    _pgl_set_pclose_fn(addFunction((stream, ignored) -> _fclose(stream), "ii"));
+                }
                 return null;
             });
         } catch (UnsupportedOperationException e) {
@@ -299,6 +305,10 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
 
     private void instantiate() throws Exception {
         var wasmBytes = loadWasmBytes();
+        if (!WasmRuntimeFactory.hasExceptionHandling(wasmBytes)) {
+            instantiateEmscripten(wasmBytes);
+            return;
+        }
         longjmpFunctionIndex = WasmLinking.exportedFunctionIndex(wasmBytes, "__wasm_longjmp");
         nextDynamicTableSlot = WasmLinking.tableMinimum(wasmBytes);
         var moduleCacheKey = moduleCacheKey(wasmBytes);
@@ -435,6 +445,130 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
         lib.wasmer_named_extern_vec_delete(named);
     }
 
+    private void instantiateEmscripten(byte[] bytes) {
+        emscripten = new EmscriptenHost(this, fs::resolve, mergedEnv());
+        emscriptenFunctions.putAll(instantiateHostAdapter("host/emscripten.wasm", null));
+        var metadata = DylinkMetadata.parse(bytes);
+        mainMemoryBase = 1024;
+        var stackTop = (int) align(mainMemoryBase + metadata.memorySize + 8388608L, 16);
+        emscriptenStack = newI32Global(stackTop, WasmerTypes.WASM_VAR);
+        nextDynamicTableSlot = metadata.tableSize + 1;
+        var key = moduleCacheKey(bytes);
+        synchronized (MODULE_CACHE_LOCK) {
+            module = COMPILED_MODULE_CACHE.get(key);
+            if (module == null) {
+                module = compileModule(bytes);
+                COMPILED_MODULE_CACHE.put(key, module);
+            }
+        }
+        var types = new WasmImporttypeVec.ByReference();
+        lib.wasm_module_imports(module, types);
+        var imports = new WasmExternVec.ByReference();
+        lib.wasm_extern_vec_new_uninitialized(imports, types.size);
+        try {
+            for (var i = 0; i < types.size; i++) {
+                var type = readPointerAt(types.data, i);
+                var namespace = readName(lib.wasm_importtype_module(type));
+                var name = readName(lib.wasm_importtype_name(type));
+                var externalType = lib.wasm_importtype_type(type);
+                var value = switch (lib.wasm_externtype_kind(externalType)) {
+                    case WasmerTypes.WASM_EXTERN_FUNC -> lib.wasm_func_as_extern(emscriptenFunctions.get(namespace + "." + name));
+                    case WasmerTypes.WASM_EXTERN_MEMORY -> createMemoryImport(externalType);
+                    case WasmerTypes.WASM_EXTERN_TABLE -> {
+                        var limits = new WasmLimits.ByReference();
+                        limits.min = nextDynamicTableSlot;
+                        limits.max = -1;
+                        limits.write();
+                        var tableType = lib.wasm_tabletype_new(lib.wasm_valtype_new(129), limits);
+                        var table = lib.wasm_table_new(store, tableType, null);
+                        lib.wasm_tabletype_delete(tableType);
+                        if (table == null) throw wasmerError("wasm_table_new min=" + limits.min + " type=" + tableType);
+                        nativeResources.add(() -> lib.wasm_table_delete(table));
+                        tableExports.put("__indirect_function_table", table);
+                        yield lib.wasm_table_as_extern(table);
+                    }
+                    case WasmerTypes.WASM_EXTERN_GLOBAL -> lib.wasm_global_as_extern(switch (name) {
+                        case "__memory_base" -> newI32Global(mainMemoryBase, WasmerTypes.WASM_CONST);
+                        case "__table_base" -> newI32Global(1, WasmerTypes.WASM_CONST);
+                        case "__stack_pointer" -> emscriptenStack;
+                        case "__heap_base" -> newI32Global(stackTop, WasmerTypes.WASM_VAR);
+                        default -> throw new UnsupportedOperationException("Unknown main global: " + namespace + "." + name);
+                    });
+                    default -> throw new UnsupportedOperationException("Unknown Emscripten import: " + name);
+                };
+                writePointerAt(imports.data, i, lib.wasm_extern_copy(value));
+            }
+            var trap = new Pointer[1];
+            instance = lib.wasm_instance_new(store, module, imports, trap);
+            if (instance == null) throw trapOrWasmerError("wasm_instance_new", trap[0]);
+        } finally {
+            lib.wasm_extern_vec_delete(imports);
+            lib.wasm_importtype_vec_delete(types);
+        }
+        indexExports();
+        for (var entry : WasmLinking.exportedFunctionTableIndexes(bytes, 1).entrySet()) {
+            var symbol = mainSymbols.get(entry.getKey());
+            if (symbol != null) mainSymbols.put(entry.getKey(), DynamicSymbol.function(symbol.function, entry.getValue()));
+        }
+        for (var entry : new HashMap<>(globalExports).entrySet()) {
+            var value = i32Value(0);
+            lib.wasm_global_get(entry.getValue(), value);
+            value.read(); value.of.setType(int.class); value.of.read();
+            var relocated = newI32Global(value.of.i32 + mainMemoryBase, WasmerTypes.WASM_CONST);
+            mainSymbols.put(entry.getKey(), DynamicSymbol.global(relocated));
+        }
+        refreshMemoryView();
+        callIfExists("__wasm_apply_data_relocs");
+    }
+
+    public long invokeEmscripten(String signature, long[] args) {
+        var savedStack = call("emscripten_stack_get_current");
+        var reference = lib.wasm_table_get(dynamicTable(), (int) args[0]);
+        if (reference == null) throw new IllegalStateException("Null indirect function " + args[0]);
+        var function = lib.wasm_ref_as_func(reference);
+        try {
+            return callFunc(function, java.util.Arrays.copyOfRange(args, 1, args.length));
+        } catch (EmscriptenHost.Longjmp jump) {
+            call("_emscripten_stack_restore", savedStack);
+            call("setThrew", 1, 0);
+            return 0;
+        } finally {
+            lib.wasm_func_delete(function);
+            lib.wasm_ref_delete(reference);
+        }
+    }
+
+    public long emTableCall(int index, long... args) {
+        var reference = lib.wasm_table_get(dynamicTable(), index);
+        if (reference == null) throw new IllegalStateException("Null indirect function " + index);
+        var function = lib.wasm_ref_as_func(reference);
+        try { return callFunc(function, args); }
+        finally { lib.wasm_func_delete(function); lib.wasm_ref_delete(reference); }
+    }
+
+    public long emCall(String name, long... args) { return call(name, args); }
+    public byte[] emRead(int pointer, int length) { return readBytes(pointer, length); }
+    public void emWrite(int pointer, byte[] bytes) { writeBytes(pointer, bytes); }
+    public String emString(int pointer) { return readCString(pointer); }
+    public EmscriptenHost.Heap emMemory() { return emHeap; }
+    private final EmscriptenHost.Heap emHeap = new EmscriptenHost.Heap() {
+        private Pointer pointer() { refreshMemoryView(); return memoryData; }
+        public int getInt(long p) { return pointer().getInt(p); }
+        public long getLong(long p) { return pointer().getLong(p); }
+        public short getShort(long p) { return pointer().getShort(p); }
+        public void setInt(long p, int v) { pointer().setInt(p, v); }
+        public void setLong(long p, long v) { pointer().setLong(p, v); }
+        public void setShort(long p, short v) { pointer().setShort(p, v); }
+        public void setByte(long p, byte v) { pointer().setByte(p, v); }
+        public void setMemory(long p, long n, byte v) { pointer().setMemory(p, n, v); }
+    };
+    public int emGrow(int size) { ensureMemory(size); return 1; }
+    public void emExit(int status) { throw new ExitStatus(status); }
+    public postgresMod.DeviceOps emDevice(String path) {
+        var id = fs.devicePaths.get(path);
+        return id == null ? null : fs.devices.get(id);
+    }
+
     private Pointer createMemoryImport(Pointer externtype) {
         var memorytype = lib.wasm_externtype_as_memorytype_const(externtype);
         var limitsPtr = lib.wasm_memorytype_limits(memorytype);
@@ -499,7 +633,6 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
         var functypeCopy = lib.wasm_functype_copy(functype);
         var paramKinds = valKinds(lib.wasm_functype_params(functypeCopy));
         var resultKinds = valKinds(lib.wasm_functype_results(functypeCopy));
-        var host = this;
         WasmerLibrary.WasmFuncCallbackWithEnv callback = (env, args, results) -> {
             try {
                 var argValues = readArgs(args, paramKinds);
@@ -509,11 +642,11 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
                     System.err.println("[wasmer-wasi] " + importName + " returned");
                     return trap;
                 }
-                var result = host.hostCall(moduleName, importName, argValues, resultKinds);
+                var result = hostCall(moduleName, importName, argValues, resultKinds);
                 writeResults(results, resultKinds, result);
                 return null;
             } catch (RuntimeException e) {
-                host.pendingHostException = e;
+                pendingHostException = e;
                 var message = new WasmByteVec.ByReference();
                 var bytes = (e.toString() + "\0").getBytes(StandardCharsets.UTF_8);
                 lib.wasm_byte_vec_new(message, bytes.length, bytes);
@@ -633,6 +766,18 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
         nativeResources.add(() -> lib.wasm_extern_vec_delete(exportExterns));
     }
 
+    public long emDlopen(int handle) {
+        var id = (int) dlopen(handle + 36, emMemory().getInt(handle + 4));
+        if (id == 0) {
+            if (dlErrorPtr != 0) call("__dl_seterr", dlErrorPtr);
+            return 0;
+        }
+        loadedLibsByHandle.put(handle, loadedLibsByHandle.remove(id));
+        return 1;
+    }
+
+    public long emDlsym(int handle, int symbol) { return dlsym(handle, symbol); }
+
     private long dlopen(int filePtr, int mode) {
         try {
             var fileName = normalizeDynamicLibraryName(readCString(filePtr));
@@ -729,10 +874,12 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
         if (nextDynamicTableSlot > tableSize && !lib.wasm_table_grow(table, nextDynamicTableSlot - tableSize, null)) {
             throw wasmerError("wasm_table_grow");
         }
-        var stackBase = align(call("malloc", 64 * 1024 + 16), 16);
-        ensureMemory((int) stackBase + 64 * 1024);
-        var stack = newI32Global(0, WasmerTypes.WASM_VAR);
-        setGlobalI32(stack, (int) stackBase + 64 * 1024);
+        var stack = emscriptenStack;
+        if (emscripten == null) {
+            var stackBase = align(call("malloc", 64 * 1024 + 16), 16);
+            ensureMemory((int) stackBase + 64 * 1024);
+            stack = newI32Global((int) stackBase + 64 * 1024, WasmerTypes.WASM_VAR);
+        }
 
         var dynamicModule = compileDynamicModule(bytes);
         nativeResources.add(() -> lib.wasm_module_delete(dynamicModule));
@@ -744,7 +891,7 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
             throw trapOrWasmerError("wasm_instance_new " + name, trapOut[0]);
         }
         nativeResources.add(() -> lib.wasm_instance_delete(dynamicInstance));
-        var library = new DynamicLibrary(name, dynamicModule, dynamicInstance, memoryBase, stack);
+        var library = new DynamicLibrary(dynamicModule, dynamicInstance, memoryBase);
         var symbolTableIndexes = new HashMap<String, Integer>();
         symbolTableIndexes.putAll(WasmLinking.exportedFunctionTableIndexes(bytes, tableBase));
         library.indexExports(symbolTableIndexes);
@@ -804,6 +951,11 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
     private Pointer dynamicFunctionImport(String moduleName, String name, Pointer type) {
         var symbol = resolveSymbol(name);
         if (symbol != null && symbol.function != null) return lib.wasm_func_as_extern(symbol.function);
+        if (emscripten != null) {
+            var function = emscriptenFunctions.get(moduleName + "." + name);
+            if (function == null) throw new IllegalStateException("Unresolved Emscripten symbol: " + name);
+            return lib.wasm_func_as_extern(function);
+        }
         var eh = ehImport(moduleName, name);
         return eh != null ? eh : createHostFunc(moduleName, name, type);
     }
@@ -905,7 +1057,16 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
     private void resolveGot(DynamicLibrary library) {
         for (var entry : got.entrySet()) {
             var symbol = resolveSymbol(entry.getKey());
+            if (symbol == null) symbol = library.symbols.get(entry.getKey());
             if (symbol != null && symbol.global != null) copyGlobal(symbol.global, entry.getValue());
+            else if (symbol != null && symbol.function != null) {
+                var index = symbol.tableIndex != null && symbol.tableIndex != 0
+                    ? symbol.tableIndex : registerTableFunction(symbol.function);
+                if (mainSymbols.get(entry.getKey()) == symbol) {
+                    mainSymbols.put(entry.getKey(), DynamicSymbol.function(symbol.function, index));
+                }
+                setGlobalI32(entry.getValue(), index);
+            }
         }
     }
 
@@ -935,15 +1096,13 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
     }
 
     private final class DynamicLibrary {
-        private final String name;
         private final Pointer module;
         private final Pointer instance;
         private final long memoryBase;
-        private final Pointer stack;
         private final Map<String, Pointer> functions = new HashMap<>();
         private final Map<String, DynamicSymbol> symbols = new HashMap<>();
-        private DynamicLibrary(String name, Pointer module, Pointer instance, long memoryBase, Pointer stack) {
-            this.name = name; this.module = module; this.instance = instance; this.memoryBase = memoryBase; this.stack = stack;
+        private DynamicLibrary(Pointer module, Pointer instance, long memoryBase) {
+            this.module = module; this.instance = instance; this.memoryBase = memoryBase;
         }
         private void indexExports(Map<String, Integer> tableIndexes) {
             var types = new WasmExporttypeVec.ByReference(); lib.wasm_module_exports(module, types);
@@ -962,7 +1121,14 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
                     }
                     symbols.put(name, DynamicSymbol.function(function, tableIndex));
                 } else if (kind == WasmerTypes.WASM_EXTERN_GLOBAL) {
-                    symbols.put(name, DynamicSymbol.global(lib.wasm_extern_as_global(value)));
+                    var global = lib.wasm_extern_as_global(value);
+                    if (emscripten != null) {
+                        var offset = i32Value(0);
+                        lib.wasm_global_get(global, offset);
+                        offset.read(); offset.of.setType(int.class); offset.of.read();
+                        global = newI32Global(offset.of.i32 + (int) memoryBase, WasmerTypes.WASM_CONST);
+                    }
+                    symbols.put(name, DynamicSymbol.global(global));
                 }
             }
             lib.wasm_exporttype_vec_delete(types);
@@ -1032,8 +1198,11 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
         static int tableMinimum(byte[] wasm) {
             var payload = section(wasm, 4);
             if (payload == null) throw new IllegalStateException("pglite.wasm has no function table");
-            var r = new Reader(payload); r.u32(); r.byte_(); var flags = r.u32(); var min = r.u32();
-            return min;
+            var r = new Reader(payload);
+            r.u32(); // Table count
+            r.byte_(); // Element type
+            r.u32(); // Limits flags
+            return r.u32(); // Minimum table size
         }
 
         static int exportedFunctionIndex(byte[] wasm, String wanted) {
@@ -1093,6 +1262,7 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
     }
 
     private long hostCall(String module, String name, long[] args, byte[] resultKinds) {
+        if (emscripten != null) return emscripten.call(module, name, args);
         var result = switch (module) {
             case "env" -> envCall(name, args);
             case "pglite" -> pgliteCall(name, args);
@@ -1257,12 +1427,20 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
         var resultArity = (int) lib.wasm_func_result_arity(func);
         var argsVec = new WasmValVec.ByReference();
         Memory argsMem = null;
+        var functionType = lib.wasm_func_type(func);
+        var argumentKinds = valKinds(lib.wasm_functype_params(functionType));
+        lib.wasm_functype_delete(functionType);
         if (arity > 0) {
             argsMem = new Memory(arity * 16L);
             argsMem.clear();
             for (var i = 0; i < arity; i++) {
-                argsMem.setByte(i * 16L, WasmerTypes.WASM_I32);
-                argsMem.setInt(i * 16L + 8, i < args.length ? (int) args[i] : 0);
+                argsMem.setByte(i * 16L, argumentKinds[i]);
+                var argument = i < args.length ? args[i] : 0L;
+                if (argumentKinds[i] == WasmerTypes.WASM_I32 || argumentKinds[i] == WasmerTypes.WASM_F32) {
+                    argsMem.setInt(i * 16L + 8, (int) argument);
+                } else {
+                    argsMem.setLong(i * 16L + 8, argument);
+                }
             }
             argsVec.size = arity;
             argsVec.data = argsMem;
@@ -1568,6 +1746,7 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
         try {
             runOnWasmerThread(() -> {
                 clearDlError();
+                if (emscripten != null) emscripten.close();
                 loadedLibsByName.clear();
                 loadedLibsByHandle.clear();
                 got.clear();
@@ -1703,6 +1882,8 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
     public void _PostgresMainLoopOnce() {
         try {
             call("PostgresMainLoopOnce");
+        } catch (EmscriptenHost.Longjmp jump) {
+            _PostgresMainLongJmp();
         } catch (LongjmpException jump) {
             _PostgresMainLongJmp();
         } catch (ExitStatus exit) {
@@ -1757,6 +1938,9 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
 
     @Override
     public int addFunction(postgresMod.ReadWriteCallback cb, String signature) {
+        if (emscripten != null) return runOnWasmerThread(() -> {
+            return addEmscriptenCallback(cb, signature);
+        });
         // Host imports (socket_*/system/popen/pclose) invoke Java callbacks directly.
         // These IDs belong to the host callback registry, not the WASM function table.
         var id = nextCallback++;
@@ -1764,9 +1948,79 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
         return id;
     }
 
+    private int addEmscriptenCallback(postgresMod.ReadWriteCallback cb, String signature) {
+        var params = signature.length() - 1;
+        if (params < 1 || params > 2 || signature.charAt(0) == 'v') {
+            throw new IllegalArgumentException("Unsupported ReadWriteCallback signature: " + signature);
+        }
+        var id = nextCallback++;
+        callbacks.put(id, cb);
+        var functions = instantiateHostAdapter("host/callback-" + params + ".wasm", Integer.toString(id));
+        var index = registerTableFunction(functions.get("java.callback"));
+        tableCallbacks.put(index, id);
+        return index;
+    }
+
+    private Map<String, Pointer> instantiateHostAdapter(String resource, String callbackId) {
+        byte[] bytes;
+        try (var input = WasmerPostgresMod.class.getResourceAsStream(resource)) {
+            if (input == null) throw new IllegalStateException("Missing host adapter: " + resource);
+            bytes = input.readAllBytes();
+        } catch (java.io.IOException error) { throw new java.io.UncheckedIOException(error); }
+        var adapter = compileModule(bytes);
+        nativeResources.add(() -> lib.wasm_module_delete(adapter));
+        var types = new WasmImporttypeVec.ByReference();
+        lib.wasm_module_imports(adapter, types);
+        var imports = new WasmExternVec.ByReference();
+        lib.wasm_extern_vec_new_uninitialized(imports, types.size);
+        var functions = new HashMap<String, Pointer>();
+        try {
+            for (var i = 0; i < types.size; i++) {
+                var type = readPointerAt(types.data, i);
+                var namespace = readName(lib.wasm_importtype_module(type));
+                var name = callbackId != null ? callbackId : readName(lib.wasm_importtype_name(type));
+                var function = createHostFunc(namespace, name, lib.wasm_importtype_type(type));
+                writePointerAt(imports.data, i, lib.wasm_extern_copy(function));
+            }
+            var trap = new Pointer[1];
+            var adapterInstance = lib.wasm_instance_new(store, adapter, imports, trap);
+            if (adapterInstance == null) throw trapOrWasmerError("host adapter " + resource, trap[0]);
+            nativeResources.add(() -> lib.wasm_instance_delete(adapterInstance));
+            var exports = new WasmExternVec.ByReference();
+            var exportTypes = new WasmExporttypeVec.ByReference();
+            lib.wasm_instance_exports(adapterInstance, exports);
+            lib.wasm_module_exports(adapter, exportTypes);
+            for (var i = 0; i < exports.size; i++) {
+                var name = readName(lib.wasm_exporttype_name(readPointerAt(exportTypes.data, i)));
+                functions.put(name, lib.wasm_extern_as_func(readPointerAt(exports.data, i)));
+            }
+            lib.wasm_exporttype_vec_delete(exportTypes);
+            nativeResources.add(() -> lib.wasm_extern_vec_delete(exports));
+        } finally {
+            lib.wasm_extern_vec_delete(imports);
+            lib.wasm_importtype_vec_delete(types);
+        }
+        return functions;
+    }
+
+    public long emCallback(String name, long[] args) {
+        return invokeCallback(Integer.parseInt(name), java.util.Arrays.stream(args).mapToInt(v -> (int) v).toArray());
+    }
+
     @Override
     public void removeFunction(int f) {
-        callbacks.remove(f);
+        if (emscripten != null) {
+            runOnWasmerThread(() -> {
+                var id = tableCallbacks.remove(f);
+                if (id != null) {
+                    callbacks.remove(id);
+                    if (!lib.wasm_table_set(dynamicTable(), f, null)) throw wasmerError("wasm_table_set");
+                }
+                return null;
+            });
+        } else {
+            callbacks.remove(f);
+        }
     }
 
     @Override
@@ -1812,12 +2066,15 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
         options.INITIAL_MEMORY = overrides.INITIAL_MEMORY;
         options.print = overrides.print;
         options.printErr = overrides.printErr;
-        return new WasmerPostgresMod(options, moduleUrl);
+        var url = emscripten != null && program.endsWith("/initdb")
+            ? WasmerPostgresMod.class.getResource("initdb.wasm") : moduleUrl;
+        if (emscripten != null && program.endsWith("/initdb")) options.wasmModule = null;
+        return new WasmerPostgresMod(options, url);
     }
 
     @Override
     public int callInitdbMain(String[] args) {
-        return callArgv("pglite_initdb_main", "/pglite/bin/initdb", args);
+        return callArgv(emscripten != null ? "__main_argc_argv" : "pglite_initdb_main", "/pglite/bin/initdb", args);
     }
 
     @Override
@@ -1855,6 +2112,14 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
                 callIfExists("free", argv);
             }
         }
+    }
+
+    @Override public void print(String text) {
+        if (overrides.print != null) overrides.print.accept(new Object[] {text});
+    }
+    @Override public void printErr(String text) {
+        if (overrides.printErr != null) overrides.printErr.accept(new Object[] {text});
+        if (Boolean.getBoolean("pglite.trace_init")) System.err.print(text);
     }
 
     @Override
@@ -1952,6 +2217,7 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
 
     @Override
     public Integer _pgl_chdir(int path) {
+        if (emscripten != null) return emscripten.chdir(readCString(path));
         return (int) callIfExists("pgl_chdir", path);
     }
 
@@ -2061,6 +2327,7 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
         private SimpleFS(Path root) {
             this.root = root;
             this.mounts.put("/", root);
+            this.mounts.put("/data", dataRoot);
         }
 
         @Override

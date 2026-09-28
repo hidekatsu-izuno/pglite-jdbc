@@ -16,13 +16,13 @@ import org.junit.jupiter.api.Test;
 
 class WasmerRuntimeSelectionTest {
     @Test
-    void bundledPgliteWasmRequiresExceptionHandling() throws Exception {
+    void officialPgliteWasmUsesEmscriptenLongjmp() throws Exception {
         var url = getClass().getClassLoader().getResource(
             extensionCatalog.RELEASE_RESOURCE_ROOT + "pglite.wasm"
         );
         assertNotNull(url);
         try (var input = url.openStream()) {
-            assertTrue(WasmRuntimeFactory.hasExceptionHandling(input.readAllBytes()));
+            assertFalse(WasmRuntimeFactory.hasExceptionHandling(input.readAllBytes()));
         }
     }
 
@@ -40,7 +40,7 @@ class WasmerRuntimeSelectionTest {
     }
 
     @Test
-    void missingLibrarySelectsEndiveAndForcedWasmerFails() throws Exception {
+    void missingLibrarySelectsEndiveForOfficialAbi() throws Exception {
         runSelectionProbe("missing");
     }
 
@@ -80,8 +80,13 @@ class WasmerRuntimeSelectionTest {
             assertThrows(IllegalStateException.class, () -> WasmRuntimeFactory.create(null, null));
             System.clearProperty("pglite.force_wasmer");
             var url = SelectionProbe.class.getClassLoader().getResource(extensionCatalog.RELEASE_RESOURCE_ROOT + "pglite.wasm");
-            var mod = WasmRuntimeFactory.create(null, url);
-            assertTrue(mod instanceof io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.EndivePostgresMod);
+            try (var runtime = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.WasmProcess) WasmRuntimeFactory.create(null, url)) {
+                assertTrue(runtime instanceof io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.EndivePostgresMod);
+            }
+            System.setProperty("pglite.force_endive", "true");
+            try (var runtime = (io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.WasmProcess) WasmRuntimeFactory.create(null, url)) {
+                assertTrue(runtime instanceof io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.EndivePostgresMod);
+            }
         }
     }
 
@@ -89,16 +94,25 @@ class WasmerRuntimeSelectionTest {
     void wasmerLoadsAndCallsABundledDynamicExtension() {
         Assumptions.assumeTrue(WasmerNativeLoader.isAvailable());
         var options = new pglite.PGliteOptions();
-        options.extensions = java.util.Map.of("hstore", index.extension("hstore"));
+        options.extensions = java.util.Map.of("hstore", index.extension("hstore"),
+            "pgcrypto", index.extension("pgcrypto"), "cube", index.extension("cube"));
         var db = new pglite(options);
         try {
             db.waitReady().join();
-            db.execSync("CREATE EXTENSION hstore;", null);
+            db.execSync("CREATE EXTENSION hstore; CREATE EXTENSION pgcrypto; CREATE EXTENSION cube;", null);
             var result = db.<java.util.Map<String, Object>>querySync(
                 "SELECT 'a=>1'::hstore -> 'a' AS value;", null, null
             );
             assertTrue(result.rows().size() == 1);
             assertEquals("1", result.rows().getFirst().get("value"));
+            var nativeValues = db.<java.util.Map<String, Object>>querySync(
+                "SELECT encode(digest('abc', 'sha256'), 'hex') AS digest, "
+                    + "cube_distance('(0,0)'::cube, '(3,4)'::cube) AS distance, "
+                    + "length(gen_random_bytes(16))::int AS bytes", null, null).rows().getFirst();
+            assertEquals("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", nativeValues.get("digest"));
+            assertEquals(5.0, nativeValues.get("distance"));
+            assertEquals(16.0, nativeValues.get("bytes"));
+            db.execSync("SELECT pg_sleep(0.01)", null);
             assertThrows(RuntimeException.class, () -> db.execSync("SELECT 1 / 0", null));
             assertEquals(42.0, db.<java.util.Map<String, Object>>querySync(
                 "SELECT 42::int AS value", null, null).rows().getFirst().get("value"));

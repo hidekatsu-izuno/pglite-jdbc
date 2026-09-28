@@ -3,270 +3,350 @@
   "target": "aarch64-unknown-linux-gnu",
   "compiler": "cranelift",
   "modules": {
-    "pglite/release/amcheck.tar.gz/lib/postgresql/amcheck.so.wasm": {
-      "wasm_sha256": "22256b12d859fae9e0ae74ef41205b085678b3690be12299b1f0c5b3989cf5a2",
-      "artifact": "22256b12d859fae9e0ae74ef41205b085678b3690be12299b1f0c5b3989cf5a2.wasmu.gz",
-      "artifact_sha256": "0b159bf1eaf33fafbb95a0d420666fef94353476371469d7fd4781dd8eea4ea5"
+    "pglite/release/amcheck.tar.gz/lib/postgresql/amcheck.so": {
+      "wasm_sha256": "b1a2848c39aef3eb9c0102c87e25df1ece2af8eab0097c53e57acbb16c298b69",
+      "artifact": "b1a2848c39aef3eb9c0102c87e25df1ece2af8eab0097c53e57acbb16c298b69.wasmu.gz",
+      "artifact_sha256": "4b2e8cb7839de070207ea9113edbf24fa84c830f043d018347eedde71a799b68"
     },
-    "pglite/release/auth_delay.tar.gz/lib/postgresql/auth_delay.so.wasm": {
-      "wasm_sha256": "d17fc6af5c951de899274ffe81bdf24f7cb321650cfe0b49afc0162740f3cc0b",
-      "artifact": "d17fc6af5c951de899274ffe81bdf24f7cb321650cfe0b49afc0162740f3cc0b.wasmu.gz",
-      "artifact_sha256": "c878a0bd1bc4671364d4153e89c3375a6147e43adad5b26929cd30df266c1924"
+    "pglite/release/auto_explain.tar.gz/lib/postgresql/auto_explain.so": {
+      "wasm_sha256": "8938a13c73d23f7738307f5a2dc5bfe49183c67bbd0815600a6efdbce4026468",
+      "artifact": "8938a13c73d23f7738307f5a2dc5bfe49183c67bbd0815600a6efdbce4026468.wasmu.gz",
+      "artifact_sha256": "8fd9453b6e55d4983dfd43f4ac24f98bc9a7c2aa13cce70e75e91a2a4768a441"
     },
-    "pglite/release/auto_explain.tar.gz/lib/postgresql/auto_explain.so.wasm": {
-      "wasm_sha256": "876c86c88f785adb959de4a8309012ff220e7e6ef51a198014b2d16f1f8196a7",
-      "artifact": "876c86c88f785adb959de4a8309012ff220e7e6ef51a198014b2d16f1f8196a7.wasmu.gz",
-      "artifact_sha256": "5ec807b32eeabc185f3a92fd5377a4d1993d28a78fa2ec3420a87fe458a9a861"
+    "pglite/release/bloom.tar.gz/lib/postgresql/bloom.so": {
+      "wasm_sha256": "9695c71a447ffc1d4280970d0580a4ea0b5c81b2db5a5b4acdfb07cc02ba557c",
+      "artifact": "9695c71a447ffc1d4280970d0580a4ea0b5c81b2db5a5b4acdfb07cc02ba557c.wasmu.gz",
+      "artifact_sha256": "38ce8b2941b7f55528d007409cd25cdb59707585024f59551e72a7e6a16cea1c"
     },
-    "pglite/release/basebackup_to_shell.tar.gz/lib/postgresql/basebackup_to_shell.so.wasm": {
-      "wasm_sha256": "7e18d2447c25b11871495c90028d575439871d8bdf62745cd9bf2e1aa1493487",
-      "artifact": "7e18d2447c25b11871495c90028d575439871d8bdf62745cd9bf2e1aa1493487.wasmu.gz",
-      "artifact_sha256": "8cbdd55fab2eded02430cd058b63a677dfe716055e5b5560032e8f8f17363f14"
+    "pglite/release/btree_gin.tar.gz/lib/postgresql/btree_gin.so": {
+      "wasm_sha256": "97c566bb0e5373897a15752d2b78b7218b849d49ba26822ec6884eec23259350",
+      "artifact": "97c566bb0e5373897a15752d2b78b7218b849d49ba26822ec6884eec23259350.wasmu.gz",
+      "artifact_sha256": "474ea395e455117e7ec95bdc9acaa490e6e9da88d1d4c3b4abf1371b082fa11c"
     },
-    "pglite/release/basic_archive.tar.gz/lib/postgresql/basic_archive.so.wasm": {
-      "wasm_sha256": "ad64e029af5c27d5c4e5f0ae58371a19515871492bce5a76dd1d137aa4875a78",
-      "artifact": "ad64e029af5c27d5c4e5f0ae58371a19515871492bce5a76dd1d137aa4875a78.wasmu.gz",
-      "artifact_sha256": "db3691a344c88f4a1fb51270d608226f48a631e018ae5ffc934290fede41ec44"
+    "pglite/release/btree_gist.tar.gz/lib/postgresql/btree_gist.so": {
+      "wasm_sha256": "251bdb8c9a0916ba3a63a7b3de0728da8c072e2aa0c3943ef198b5d399c5803f",
+      "artifact": "251bdb8c9a0916ba3a63a7b3de0728da8c072e2aa0c3943ef198b5d399c5803f.wasmu.gz",
+      "artifact_sha256": "f0e8c7ebb425c88657c6f652ee3ca9502c5b8fd3faa121dfa12f21a0bdee9a85"
     },
-    "pglite/release/bloom.tar.gz/lib/postgresql/bloom.so.wasm": {
-      "wasm_sha256": "6c8c874adc79dccb6c43aed4364c1d46e5acbd643556a5e5c7c7e0a52fcf703f",
-      "artifact": "6c8c874adc79dccb6c43aed4364c1d46e5acbd643556a5e5c7c7e0a52fcf703f.wasmu.gz",
-      "artifact_sha256": "3c0daf7f23cb4d2a53d73ed634167924f2b1ccf0984e4635160eeb91a0afd3e3"
+    "pglite/release/citext.tar.gz/lib/postgresql/citext.so": {
+      "wasm_sha256": "19c8c2a8976ce3ffdf2f4d74a2e4f5f198fdd3ce4dc00729e17e10395f4bb018",
+      "artifact": "19c8c2a8976ce3ffdf2f4d74a2e4f5f198fdd3ce4dc00729e17e10395f4bb018.wasmu.gz",
+      "artifact_sha256": "e2b1079e79a8de28c8e88aecfc1e6f85080d7ca0b8064ff4b755dc9b7c2445a0"
     },
-    "pglite/release/btree_gin.tar.gz/lib/postgresql/btree_gin.so.wasm": {
-      "wasm_sha256": "753551d7df474472ff462ad11bb389f0de836f1a5507a55434dca1bda7423bb3",
-      "artifact": "753551d7df474472ff462ad11bb389f0de836f1a5507a55434dca1bda7423bb3.wasmu.gz",
-      "artifact_sha256": "b095f6bc6a4d52a54e62b9224d0f109d3fc172a99abdc3df6d0d33dcd538ea46"
+    "pglite/release/cube.tar.gz/lib/postgresql/cube.so": {
+      "wasm_sha256": "6279e21b5df664bc27558288803435c15d9ffab8139649710f1aabdecd1848ab",
+      "artifact": "6279e21b5df664bc27558288803435c15d9ffab8139649710f1aabdecd1848ab.wasmu.gz",
+      "artifact_sha256": "421075e8267b0121637312f73a1c2201056ca59e2013cc668b7c92c3c5ac19ed"
     },
-    "pglite/release/btree_gist.tar.gz/lib/postgresql/btree_gist.so.wasm": {
-      "wasm_sha256": "af5cce1118d84b4089a422a45a2fe2a6c47190d0ada195e42244d75569b39b89",
-      "artifact": "af5cce1118d84b4089a422a45a2fe2a6c47190d0ada195e42244d75569b39b89.wasmu.gz",
-      "artifact_sha256": "ca667e6d09de7bd290ea5ca898a43754310e05985e3c9c2436b00a753326fc8b"
+    "pglite/release/dict_int.tar.gz/lib/postgresql/dict_int.so": {
+      "wasm_sha256": "821ca5911b8f5078f559c6e2b4894092f0a34f92d4acdc2eff6b7c26e7edc793",
+      "artifact": "821ca5911b8f5078f559c6e2b4894092f0a34f92d4acdc2eff6b7c26e7edc793.wasmu.gz",
+      "artifact_sha256": "11272910bff7e6f4def962486a02752bb4d2568aaab62f40007ef1767c2b793a"
     },
-    "pglite/release/citext.tar.gz/lib/postgresql/citext.so.wasm": {
-      "wasm_sha256": "dbca821d1160d045e148f514943e0f07bbe01328cbd3ca49805c67619ebf5bd8",
-      "artifact": "dbca821d1160d045e148f514943e0f07bbe01328cbd3ca49805c67619ebf5bd8.wasmu.gz",
-      "artifact_sha256": "1770061a205d91673e7bcf0443f46dae9b108b5ea4d0b30a45eac0d46c067ba5"
+    "pglite/release/dict_xsyn.tar.gz/lib/postgresql/dict_xsyn.so": {
+      "wasm_sha256": "9feac2171ce4a25128a142b30e1ea3a64b8cbe51e2428dde54775e1188fcd242",
+      "artifact": "9feac2171ce4a25128a142b30e1ea3a64b8cbe51e2428dde54775e1188fcd242.wasmu.gz",
+      "artifact_sha256": "7c95ebe718f516b54d804d871e9500fce405efefeba19d9d4835a377e06cf51c"
     },
-    "pglite/release/cube.tar.gz/lib/postgresql/cube.so.wasm": {
-      "wasm_sha256": "51fc15a4e78f109838520482bd1c3e411aaca0870afdec4c59f1c52c0c96e1c6",
-      "artifact": "51fc15a4e78f109838520482bd1c3e411aaca0870afdec4c59f1c52c0c96e1c6.wasmu.gz",
-      "artifact_sha256": "195d13d49f62632ad79013502c9a356e2cf6d4fdd5687eafe6b1200cbe083a86"
+    "pglite/release/earthdistance.tar.gz/lib/postgresql/earthdistance.so": {
+      "wasm_sha256": "35c4362c43f6a61cbb2ea74ed5375cc7c52f85751068a8a8507842f6c6847cd1",
+      "artifact": "35c4362c43f6a61cbb2ea74ed5375cc7c52f85751068a8a8507842f6c6847cd1.wasmu.gz",
+      "artifact_sha256": "35ca43fba9b5e75c524cbb3805e8a8f81caadedc032c64993e4c458efcf4119b"
     },
-    "pglite/release/dblink.tar.gz/lib/postgresql/dblink.so.wasm": {
-      "wasm_sha256": "669fb78dcef37559ebe6759e802b9fede17787b7d5799f2f9a8464059a2c34a4",
-      "artifact": "669fb78dcef37559ebe6759e802b9fede17787b7d5799f2f9a8464059a2c34a4.wasmu.gz",
-      "artifact_sha256": "99b8ccf78fc6067a05fefda8e709490c7715144732e72e39e578d04cda70de5f"
+    "pglite/release/file_fdw.tar.gz/lib/postgresql/file_fdw.so": {
+      "wasm_sha256": "895dcef48e44facc592561aebb8d7e9020ec9d4d1928b5c554123c7dd030fe2e",
+      "artifact": "895dcef48e44facc592561aebb8d7e9020ec9d4d1928b5c554123c7dd030fe2e.wasmu.gz",
+      "artifact_sha256": "7bd7a334683a1b196b2ce32ef98283ead0890510b3460059ed9339740111e118"
     },
-    "pglite/release/dict_int.tar.gz/lib/postgresql/dict_int.so.wasm": {
-      "wasm_sha256": "3beeb8cb675f80100998f1e5d4ee5b35cd300d3ce7ad1f84abd2a21c7d5c9ae8",
-      "artifact": "3beeb8cb675f80100998f1e5d4ee5b35cd300d3ce7ad1f84abd2a21c7d5c9ae8.wasmu.gz",
-      "artifact_sha256": "dfae52d284ee1b5a1fc62ecb291198f7218891d7d9436d40d3a7dc59609ec9a9"
+    "pglite/release/fuzzystrmatch.tar.gz/lib/postgresql/fuzzystrmatch.so": {
+      "wasm_sha256": "d12cf9e15d4b36ff980d861066ef545619e9f8c0859e5408211f340bacc1a7a6",
+      "artifact": "d12cf9e15d4b36ff980d861066ef545619e9f8c0859e5408211f340bacc1a7a6.wasmu.gz",
+      "artifact_sha256": "5a5b89f6cccf7b5e8ce1ab8e4e739b46eceb314ae60f5579ec186135903ae093"
     },
-    "pglite/release/dict_xsyn.tar.gz/lib/postgresql/dict_xsyn.so.wasm": {
-      "wasm_sha256": "980bf88ec7a45c0984c71f06a993d8d3505b5dd3fc73864d987017cbf433c903",
-      "artifact": "980bf88ec7a45c0984c71f06a993d8d3505b5dd3fc73864d987017cbf433c903.wasmu.gz",
-      "artifact_sha256": "591f25e416713f6bbf52af1bdec17f476ce6e88acb4374f9154300dcd731b298"
+    "pglite/release/host/callback-1.wasm": {
+      "wasm_sha256": "1fb9a3fc30fa11d1ed2a3e2bc531e8bdab8a18b95cf835f42df49b7afdff3bc5",
+      "artifact": "1fb9a3fc30fa11d1ed2a3e2bc531e8bdab8a18b95cf835f42df49b7afdff3bc5.wasmu.gz",
+      "artifact_sha256": "c2e70f211ed7a76b7efaafbfbc475144dd4d8a629a64949ff5621d29ba8cb6fb"
     },
-    "pglite/release/earthdistance.tar.gz/lib/postgresql/earthdistance.so.wasm": {
-      "wasm_sha256": "8f38f1fd76b35f8ca57750a0f9e5550cc35c3088f174f44c45a23d708bd11770",
-      "artifact": "8f38f1fd76b35f8ca57750a0f9e5550cc35c3088f174f44c45a23d708bd11770.wasmu.gz",
-      "artifact_sha256": "9dd726e2a22b90904fd457157ddcedf2525612d4a749d819b6516d93eea5f826"
+    "pglite/release/host/callback-2.wasm": {
+      "wasm_sha256": "731c64a6fd865fc6ddd322595b35dfe0792fb703f685034480df961e3fa87a04",
+      "artifact": "731c64a6fd865fc6ddd322595b35dfe0792fb703f685034480df961e3fa87a04.wasmu.gz",
+      "artifact_sha256": "f60af5e1297ad5cffa72a35d964d0d4e17111acef79ce061a10974144fc34116"
     },
-    "pglite/release/file_fdw.tar.gz/lib/postgresql/file_fdw.so.wasm": {
-      "wasm_sha256": "a0b3673ac9056a819ce7a4cf80023ba42f4f85b13204b60605d46ec111890fc0",
-      "artifact": "a0b3673ac9056a819ce7a4cf80023ba42f4f85b13204b60605d46ec111890fc0.wasmu.gz",
-      "artifact_sha256": "1323d7a14c6c94146068396287ebaaf81365de8b22c01ec05594f0579bbdbf44"
+    "pglite/release/host/emscripten.wasm": {
+      "wasm_sha256": "d50659f978c5aa8403f829b684984ad2b12209ffdb1324a05c7cc42847c4804d",
+      "artifact": "d50659f978c5aa8403f829b684984ad2b12209ffdb1324a05c7cc42847c4804d.wasmu.gz",
+      "artifact_sha256": "dc07c0c88512c6c0388c8260c285941c65b97511381d2a1f468855099b89808d"
     },
-    "pglite/release/fuzzystrmatch.tar.gz/lib/postgresql/fuzzystrmatch.so.wasm": {
-      "wasm_sha256": "f02392f8d488cc4826d7475d891c5d733d7c7c87547f27f141c0d7dd6f605340",
-      "artifact": "f02392f8d488cc4826d7475d891c5d733d7c7c87547f27f141c0d7dd6f605340.wasmu.gz",
-      "artifact_sha256": "8b7a95654b588b05998538c9424ba53549764cc89d5b47fa5e3d64b40982aa3d"
+    "pglite/release/hstore.tar.gz/lib/postgresql/hstore.so": {
+      "wasm_sha256": "07062f325eee73fc661bb95224190e714ffbf50480f0d260fa2bb60d913b5c87",
+      "artifact": "07062f325eee73fc661bb95224190e714ffbf50480f0d260fa2bb60d913b5c87.wasmu.gz",
+      "artifact_sha256": "69d3a41eb290ae7a73c4ca5a992c2c7ca095f11ec6b75fdb9c0d60835d9262f3"
     },
-    "pglite/release/hstore.tar.gz/lib/postgresql/hstore.so.wasm": {
-      "wasm_sha256": "7237213f49b6c5c87c96eb4467d8998c704c054716ce9eb9919e0cf722f150db",
-      "artifact": "7237213f49b6c5c87c96eb4467d8998c704c054716ce9eb9919e0cf722f150db.wasmu.gz",
-      "artifact_sha256": "03d41d05259e68caee7a9e5f1f66b3da413a9f490b7c4740ea6693eed5235ed0"
+    "pglite/release/initdb.wasm": {
+      "wasm_sha256": "aa134fde5c96733ff9ab9644f409d9337ae7b3f42a66914a4dad2beec03824df",
+      "artifact": "aa134fde5c96733ff9ab9644f409d9337ae7b3f42a66914a4dad2beec03824df.wasmu.gz",
+      "artifact_sha256": "415647cb48fb88194c3ecb09ff0a87411d091a7cc5c8e92d621f2de4429c790c"
     },
-    "pglite/release/intarray.tar.gz/lib/postgresql/_int.so.wasm": {
-      "wasm_sha256": "0b6a100390ffe4f09d67a695700c2fe25b9ba753617453013966787cf7e49468",
-      "artifact": "0b6a100390ffe4f09d67a695700c2fe25b9ba753617453013966787cf7e49468.wasmu.gz",
-      "artifact_sha256": "7540fcc65bf3dd05abe655037caecb3cfdac3f2ebf9e99a8b9b3a6f4a03b41c0"
+    "pglite/release/intarray.tar.gz/lib/postgresql/_int.so": {
+      "wasm_sha256": "a484d8e3a22436dfc12ddd207a43b57fcf4ff77ed1c719ceeb0d7ff68b60fd90",
+      "artifact": "a484d8e3a22436dfc12ddd207a43b57fcf4ff77ed1c719ceeb0d7ff68b60fd90.wasmu.gz",
+      "artifact_sha256": "b7050d77c521818d41081182dbbd0ef45897053df645e1617794e032ea75474b"
     },
-    "pglite/release/isn.tar.gz/lib/postgresql/isn.so.wasm": {
-      "wasm_sha256": "f3efe564217cd26ac6c19fd2e5b5bb25bb6139a396616eabf4dcda4406b89364",
-      "artifact": "f3efe564217cd26ac6c19fd2e5b5bb25bb6139a396616eabf4dcda4406b89364.wasmu.gz",
-      "artifact_sha256": "d01b8a7b85dad447a527c985800c6e83d7c3ffaceed9b4d8d50857c97cb8c1f3"
+    "pglite/release/isn.tar.gz/lib/postgresql/isn.so": {
+      "wasm_sha256": "0cb5e1640fb87bbcd0e58818e176739e3a4f6b6d85a33f7afa7bfc8b46a504b2",
+      "artifact": "0cb5e1640fb87bbcd0e58818e176739e3a4f6b6d85a33f7afa7bfc8b46a504b2.wasmu.gz",
+      "artifact_sha256": "2fa89a2df2fb15f1ebe9ea552ec3cd31382c51344b06250809566501b4cb98dc"
     },
-    "pglite/release/lo.tar.gz/lib/postgresql/lo.so.wasm": {
-      "wasm_sha256": "56ae23bad0a28499efc91e24a91330b3d8ea48313b12878ab079dcb9eac9cc42",
-      "artifact": "56ae23bad0a28499efc91e24a91330b3d8ea48313b12878ab079dcb9eac9cc42.wasmu.gz",
-      "artifact_sha256": "93a16235ba9c1a146547cb132d267bd8dad43c3a1b8d39f99ce00aa68b7c11f5"
+    "pglite/release/lib/postgresql/cyrillic_and_mic.so": {
+      "wasm_sha256": "7e74e4f461cbf52a11aa27846ddbefaa32e9c3a3c99b024ae1d32038fb95d3dc",
+      "artifact": "7e74e4f461cbf52a11aa27846ddbefaa32e9c3a3c99b024ae1d32038fb95d3dc.wasmu.gz",
+      "artifact_sha256": "2003fde9f1cf55ae680d65e3962035ffcd9580c6b0c0b579252bb37e6ac24c41"
     },
-    "pglite/release/ltree.tar.gz/lib/postgresql/ltree.so.wasm": {
-      "wasm_sha256": "1fd9cba001977b1f7365aa8c17c936b6d83ae75841c25581f9e90b4bd5b18f08",
-      "artifact": "1fd9cba001977b1f7365aa8c17c936b6d83ae75841c25581f9e90b4bd5b18f08.wasmu.gz",
-      "artifact_sha256": "fb0cb428b619d5981d25b7a1ad392a3c28588fd775638e7dc3ca748672b87019"
+    "pglite/release/lib/postgresql/dict_snowball.so": {
+      "wasm_sha256": "1cfa591939377bd12cec8d999c781dbf9c2beaa2ffdf4758fde7407352408109",
+      "artifact": "1cfa591939377bd12cec8d999c781dbf9c2beaa2ffdf4758fde7407352408109.wasmu.gz",
+      "artifact_sha256": "eb6fe7e27c6a4aa648cb10b000df6f5bcf7597e21be2230cbc9eefeed7c32be4"
     },
-    "pglite/release/oid2name.tar.gz/bin/oid2name.wasm": {
-      "wasm_sha256": "72e4facfe53d7271e3055787ea20392d58984d836cb652a08b5134ea4f96e855",
-      "artifact": "72e4facfe53d7271e3055787ea20392d58984d836cb652a08b5134ea4f96e855.wasmu.gz",
-      "artifact_sha256": "ce404938c0fa520a2aa8c7d3e6af5cb59a8ed17dc2bd63200388aef4a9afd565"
+    "pglite/release/lib/postgresql/euc2004_sjis2004.so": {
+      "wasm_sha256": "5cc93a6a66e54ce249dc42a3c0c215fe467188ef9298dcc4345eb9b088e806c5",
+      "artifact": "5cc93a6a66e54ce249dc42a3c0c215fe467188ef9298dcc4345eb9b088e806c5.wasmu.gz",
+      "artifact_sha256": "2a01b1053736910a76d608d5b3af0618135fb92b92b70e6b9ce312324e511333"
     },
-    "pglite/release/pageinspect.tar.gz/lib/postgresql/pageinspect.so.wasm": {
-      "wasm_sha256": "833dd9438f3a9c9f880fdddeb72dc2c40c71a31ee954d95964beb0ed8bae0ba9",
-      "artifact": "833dd9438f3a9c9f880fdddeb72dc2c40c71a31ee954d95964beb0ed8bae0ba9.wasmu.gz",
-      "artifact_sha256": "d4e4588d14e3061227f99907c46fb4035790ec8df183a1873e11fc6c18a4a7a1"
+    "pglite/release/lib/postgresql/euc_cn_and_mic.so": {
+      "wasm_sha256": "80a2d6c58ef790bb41451718ff9dbf3942533c0c57efa8e179ff9edf32a8a10f",
+      "artifact": "80a2d6c58ef790bb41451718ff9dbf3942533c0c57efa8e179ff9edf32a8a10f.wasmu.gz",
+      "artifact_sha256": "7ae7437ed6b55904fc53c84371e9873aae6ea9a1800e570d842a57b7a6a77906"
     },
-    "pglite/release/passwordcheck.tar.gz/lib/postgresql/passwordcheck.so.wasm": {
-      "wasm_sha256": "87d812067d8f96929ac4a4e88d7376eaa14b425df7e956e612ad4e21d752370a",
-      "artifact": "87d812067d8f96929ac4a4e88d7376eaa14b425df7e956e612ad4e21d752370a.wasmu.gz",
-      "artifact_sha256": "007c2e165186de60981c5e5be531975f3e537976d8ce5beacc5e6b625c265841"
+    "pglite/release/lib/postgresql/euc_jp_and_sjis.so": {
+      "wasm_sha256": "7cd93f7265b65dfac5cbd1b282ba778489200b6afe859a85c23bbc3da2539d73",
+      "artifact": "7cd93f7265b65dfac5cbd1b282ba778489200b6afe859a85c23bbc3da2539d73.wasmu.gz",
+      "artifact_sha256": "a92396986b1e41e4972025136d20e12443278c18e2aea7b9bba5fadfffedd329"
     },
-    "pglite/release/pg_buffercache.tar.gz/lib/postgresql/pg_buffercache.so.wasm": {
-      "wasm_sha256": "607031256b630c89fd74747c0da651cfa3c97e31679132182d90cc650df1cc4e",
-      "artifact": "607031256b630c89fd74747c0da651cfa3c97e31679132182d90cc650df1cc4e.wasmu.gz",
-      "artifact_sha256": "3c5aa25553fe69981905fce915abc39b5d1418d63e9b263c037aa83b73887ecb"
+    "pglite/release/lib/postgresql/euc_kr_and_mic.so": {
+      "wasm_sha256": "ac312393b9f5faafaa8b29353e8acaa0a41ed092a15a21d4d0a0dbc00a396d38",
+      "artifact": "ac312393b9f5faafaa8b29353e8acaa0a41ed092a15a21d4d0a0dbc00a396d38.wasmu.gz",
+      "artifact_sha256": "44941dd2c59cd3ee39f1264a4146cca2d39eb5888ce55819f34d989b8b7bff11"
     },
-    "pglite/release/pg_freespacemap.tar.gz/lib/postgresql/pg_freespacemap.so.wasm": {
-      "wasm_sha256": "7c47e7341957459f3a1e8fcc3e2c7ad38f146794f24d197cfa04c30392567cbe",
-      "artifact": "7c47e7341957459f3a1e8fcc3e2c7ad38f146794f24d197cfa04c30392567cbe.wasmu.gz",
-      "artifact_sha256": "7c6bf38d0d059496831fab4954bcdf5ad679f66209bdde132da86d869bc1ea7d"
+    "pglite/release/lib/postgresql/euc_tw_and_big5.so": {
+      "wasm_sha256": "a71d405dc55ed80ad4bf2193a17eeae6ded3a67fd199fb0478e9195cc63138b5",
+      "artifact": "a71d405dc55ed80ad4bf2193a17eeae6ded3a67fd199fb0478e9195cc63138b5.wasmu.gz",
+      "artifact_sha256": "fdb4651a33613884eb5f9c30480d39935399c9aff6613d9cc81797a9b1f79081"
     },
-    "pglite/release/pg_logicalinspect.tar.gz/lib/postgresql/pg_logicalinspect.so.wasm": {
-      "wasm_sha256": "fe2b205d12115edf2697ea59341f9064ff57488494e8e7c57ed2cc5f97d9db3f",
-      "artifact": "fe2b205d12115edf2697ea59341f9064ff57488494e8e7c57ed2cc5f97d9db3f.wasmu.gz",
-      "artifact_sha256": "36b2cae80b743eec39746d0250e9731892df49afd6f1d9fda5da1ee50e6e9040"
+    "pglite/release/lib/postgresql/latin2_and_win1250.so": {
+      "wasm_sha256": "2a946e942f8ebffcc00fccc746006501af565fab53abb3a18ade9d9a37fbe72f",
+      "artifact": "2a946e942f8ebffcc00fccc746006501af565fab53abb3a18ade9d9a37fbe72f.wasmu.gz",
+      "artifact_sha256": "4bc3e98002ff0ecfe12aa9e66bcb2be2200537175608af3158d3c6894fe038eb"
     },
-    "pglite/release/pg_overexplain.tar.gz/lib/postgresql/pg_overexplain.so.wasm": {
-      "wasm_sha256": "5c39a2fbf95afa9c8280e06145676ef14eb196ff181b8d00be9c1c19c7a3e29f",
-      "artifact": "5c39a2fbf95afa9c8280e06145676ef14eb196ff181b8d00be9c1c19c7a3e29f.wasmu.gz",
-      "artifact_sha256": "837efca295ac81468f749846a5d303218fa67834c2a294a73ce0b0dbfdf076b9"
+    "pglite/release/lib/postgresql/latin_and_mic.so": {
+      "wasm_sha256": "4aeddf6796f144038002407639a17ac8991ab4e277582ec2dc24095da1e3a98a",
+      "artifact": "4aeddf6796f144038002407639a17ac8991ab4e277582ec2dc24095da1e3a98a.wasmu.gz",
+      "artifact_sha256": "bf9b3fae25a31654e41eada369bdaa43e56343cdf45f8edd07a7f319004b0eea"
     },
-    "pglite/release/pg_prewarm.tar.gz/lib/postgresql/pg_prewarm.so.wasm": {
-      "wasm_sha256": "eb0b3e7931f6436082f5f85918f9cd7cde9aaaf393eb134284a264d4bbeaecb2",
-      "artifact": "eb0b3e7931f6436082f5f85918f9cd7cde9aaaf393eb134284a264d4bbeaecb2.wasmu.gz",
-      "artifact_sha256": "51934b53293a62421cb8b0e576c2dacc9038139f3c361e1c0c6799f753b9991e"
+    "pglite/release/lib/postgresql/libpqwalreceiver.so": {
+      "wasm_sha256": "66454d8a030bc6019af56523f1eeca9fb83e728548bd189f908b48594b3792ed",
+      "artifact": "66454d8a030bc6019af56523f1eeca9fb83e728548bd189f908b48594b3792ed.wasmu.gz",
+      "artifact_sha256": "e3f444f1edc0ee24419fabbd9d105fdee20749e4932d93eeab96959dde046eb9"
     },
-    "pglite/release/pg_stat_statements.tar.gz/lib/postgresql/pg_stat_statements.so.wasm": {
-      "wasm_sha256": "d8c3f14a5a7adc11dbc2f78c02605511ca6dd62bea204b71d6f8c28e61308c06",
-      "artifact": "d8c3f14a5a7adc11dbc2f78c02605511ca6dd62bea204b71d6f8c28e61308c06.wasmu.gz",
-      "artifact_sha256": "ec12ab60aee9910b82b1128ec2cc5d9fa8e6ae18f095d13142e32d9e4c9625b5"
+    "pglite/release/lib/postgresql/pgoutput.so": {
+      "wasm_sha256": "f1d3dcf0814e6a639d9b5283fc0055f29191b3ca4e3a7546c876e633422ebf9f",
+      "artifact": "f1d3dcf0814e6a639d9b5283fc0055f29191b3ca4e3a7546c876e633422ebf9f.wasmu.gz",
+      "artifact_sha256": "992438aa6b4c9535e4776bda693722a4d02970865afa69b798f1c04cb945bb23"
     },
-    "pglite/release/pg_surgery.tar.gz/lib/postgresql/pg_surgery.so.wasm": {
-      "wasm_sha256": "062a3db39a341a809a694162612a3a0e6869e458e4635ab50d8465167f5be732",
-      "artifact": "062a3db39a341a809a694162612a3a0e6869e458e4635ab50d8465167f5be732.wasmu.gz",
-      "artifact_sha256": "417d3014064b8e88bceb7dc55c9fc00e8b5fb948b7c95df7cb076cdd861696e0"
+    "pglite/release/lib/postgresql/plpgsql.so": {
+      "wasm_sha256": "202d1be2a4525deb70c41d7c4b5e638d578fe8a509602240ac016a555d2aa393",
+      "artifact": "202d1be2a4525deb70c41d7c4b5e638d578fe8a509602240ac016a555d2aa393.wasmu.gz",
+      "artifact_sha256": "703d3d4505481b2a10b64bf8921e2abf896be4baf4d97075228ec202769d4c8c"
     },
-    "pglite/release/pg_trgm.tar.gz/lib/postgresql/pg_trgm.so.wasm": {
-      "wasm_sha256": "07cb29336b0d64fd203e9f335f3a69115a9e6eef8acfa66e1d52a62c44f8aed9",
-      "artifact": "07cb29336b0d64fd203e9f335f3a69115a9e6eef8acfa66e1d52a62c44f8aed9.wasmu.gz",
-      "artifact_sha256": "262ffd761ebee085d4bd00f487ecd1c3d1f82d28a9ef3fe8b8205a2417552eb9"
+    "pglite/release/lib/postgresql/utf8_and_big5.so": {
+      "wasm_sha256": "b5db8974639531059ad6997c18d3de1b66f85d99d26cb20bd3d76160d76d05d4",
+      "artifact": "b5db8974639531059ad6997c18d3de1b66f85d99d26cb20bd3d76160d76d05d4.wasmu.gz",
+      "artifact_sha256": "361319c4f80df67872af9d7ce796199bea81443208d38a1cc6e330a43394cb8e"
     },
-    "pglite/release/pg_visibility.tar.gz/lib/postgresql/pg_visibility.so.wasm": {
-      "wasm_sha256": "9331a15ae89d030406d53eab1ecf7eacfe5a1b1ea0380f4d7eec8080ec2b0d03",
-      "artifact": "9331a15ae89d030406d53eab1ecf7eacfe5a1b1ea0380f4d7eec8080ec2b0d03.wasmu.gz",
-      "artifact_sha256": "887467ca1bc5308bad43f9879ba25f7fcc2fb85faa7135e5292a5cfea8a59481"
+    "pglite/release/lib/postgresql/utf8_and_cyrillic.so": {
+      "wasm_sha256": "f3f27fd1ee43208da1e440bf4299fa36007b51341ce986f7fc7c2370be250ec2",
+      "artifact": "f3f27fd1ee43208da1e440bf4299fa36007b51341ce986f7fc7c2370be250ec2.wasmu.gz",
+      "artifact_sha256": "78f2e086d03b7a22a5f7f15a2b9953490cff9a34c85b485a48912d551dd0bc74"
     },
-    "pglite/release/pg_walinspect.tar.gz/lib/postgresql/pg_walinspect.so.wasm": {
-      "wasm_sha256": "ac0ccd02bba07a50ae4dc46a902e4d3340791fea4e19bc8fb50db574a8291fc3",
-      "artifact": "ac0ccd02bba07a50ae4dc46a902e4d3340791fea4e19bc8fb50db574a8291fc3.wasmu.gz",
-      "artifact_sha256": "5523cad4747ac325a9556641efa05c806ae36f82bb3995fd726fbac138e1a956"
+    "pglite/release/lib/postgresql/utf8_and_euc2004.so": {
+      "wasm_sha256": "3815401fe877442d6db65d180a64293191e7de628328dffa480fb7964794171b",
+      "artifact": "3815401fe877442d6db65d180a64293191e7de628328dffa480fb7964794171b.wasmu.gz",
+      "artifact_sha256": "1c189e28d9eebb51bd136dbd9a426321f61facaa5ba4212ad28dd8085c430fa5"
     },
-    "pglite/release/pgcrypto.tar.gz/lib/postgresql/pgcrypto.so.wasm": {
-      "wasm_sha256": "9e6dc54446222e944531b8306c1a2afb2b5e176e57d0139d014262c99670fdbf",
-      "artifact": "9e6dc54446222e944531b8306c1a2afb2b5e176e57d0139d014262c99670fdbf.wasmu.gz",
-      "artifact_sha256": "b61fa8cc6138707e9a02f584b038d39efa820b2623d5db0efbb3c6c8bfe24ace"
+    "pglite/release/lib/postgresql/utf8_and_euc_cn.so": {
+      "wasm_sha256": "09c9f5458a1368847c21f8df044e7ebf7be2b81c668673723ad13900f39473ef",
+      "artifact": "09c9f5458a1368847c21f8df044e7ebf7be2b81c668673723ad13900f39473ef.wasmu.gz",
+      "artifact_sha256": "331971fb898b7b87040e47b6701488624e07ad86e57664f86bd75e2c4f92e735"
+    },
+    "pglite/release/lib/postgresql/utf8_and_euc_jp.so": {
+      "wasm_sha256": "384081382257ef09710a54f6e917f098a1dba0403b87ec65e4d25aae63866153",
+      "artifact": "384081382257ef09710a54f6e917f098a1dba0403b87ec65e4d25aae63866153.wasmu.gz",
+      "artifact_sha256": "cf72b7507565d219f57d3aef2c717171e6a51e1d36fad822ee6363e67d315a8b"
+    },
+    "pglite/release/lib/postgresql/utf8_and_euc_kr.so": {
+      "wasm_sha256": "edf6bcb195e8f276a6779b7a368ca427ae619ab2bbfd9bc364ae0dda03f5c1f3",
+      "artifact": "edf6bcb195e8f276a6779b7a368ca427ae619ab2bbfd9bc364ae0dda03f5c1f3.wasmu.gz",
+      "artifact_sha256": "3c9fc00a417f73fc47cdcb46b104fac0165cedcd4455e5789749103b224f5288"
+    },
+    "pglite/release/lib/postgresql/utf8_and_euc_tw.so": {
+      "wasm_sha256": "1b1077f97d5b3a368b55dc58af9ab30b387c1f9fe43cc0341e01cc08dbd2239b",
+      "artifact": "1b1077f97d5b3a368b55dc58af9ab30b387c1f9fe43cc0341e01cc08dbd2239b.wasmu.gz",
+      "artifact_sha256": "adf8ba20a390cf75f3a8be930f45e7b7d319c361f978ab030b88f08c0bb8ad05"
+    },
+    "pglite/release/lib/postgresql/utf8_and_gb18030.so": {
+      "wasm_sha256": "683b9e93ed6e52e409dbd3d8dcaed5358fb0bad0b6d4c51382307f01f3671378",
+      "artifact": "683b9e93ed6e52e409dbd3d8dcaed5358fb0bad0b6d4c51382307f01f3671378.wasmu.gz",
+      "artifact_sha256": "047e39b1d703fcb6b4249985666975ce79d7b9d22ddf78e31c42e2b2923ae4ca"
+    },
+    "pglite/release/lib/postgresql/utf8_and_gbk.so": {
+      "wasm_sha256": "076b450cc00d06df50d038f188abe8a3d4302d860be73479d89c0dcac10d501c",
+      "artifact": "076b450cc00d06df50d038f188abe8a3d4302d860be73479d89c0dcac10d501c.wasmu.gz",
+      "artifact_sha256": "36cfa0cf021b5ebe56e4e5a7cbce0c9107099cb52b88b8d7939b01a687bf09ee"
+    },
+    "pglite/release/lib/postgresql/utf8_and_iso8859.so": {
+      "wasm_sha256": "8615bfc7aef56da1cf9bb2fbf5d67c3c8f228da02dc881480ce7c13b000b35c9",
+      "artifact": "8615bfc7aef56da1cf9bb2fbf5d67c3c8f228da02dc881480ce7c13b000b35c9.wasmu.gz",
+      "artifact_sha256": "ab9e55da5b095a1f4997cdae9292c07acc0e0685fe9392278624c5adf0daee34"
+    },
+    "pglite/release/lib/postgresql/utf8_and_iso8859_1.so": {
+      "wasm_sha256": "8169306237fa9c9988be87cddfc5184ead34e45c59f21e59b28ce476d41a365a",
+      "artifact": "8169306237fa9c9988be87cddfc5184ead34e45c59f21e59b28ce476d41a365a.wasmu.gz",
+      "artifact_sha256": "b056c94fbefd19a067d926966419329e3964d23dbef61b51491eadc5fa243c52"
+    },
+    "pglite/release/lib/postgresql/utf8_and_johab.so": {
+      "wasm_sha256": "ec671b7bf439af399647db34733b81e4f160e7d2c6a2581de1d92d2ebe28a77f",
+      "artifact": "ec671b7bf439af399647db34733b81e4f160e7d2c6a2581de1d92d2ebe28a77f.wasmu.gz",
+      "artifact_sha256": "7db734b9a3732f068bb875146b2408cdb8e29e6ed8d19d88e4fabf144068280a"
+    },
+    "pglite/release/lib/postgresql/utf8_and_sjis.so": {
+      "wasm_sha256": "bbddfbcceddd23fcf35fedc7ffb5bcec873c8a3364ad7e17ef0f8d478e154aaf",
+      "artifact": "bbddfbcceddd23fcf35fedc7ffb5bcec873c8a3364ad7e17ef0f8d478e154aaf.wasmu.gz",
+      "artifact_sha256": "919330dfff346adef9aa963ae5f946a3b5e061f4f996da86faaff2251233e9e1"
+    },
+    "pglite/release/lib/postgresql/utf8_and_sjis2004.so": {
+      "wasm_sha256": "335cfc1fb49b167c6798c4ae71a092dd967c09c064a94c8ead0ecc87f3904019",
+      "artifact": "335cfc1fb49b167c6798c4ae71a092dd967c09c064a94c8ead0ecc87f3904019.wasmu.gz",
+      "artifact_sha256": "f39e57d91066c76726930d26409ae4d4718b510b3fb64940705a8a93b94c8a49"
+    },
+    "pglite/release/lib/postgresql/utf8_and_uhc.so": {
+      "wasm_sha256": "eba8d7ecb934cfa36204a9130534ca644c34e59a98e86969ffb861ad6a3d324b",
+      "artifact": "eba8d7ecb934cfa36204a9130534ca644c34e59a98e86969ffb861ad6a3d324b.wasmu.gz",
+      "artifact_sha256": "903fd635217f7d964c5c2a5219bc3465d2f0e43b941f1b6a3f445346b6b24f5f"
+    },
+    "pglite/release/lib/postgresql/utf8_and_win.so": {
+      "wasm_sha256": "b6bd3eabb36f5afde10bc116454305b8eb9afada4d37ca4599d0d77aa99efacc",
+      "artifact": "b6bd3eabb36f5afde10bc116454305b8eb9afada4d37ca4599d0d77aa99efacc.wasmu.gz",
+      "artifact_sha256": "8d2e43a5a6786a495bc887ec17a7ac6ce1fa4a7337b01ebf9ecf798d7a14a5a5"
+    },
+    "pglite/release/lo.tar.gz/lib/postgresql/lo.so": {
+      "wasm_sha256": "d0a9948d73e9db5eb6718fffb7b2e1984451daafd6985cd79dec41eea3c17dee",
+      "artifact": "d0a9948d73e9db5eb6718fffb7b2e1984451daafd6985cd79dec41eea3c17dee.wasmu.gz",
+      "artifact_sha256": "447d98bfd128ff7ca7fba763686f120ebd9cd43002b0d0b97e8e2a1359661fb8"
+    },
+    "pglite/release/ltree.tar.gz/lib/postgresql/ltree.so": {
+      "wasm_sha256": "85b07305688389800c370c3aff24a1566bd9a6c0825609a31b2212fa8ad13f8c",
+      "artifact": "85b07305688389800c370c3aff24a1566bd9a6c0825609a31b2212fa8ad13f8c.wasmu.gz",
+      "artifact_sha256": "e3f582d0fa4caf1fd0bd029fc4a136877a4d017527092d5351a1d303b708a9a5"
+    },
+    "pglite/release/pageinspect.tar.gz/lib/postgresql/pageinspect.so": {
+      "wasm_sha256": "10be7d9e4c1229ebe4edde3071cf622d3cb873dff75d32f406e44e1853981083",
+      "artifact": "10be7d9e4c1229ebe4edde3071cf622d3cb873dff75d32f406e44e1853981083.wasmu.gz",
+      "artifact_sha256": "65dec7151a325168c9b5168eefb065049d1092c4f5d9f7c3054c0e9720c803c1"
+    },
+    "pglite/release/passwordcheck.tar.gz/lib/postgresql/passwordcheck.so": {
+      "wasm_sha256": "c506f7d70ad2f034390e36804770aab11131ead618540b9c4f3dbcfc0a22f86b",
+      "artifact": "c506f7d70ad2f034390e36804770aab11131ead618540b9c4f3dbcfc0a22f86b.wasmu.gz",
+      "artifact_sha256": "8020df8d7971011b1882bf6b5094f58955d911f27e053007e65acef9bdef309a"
+    },
+    "pglite/release/pg_buffercache.tar.gz/lib/postgresql/pg_buffercache.so": {
+      "wasm_sha256": "2a234986e14bde861e4127ed4b371a6a0157379b42bd04ad87ea5be9320fe2bb",
+      "artifact": "2a234986e14bde861e4127ed4b371a6a0157379b42bd04ad87ea5be9320fe2bb.wasmu.gz",
+      "artifact_sha256": "f31b027d6751946061ecc701fce3e9a1d54360ba69bd425cb0bd2758a2c11e18"
+    },
+    "pglite/release/pg_freespacemap.tar.gz/lib/postgresql/pg_freespacemap.so": {
+      "wasm_sha256": "9cf173b0df9bc4f2bbda0000d0e84c829ac87d1cfa7d378c3809baa35c59e2ff",
+      "artifact": "9cf173b0df9bc4f2bbda0000d0e84c829ac87d1cfa7d378c3809baa35c59e2ff.wasmu.gz",
+      "artifact_sha256": "941b39cc5700fc31f33ee6b2cb085bd5ed03ea58b80c723f7cd202b279cdae61"
+    },
+    "pglite/release/pg_logicalinspect.tar.gz/lib/postgresql/pg_logicalinspect.so": {
+      "wasm_sha256": "098a7b4ce94f240a5b4bcd7f6a040936e0b97293ba8d53a1a28e64bf45734e0f",
+      "artifact": "098a7b4ce94f240a5b4bcd7f6a040936e0b97293ba8d53a1a28e64bf45734e0f.wasmu.gz",
+      "artifact_sha256": "ff254174b9c849519978f1edc6a59f5d5504b255c1cc8c290e0f3dd4302fb589"
+    },
+    "pglite/release/pg_overexplain.tar.gz/lib/postgresql/pg_overexplain.so": {
+      "wasm_sha256": "87cb4116fae7feb3388b42a53c1adc0c3ca3910fed8d493067edeb5909c2e500",
+      "artifact": "87cb4116fae7feb3388b42a53c1adc0c3ca3910fed8d493067edeb5909c2e500.wasmu.gz",
+      "artifact_sha256": "f35c8de097cc2609686c532e6a33b1e95232e62290d18e593b6dfeba049f784f"
+    },
+    "pglite/release/pg_stat_statements.tar.gz/lib/postgresql/pg_stat_statements.so": {
+      "wasm_sha256": "1d5b4532ee4f22bf5c819e6615fb5757251e3056d4dc95081f24625a92ce5fde",
+      "artifact": "1d5b4532ee4f22bf5c819e6615fb5757251e3056d4dc95081f24625a92ce5fde.wasmu.gz",
+      "artifact_sha256": "18769bca7a33603faa4a730ca867a73819d9f16ef5592dc518f15620cde3b8aa"
+    },
+    "pglite/release/pg_surgery.tar.gz/lib/postgresql/pg_surgery.so": {
+      "wasm_sha256": "fe9316aa14d16f471f3105aa41760f9e0e3b477ea3c46e08b3e13f01ad3fcc28",
+      "artifact": "fe9316aa14d16f471f3105aa41760f9e0e3b477ea3c46e08b3e13f01ad3fcc28.wasmu.gz",
+      "artifact_sha256": "52d0957d4071f3f079786b0363ccd377b1956a83c0517f3d3dec1d3f17fb9170"
+    },
+    "pglite/release/pg_trgm.tar.gz/lib/postgresql/pg_trgm.so": {
+      "wasm_sha256": "704adb97b0bfdd1de561f2765932ff4a5cb36b52ff84bbaf204a196e0cb8ffcd",
+      "artifact": "704adb97b0bfdd1de561f2765932ff4a5cb36b52ff84bbaf204a196e0cb8ffcd.wasmu.gz",
+      "artifact_sha256": "b380809dca2e3b5fa999489d16cfac55e272d7093048833513dfb9b1149d6b56"
+    },
+    "pglite/release/pg_visibility.tar.gz/lib/postgresql/pg_visibility.so": {
+      "wasm_sha256": "d898bbe7ab3752d91f985f8240dda6c14ece6935996b2e9718a042d59b970ca2",
+      "artifact": "d898bbe7ab3752d91f985f8240dda6c14ece6935996b2e9718a042d59b970ca2.wasmu.gz",
+      "artifact_sha256": "5800a0fe835a0a8d06b0ecb8754cdf591f92b0e6b7722ce5275ec9bac0d22397"
+    },
+    "pglite/release/pg_walinspect.tar.gz/lib/postgresql/pg_walinspect.so": {
+      "wasm_sha256": "7e0dc9a09e3f1812f0d05049b64d31070161ecbef322bfb1575bb394a5d68125",
+      "artifact": "7e0dc9a09e3f1812f0d05049b64d31070161ecbef322bfb1575bb394a5d68125.wasmu.gz",
+      "artifact_sha256": "63080ae7e63d85aeef5d65502433202e95ac9370cd30f7c265a89a315f2c8a85"
+    },
+    "pglite/release/pgcrypto.tar.gz/lib/postgresql/pgcrypto.so": {
+      "wasm_sha256": "c5bee19ef894937303bf949948d3276f2407893497ac0066d3a65a14be51c98f",
+      "artifact": "c5bee19ef894937303bf949948d3276f2407893497ac0066d3a65a14be51c98f.wasmu.gz",
+      "artifact_sha256": "19e992e82242fb1810c25996c025f445a5ce46003731f844a841bbce83b88323"
     },
     "pglite/release/pglite.wasm": {
-      "wasm_sha256": "114c491d6eb0fcdb13b8be4b912320ab6497e9c568512d16cd7a8f57f95bbba1",
-      "artifact": "114c491d6eb0fcdb13b8be4b912320ab6497e9c568512d16cd7a8f57f95bbba1.wasmu.gz",
-      "artifact_sha256": "0b7bce9eae9ad35ae459be397bf3620fffbb4aaf133a01370464e147d94f5c4d"
+      "wasm_sha256": "84952dc7438a763b33949e5d7b6260c4a9f9e47968cede04fcd7bb755d001a5a",
+      "artifact": "84952dc7438a763b33949e5d7b6260c4a9f9e47968cede04fcd7bb755d001a5a.wasmu.gz",
+      "artifact_sha256": "2386ec700cff20ef1b3ff83b094750bc60c1671f3001de6898f0288dad442a8b"
     },
-    "pglite/release/pgrowlocks.tar.gz/lib/postgresql/pgrowlocks.so.wasm": {
-      "wasm_sha256": "30de3ee3653360c48f929324dff460467c49058ae135c185455ba95e6a2a4a45",
-      "artifact": "30de3ee3653360c48f929324dff460467c49058ae135c185455ba95e6a2a4a45.wasmu.gz",
-      "artifact_sha256": "b051690225e24740e45bc105936a17defa086d128e94a2289b49511fe3416efa"
+    "pglite/release/seg.tar.gz/lib/postgresql/seg.so": {
+      "wasm_sha256": "29363ecaf8a255907ce7daeb9ffa9af8b0e1d6a31ee584168e66be7af221b077",
+      "artifact": "29363ecaf8a255907ce7daeb9ffa9af8b0e1d6a31ee584168e66be7af221b077.wasmu.gz",
+      "artifact_sha256": "1da7d6f950432d5bd33ec02bbb6ff3c7470d67240a607d4ad6f009a0c9e8ea67"
     },
-    "pglite/release/pgstattuple.tar.gz/lib/postgresql/pgstattuple.so.wasm": {
-      "wasm_sha256": "88e43f2dc73677ab0b621030747ce85dc1bf5e2d34aed7555183e6bf44a781e0",
-      "artifact": "88e43f2dc73677ab0b621030747ce85dc1bf5e2d34aed7555183e6bf44a781e0.wasmu.gz",
-      "artifact_sha256": "de590e409c40cd078effbcca44ad77f26e63e3951c6d24976e8d320bf0bce07a"
+    "pglite/release/tablefunc.tar.gz/lib/postgresql/tablefunc.so": {
+      "wasm_sha256": "9dea4943d9eb5c929acab4daa8de26b405f4d3b741ee4d45039419481a63cb3c",
+      "artifact": "9dea4943d9eb5c929acab4daa8de26b405f4d3b741ee4d45039419481a63cb3c.wasmu.gz",
+      "artifact_sha256": "07f5317237348ddcfa2b9e5d19140b3fbc319caa0aac0229874359e02c2fdd75"
     },
-    "pglite/release/postgres_fdw.tar.gz/lib/postgresql/postgres_fdw.so.wasm": {
-      "wasm_sha256": "3b170416a33db1535ee7bd853ab3243ab23d344b8a3c251543524afeb1dd7912",
-      "artifact": "3b170416a33db1535ee7bd853ab3243ab23d344b8a3c251543524afeb1dd7912.wasmu.gz",
-      "artifact_sha256": "4676757aed6b31b26eb224a9fbee68e3cba100aa7885b8f518284e357c986a88"
+    "pglite/release/tcn.tar.gz/lib/postgresql/tcn.so": {
+      "wasm_sha256": "5fd9c8c28011373657ece511eb36f189ff2f136778970901cdb25bb978ce3baf",
+      "artifact": "5fd9c8c28011373657ece511eb36f189ff2f136778970901cdb25bb978ce3baf.wasmu.gz",
+      "artifact_sha256": "aa0f1de299e52ce2bea011193e528fd1222e04af8b8b00be90346d408c52a490"
     },
-    "pglite/release/seg.tar.gz/lib/postgresql/seg.so.wasm": {
-      "wasm_sha256": "1a511276409e2e071863e32913c09d33acdc654444af3731daeee7b4bd2e64d4",
-      "artifact": "1a511276409e2e071863e32913c09d33acdc654444af3731daeee7b4bd2e64d4.wasmu.gz",
-      "artifact_sha256": "e1414754a48d7c2c86783e226f838ab6e55bfcd7cefa00de40767dd5c6919e3f"
+    "pglite/release/tsm_system_rows.tar.gz/lib/postgresql/tsm_system_rows.so": {
+      "wasm_sha256": "7a9e453067cc30fc87e9cfb57a8a376b370b2fb677ef03f968fcffe415194fcf",
+      "artifact": "7a9e453067cc30fc87e9cfb57a8a376b370b2fb677ef03f968fcffe415194fcf.wasmu.gz",
+      "artifact_sha256": "dc632ac99178854a3e7f0f50989d3f168d5bbef19eca5df2773085377af7eae9"
     },
-    "pglite/release/spi.tar.gz/lib/postgresql/autoinc.so.wasm": {
-      "wasm_sha256": "ace11adc0131f63a5cd40a42fa17c32be13bf893ba7a7a48d0f3305c8692059b",
-      "artifact": "ace11adc0131f63a5cd40a42fa17c32be13bf893ba7a7a48d0f3305c8692059b.wasmu.gz",
-      "artifact_sha256": "5d4567e32a861da0bc70c54a684b93a82232c77b68c0833cd064c14faefc2f8d"
+    "pglite/release/tsm_system_time.tar.gz/lib/postgresql/tsm_system_time.so": {
+      "wasm_sha256": "2373c13de4fa79f73e92b3af998c60650586c2f0e3894a5841195b2f95b4723a",
+      "artifact": "2373c13de4fa79f73e92b3af998c60650586c2f0e3894a5841195b2f95b4723a.wasmu.gz",
+      "artifact_sha256": "3d6eae6eba258ef986b5373cb9692e8bab3d076c5678ff1755960d16ddb8d7de"
     },
-    "pglite/release/spi.tar.gz/lib/postgresql/insert_username.so.wasm": {
-      "wasm_sha256": "21601e2b8b04a7994e68ec5daa6e48626672e7ee6bda684d5b2e94066e5b3ec1",
-      "artifact": "21601e2b8b04a7994e68ec5daa6e48626672e7ee6bda684d5b2e94066e5b3ec1.wasmu.gz",
-      "artifact_sha256": "29c4e09cc366f7958fa1011dd0b8e68b8c677f2e890e64d0de037e43eefe607a"
+    "pglite/release/unaccent.tar.gz/lib/postgresql/unaccent.so": {
+      "wasm_sha256": "fd797d0f6e43590f1eb0df030ad5c42fe53c6d020c5de2bb0c1c1b87f696d448",
+      "artifact": "fd797d0f6e43590f1eb0df030ad5c42fe53c6d020c5de2bb0c1c1b87f696d448.wasmu.gz",
+      "artifact_sha256": "e1471e87c41f39b359fe8d0a81fcf7690d838838818c78eb2890e30b34aae246"
     },
-    "pglite/release/spi.tar.gz/lib/postgresql/moddatetime.so.wasm": {
-      "wasm_sha256": "44ad4ef19bf477068fcc1218e3f583f5b883d03dcb4e8fb907b46aa23d27e6a9",
-      "artifact": "44ad4ef19bf477068fcc1218e3f583f5b883d03dcb4e8fb907b46aa23d27e6a9.wasmu.gz",
-      "artifact_sha256": "95e1354861b5ffa78f59870667d0d79e57c0352e8863775be1c47818494f3bb2"
-    },
-    "pglite/release/spi.tar.gz/lib/postgresql/refint.so.wasm": {
-      "wasm_sha256": "d88aa058342ce1db51d27ace1bff3e8311839894cbc3daaf4bcb95a6835db42a",
-      "artifact": "d88aa058342ce1db51d27ace1bff3e8311839894cbc3daaf4bcb95a6835db42a.wasmu.gz",
-      "artifact_sha256": "04812528534081d72585f66ec693178d7f049578b70bde8a86ad6fe50c4db929"
-    },
-    "pglite/release/tablefunc.tar.gz/lib/postgresql/tablefunc.so.wasm": {
-      "wasm_sha256": "11a72f29d212938a7bca162a1bd178d4d0e7eb162d82b2d8822bb18e3dc8f155",
-      "artifact": "11a72f29d212938a7bca162a1bd178d4d0e7eb162d82b2d8822bb18e3dc8f155.wasmu.gz",
-      "artifact_sha256": "d249caebe8f5205bb063cc045a8ae57fd2785eecdce80ea5dd37161b5cedbd94"
-    },
-    "pglite/release/tcn.tar.gz/lib/postgresql/tcn.so.wasm": {
-      "wasm_sha256": "b88c24530d14e992fdedb30345d204694076ceecd2b128bf4adf1fddaa5d66e2",
-      "artifact": "b88c24530d14e992fdedb30345d204694076ceecd2b128bf4adf1fddaa5d66e2.wasmu.gz",
-      "artifact_sha256": "c71e6696887ce38e098a23b188706fab7661b34bc09ddf437c8f2b7fa00f0db4"
-    },
-    "pglite/release/test_decoding.tar.gz/lib/postgresql/test_decoding.so.wasm": {
-      "wasm_sha256": "4182c1f20cde0eed59bd75702b85b96c7e795d5fe436d202b1cad0fa75969d5d",
-      "artifact": "4182c1f20cde0eed59bd75702b85b96c7e795d5fe436d202b1cad0fa75969d5d.wasmu.gz",
-      "artifact_sha256": "05c83b3a8186fe1d08573df64eb964ada5f6326bac9cf86e54ffc8d5dc087aee"
-    },
-    "pglite/release/tsm_system_rows.tar.gz/lib/postgresql/tsm_system_rows.so.wasm": {
-      "wasm_sha256": "0b5f2e0839c599e59899d40848fbb97b6ca9a727dc79abb94f7fb15057aa4c3f",
-      "artifact": "0b5f2e0839c599e59899d40848fbb97b6ca9a727dc79abb94f7fb15057aa4c3f.wasmu.gz",
-      "artifact_sha256": "f5b46e875454e451ed25d53d9289ea42358a440ec208c20af29fc3f8b3345a77"
-    },
-    "pglite/release/tsm_system_time.tar.gz/lib/postgresql/tsm_system_time.so.wasm": {
-      "wasm_sha256": "189bd732bd5f9f55eb53fad847b01c747812334ed1db4150f44aed412ee938fd",
-      "artifact": "189bd732bd5f9f55eb53fad847b01c747812334ed1db4150f44aed412ee938fd.wasmu.gz",
-      "artifact_sha256": "16ff193c31be284264a0c8a06cc2728826bde8865a194f60220c9d61d5a83c6a"
-    },
-    "pglite/release/unaccent.tar.gz/lib/postgresql/unaccent.so.wasm": {
-      "wasm_sha256": "3d93aad0555fd3962576712bb73e979eb87bc87a33780bb4f17cb802778bc7b1",
-      "artifact": "3d93aad0555fd3962576712bb73e979eb87bc87a33780bb4f17cb802778bc7b1.wasmu.gz",
-      "artifact_sha256": "302a8eb17bb3974d8682e13e6047d5f5f866036b9b7739f4295d8365c14bc1ef"
-    },
-    "pglite/release/uuid-ossp.tar.gz/lib/postgresql/uuid-ossp.so.wasm": {
-      "wasm_sha256": "9c73f289423b2eb9c436b087fa5af757ec1aefbd8b96cb5e7dd0ca5749892fd6",
-      "artifact": "9c73f289423b2eb9c436b087fa5af757ec1aefbd8b96cb5e7dd0ca5749892fd6.wasmu.gz",
-      "artifact_sha256": "298c77f421b2df3a73bd01b002e8e94db56e80847e3dd5c2e3cb2919bbe8c4b6"
-    },
-    "pglite/release/vacuumlo.tar.gz/bin/vacuumlo.wasm": {
-      "wasm_sha256": "97e03437f01c1cf14a98dbcaebb0b8b0e4c814941199a49d632db76653f5b3ae",
-      "artifact": "97e03437f01c1cf14a98dbcaebb0b8b0e4c814941199a49d632db76653f5b3ae.wasmu.gz",
-      "artifact_sha256": "96ca7d6632ccd50fc28cda2039f524df08e0e08978215b182e8093f7dd69ce4b"
-    },
-    "pglite/release/xml2.tar.gz/lib/postgresql/pgxml.so.wasm": {
-      "wasm_sha256": "652001a29e9e5a8c4e4584e1c7f3716640e3396e451463d4c4ee0c1bf2a95414",
-      "artifact": "652001a29e9e5a8c4e4584e1c7f3716640e3396e451463d4c4ee0c1bf2a95414.wasmu.gz",
-      "artifact_sha256": "cd7903440f94defb341293c22b49d06b16c0f8b02009b26e525ea4f22f271487"
+    "pglite/release/uuid-ossp.tar.gz/lib/postgresql/uuid-ossp.so": {
+      "wasm_sha256": "b1d923233ac968e0d274ce594cbb2bb719906160b01d3fb3165204a015286b21",
+      "artifact": "b1d923233ac968e0d274ce594cbb2bb719906160b01d3fb3165204a015286b21.wasmu.gz",
+      "artifact_sha256": "7435aa3ac49c6e0d7b22abcdcbffe709c1f3d782f113ffaf74d6aec598fb25df"
     }
   }
 }

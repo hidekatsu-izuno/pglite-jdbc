@@ -91,7 +91,7 @@ public interface WasmerLibrary extends Library {
 
     byte wasm_valtype_kind(Pointer valtype);
 
-    Pointer wasm_valtype_new(byte kind);
+    Pointer wasm_valtype_new(int kind);
 
     void wasm_valtype_delete(Pointer valtype);
 
@@ -167,6 +167,9 @@ public interface WasmerLibrary extends Library {
     Pointer wasm_func_as_extern(Pointer func);
 
     Pointer wasm_func_as_ref(Pointer func);
+    Pointer wasm_ref_as_func(Pointer reference);
+    Pointer wasm_table_get(Pointer table, int index);
+    Pointer wasm_func_type(Pointer func);
 
     boolean wasm_table_set(Pointer table, int index, Pointer reference);
 

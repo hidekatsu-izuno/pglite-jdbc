@@ -23,13 +23,13 @@ public final class WasmRuntimeFactory {
             throw new IllegalStateException("pglite.force_endive and pglite.force_wasmer cannot both be true");
         }
         if (forceEndive) {
-            return new EndivePostgresMod(overrides, moduleUrl);
+            return createEndive(overrides, moduleUrl);
         }
         if (forceWasmer && !WasmerNativeLoader.isAvailable()) {
             throw new IllegalStateException("Wasmer was forced but its native library is unavailable", WasmerNativeLoader.loadError());
         }
         if (!WasmerNativeLoader.isAvailable()) {
-            return new EndivePostgresMod(overrides, moduleUrl);
+            return createEndive(overrides, moduleUrl);
         }
         var library = WasmerNativeLoader.get();
         if (library.wasmer_is_headless()) {
@@ -47,10 +47,14 @@ public final class WasmRuntimeFactory {
                 if (forceWasmer) {
                     throw new IllegalStateException("Wasmer headless was forced but no matching compiled artifact exists");
                 }
-                return new EndivePostgresMod(overrides, moduleUrl);
+                return createEndive(overrides, moduleUrl);
             }
         }
         return new WasmerPostgresMod(overrides, moduleUrl);
+    }
+
+    private static initdbModFactory.InitdbMod createEndive(PartialPostgresMod overrides, URL moduleUrl) {
+        return new EndivePostgresMod(overrides, moduleUrl);
     }
 
     public static boolean hasExceptionHandling(byte[] wasm) {

@@ -1,21 +1,22 @@
-# src/makefiles/Makefile.wasi
-
-rpath =
+# Use --enable-new-dtags to generate DT_RUNPATH instead of DT_RPATH.
+# This allows LD_LIBRARY_PATH to still work when needed.
+rpath = 
 AROPT = crs
-comma := ,
-wasi_export_flags := -Wl$(comma)--export-table -Wl$(comma)--export-memory -Wl$(comma)--export-all --export-table --export-memory --export-all
-pglite_wasi_shared_ldflags = $(filter-out $(wasi_export_flags),$(LDFLAGS))
-pglite_wasi_shared_ldflags_sl = $(filter-out $(wasi_export_flags),$(LDFLAGS_SL))
 
-# Rule for building a PostgreSQL extension module.  Keep DLSUFFIX as ".so" for
-# extension archive compatibility while producing a wasm dynamic module.
+# Rule for building a shared library from a single .o file
 %.so: %.o
-	$(CC) $(CFLAGS) $< $(pglite_wasi_shared_ldflags) $(pglite_wasi_shared_ldflags_sl) -shared -Wl,-Bsymbolic -Wl,--import-memory -Wl,--import-table -o $@
+	$(CC) $(CFLAGS) $< $(LDFLAGS) $(LDFLAGS_SL) -shared -o $@
+# Use --enable-new-dtags to generate DT_RUNPATH instead of DT_RPATH.
+# This allows LD_LIBRARY_PATH to still work when needed.
+rpath = 
+AROPT = crs
 
-pglite_wasm_include_dir := $(pkgincludedir)/wasi
-pglite_wasm_base_dir := $(pglite_wasm_include_dir)/base
-pglite_wasm_imports_dir := /install/pglite/imports
-pglite_wasm_extension_dir := $(pglite_wasm_include_dir)/extension
-pglite_wasm_extension_imports_dir := $(pglite_wasm_extension_dir)/imports
-pglite_wasm_extension_symbols_dir := $(pglite_wasm_extension_dir)/symbols
-pglite_wasm_extension_objects_dir := $(pglite_wasm_extension_dir)/objects
+# Rule for building a shared library from a single .o file
+%.so: %.o
+	$(CC) $(CFLAGS) $< $(LDFLAGS) $(LDFLAGS_SL) -shared -o $@
+
+emscripten_include_dir := $(pkgincludedir)/emscripten
+emscripten_base_dir := $(emscripten_include_dir)/base
+emscripten_imports_dir := /install/pglite/imports
+emscripten_extension_dir := $(emscripten_include_dir)/extension
+emscripten_extension_imports_dir := $(emscripten_extension_dir)/imports
