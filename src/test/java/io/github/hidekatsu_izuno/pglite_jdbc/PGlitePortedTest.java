@@ -22,7 +22,6 @@ import java.nio.file.Files;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.stream.Collectors;
 import java.util.List;
 import java.util.Map;
@@ -1124,12 +1123,6 @@ class PGlitePortedTest {
             assertTrue(in != null, "missing wasm resource " + resource);
             return Parser.parse(in.readAllBytes());
         }
-    }
-
-    private static Map<String, Integer> importCountsByModule(WasmModule module) {
-        var counts = new TreeMap<String, Integer>();
-        module.importSection().stream().forEach(imp -> counts.merge(imp.module(), 1, Integer::sum));
-        return counts;
     }
 
     private static Set<String> importNames(WasmModule module, String moduleName) {
