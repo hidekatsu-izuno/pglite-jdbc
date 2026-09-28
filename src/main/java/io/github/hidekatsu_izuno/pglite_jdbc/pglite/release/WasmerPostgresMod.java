@@ -74,7 +74,6 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
     private final WasmerRuntimeContext context;
     private final boolean ownsContext;
 
-    private Pointer engine;
     private Pointer store;
     private Pointer module;
     private Pointer instance;
@@ -126,7 +125,6 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
                 this.context = new WasmerRuntimeContext(this.lib);
                 this.ownsContext = true;
             }
-            this.engine = context.engine;
             this.store = context.store;
             this.root = resolveRoot(this.overrides);
             this.pgRoot = root.resolve("pglite");
@@ -625,7 +623,6 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
         var functypeCopy = lib.wasm_functype_copy(functype);
         var paramKinds = valKinds(lib.wasm_functype_params(functypeCopy));
         var resultKinds = valKinds(lib.wasm_functype_results(functypeCopy));
-        var host = this;
         WasmerLibrary.WasmFuncCallbackWithEnv callback = (env, args, results) -> {
             try {
                 var argValues = readArgs(args, paramKinds);
@@ -635,11 +632,11 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
                     System.err.println("[wasmer-wasi] " + importName + " returned");
                     return trap;
                 }
-                var result = host.hostCall(moduleName, importName, argValues, resultKinds);
+                var result = hostCall(moduleName, importName, argValues, resultKinds);
                 writeResults(results, resultKinds, result);
                 return null;
             } catch (RuntimeException e) {
-                host.pendingHostException = e;
+                pendingHostException = e;
                 var message = new WasmByteVec.ByReference();
                 var bytes = (e.toString() + "\0").getBytes(StandardCharsets.UTF_8);
                 lib.wasm_byte_vec_new(message, bytes.length, bytes);
@@ -884,7 +881,7 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
             throw trapOrWasmerError("wasm_instance_new " + name, trapOut[0]);
         }
         nativeResources.add(() -> lib.wasm_instance_delete(dynamicInstance));
-        var library = new DynamicLibrary(name, dynamicModule, dynamicInstance, memoryBase, stack);
+        var library = new DynamicLibrary(dynamicModule, dynamicInstance, memoryBase);
         var symbolTableIndexes = new HashMap<String, Integer>();
         symbolTableIndexes.putAll(WasmLinking.exportedFunctionTableIndexes(bytes, tableBase));
         library.indexExports(symbolTableIndexes);
@@ -1089,15 +1086,13 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
     }
 
     private final class DynamicLibrary {
-        private final String name;
         private final Pointer module;
         private final Pointer instance;
         private final long memoryBase;
-        private final Pointer stack;
         private final Map<String, Pointer> functions = new HashMap<>();
         private final Map<String, DynamicSymbol> symbols = new HashMap<>();
-        private DynamicLibrary(String name, Pointer module, Pointer instance, long memoryBase, Pointer stack) {
-            this.name = name; this.module = module; this.instance = instance; this.memoryBase = memoryBase; this.stack = stack;
+        private DynamicLibrary(Pointer module, Pointer instance, long memoryBase) {
+            this.module = module; this.instance = instance; this.memoryBase = memoryBase;
         }
         private void indexExports(Map<String, Integer> tableIndexes) {
             var types = new WasmExporttypeVec.ByReference(); lib.wasm_module_exports(module, types);
@@ -1193,8 +1188,11 @@ public final class WasmerPostgresMod implements initdbModFactory.InitdbMod, Auto
         static int tableMinimum(byte[] wasm) {
             var payload = section(wasm, 4);
             if (payload == null) throw new IllegalStateException("pglite.wasm has no function table");
-            var r = new Reader(payload); r.u32(); r.byte_(); var flags = r.u32(); var min = r.u32();
-            return min;
+            var r = new Reader(payload);
+            r.u32(); // Table count
+            r.byte_(); // Element type
+            r.u32(); // Limits flags
+            return r.u32(); // Minimum table size
         }
 
         static int exportedFunctionIndex(byte[] wasm, String wanted) {
