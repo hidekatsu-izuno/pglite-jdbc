@@ -1032,10 +1032,8 @@ class PGlitePortedTest {
     @Test
     void wasmArtifactsExposeRuntimeContractNeededByDatabaseTests() throws Exception {
         var pgliteWasm = wasm("pglite.wasm");
-        var initdbWasm = wasm("initdb.wasm");
 
-        assertEquals(Map.of("env", 77, "pglite", 9, "wasi_snapshot_preview1", 39), importCountsByModule(pgliteWasm));
-        assertEquals(Map.of("env", 12, "pglite", 3, "wasi_snapshot_preview1", 26), importCountsByModule(initdbWasm));
+        assertEquals(Map.of("env", 83, "pglite", 9, "wasi_snapshot_preview1", 39), importCountsByModule(pgliteWasm));
 
         assertTrue(importNames(pgliteWasm, "pglite").containsAll(Set.of(
             "blob_read",
@@ -1048,8 +1046,6 @@ class PGlitePortedTest {
             "socket_read",
             "socket_write"
         )));
-        assertEquals(Set.of("blob_read", "popen", "pclose"), importNames(initdbWasm, "pglite"));
-
         var pgliteExports = exportNames(pgliteWasm);
         assertTrue(pgliteExports.contains("pgl_startPGlite"));
         assertTrue(pgliteExports.contains("pgl_set_rw_cbs"));
@@ -1057,10 +1053,12 @@ class PGlitePortedTest {
         assertFalse(pgliteExports.contains("_pgl_initdb"));
         assertFalse(pgliteExports.contains("_pgl_backend"));
 
-        var initdbExports = exportNames(initdbWasm);
-        assertTrue(initdbExports.contains("__main_argc_argv"));
-        assertTrue(initdbExports.contains("pgl_chdir"));
-        assertTrue(initdbExports.contains("pgl_freopen"));
+        assertTrue(pgliteExports.contains("pglite_initdb_main"));
+        assertTrue(pgliteExports.contains("pgl_chdir"));
+        assertTrue(pgliteExports.contains("pgl_freopen"));
+        assertTrue(Thread.currentThread().getContextClassLoader().getResource(
+            extensionCatalog.RELEASE_RESOURCE_ROOT + "initdb.wasm"
+        ) == null);
     }
 
     @Test

@@ -1,8 +1,8 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pglite.release;
 
-import io.github.hidekatsu_izuno.pglite_jdbc.pglite.postgresMod.PostgresMod;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.extensionCatalog;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.postgresMod.PartialPostgresMod;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.postgresMod.PostgresMod;
 import java.net.URL;
 
 public final class pglite {
@@ -10,7 +10,7 @@ public final class pglite {
 
     public static class PostgresModFactory {
         public static PostgresMod create(PartialPostgresMod moduleOverrides) {
-            return new EndivePostgresMod(moduleOverrides, PGLITE_WASM_URL);
+            return WasmRuntimeFactory.create(moduleOverrides, PGLITE_WASM_URL);
         }
     }
 

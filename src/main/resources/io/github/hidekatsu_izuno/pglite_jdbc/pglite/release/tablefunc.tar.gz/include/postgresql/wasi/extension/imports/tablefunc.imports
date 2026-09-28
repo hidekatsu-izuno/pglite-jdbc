@@ -9,6 +9,7 @@ SPI_getvalue
 SPI_processed
 SPI_tuptable
 TupleDescGetAttInMetadata
+__indirect_function_table
 __memory_base
 __stack_pointer
 appendStringInfo

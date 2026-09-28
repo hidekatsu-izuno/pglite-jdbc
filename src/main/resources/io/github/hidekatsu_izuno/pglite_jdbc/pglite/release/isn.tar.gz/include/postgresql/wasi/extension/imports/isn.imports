@@ -1,6 +1,7 @@
 DefineCustomBoolVariable
 Int64GetDatum
 MarkGUCPrefixReserved
+__indirect_function_table
 __memory_base
 __stack_pointer
 errcode

@@ -1,7 +1,6 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pglite;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
-import java.net.URL;
 import java.util.Map;
 
 public class initdbModFactory {
@@ -45,6 +44,16 @@ public class initdbModFactory {
 
         Boolean __wasi();
 
+        String __wasiDataRoot();
+
+        void _pgl_freopen(int path, int mode, int fd);
+
+        Integer _close(int fd);
+
+        Integer _pgl_chdir(int path);
+
+        default void resetAfterProcExit() {}
+
         default void onExit(int status) {}
 
         default void print(String text) {}
@@ -59,29 +68,6 @@ public class initdbModFactory {
         Promise<InitdbMod> create(postgresMod.PartialPostgresMod moduleOverrides);
     }
 
-    private static final URL INITDB_WASM_URL = resolveInitdbWasmUrl();
-
     private initdbModFactory() {}
 
-    public static Promise<InitdbMod> create(postgresMod.PartialPostgresMod moduleOverrides) {
-        return createWasiModule(moduleOverrides);
-    }
-
-    public static Promise<InitdbMod> createWasiModule(postgresMod.PartialPostgresMod moduleOverrides) {
-        var overrides = moduleOverrides != null ? moduleOverrides : new postgresMod.PartialPostgresMod();
-        return postgresMod.createWasiModule(overrides, INITDB_WASM_URL);
-    }
-
-    private static URL resolveInitdbWasmUrl() {
-        var url = initdbModFactory.class.getClassLoader().getResource(
-            extensionCatalog.RELEASE_RESOURCE_ROOT + "initdb.wasm"
-        );
-        if (url == null) {
-            url = initdbModFactory.class.getResource("/initdb.wasm");
-        }
-        if (url == null) {
-            url = initdbModFactory.class.getResource("initdb.wasm");
-        }
-        return url;
-    }
 }

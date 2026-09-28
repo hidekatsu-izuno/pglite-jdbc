@@ -11,4 +11,4 @@ Requires:
 Requires.private: 
 Cflags: -I${includedir}
 Libs: -L${libdir} -lpq
-Libs.private: -L/home/hidek/git/pglite-custom/.bin/pglite-wasi/libs/lib -lpgcommon -lpgport -lm
+Libs.private: -L/home/hidek/git/pglite-custom/.bin/pglite-wasi/libs/lib -L/src/build/toolchain/install/lib -lpgcommon -lpgport -lm

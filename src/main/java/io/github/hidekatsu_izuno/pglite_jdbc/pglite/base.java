@@ -350,17 +350,16 @@ public abstract class base {
             };
 
             var tx = new interface_.Transaction() {
+                @SuppressWarnings("unchecked")
                 @Override
-                public <R> Promise<interface_.Results<R>> query(
+                public Promise<interface_.Results<Map<String, Object>>> query(
                     String query,
                     Object[] params,
                     interface_.QueryOptions options
                 ) {
                     return asPromise(() -> {
                         checkClosed.run();
-                        @SuppressWarnings("unchecked")
-                        var result = (interface_.Results<R>) runQuerySync(query, params, options);
-                        return result;
+                        return runQuerySync(query, params, options);
                     });
                 }
 
@@ -368,9 +367,7 @@ public abstract class base {
                 public <R> Promise<interface_.Results<R>> sql(List<String> strings, Object... params) {
                     return asPromise(() -> {
                         checkClosed.run();
-                        @SuppressWarnings("unchecked")
-                        var result = (interface_.Results<R>) sqlSync(strings, params);
-                        return result;
+                        return sqlSync(strings, params);
                     });
                 }
 

@@ -1,4 +1,5 @@
 Int64GetDatum
+__indirect_function_table
 __memory_base
 hash_bytes
 hash_bytes_extended

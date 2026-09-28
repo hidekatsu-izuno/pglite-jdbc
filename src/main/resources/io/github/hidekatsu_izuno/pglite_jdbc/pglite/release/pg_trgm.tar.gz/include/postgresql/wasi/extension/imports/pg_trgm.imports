@@ -72,7 +72,6 @@ pg_snprintf
 pg_wchar2mb_with_len
 repalloc
 repalloc0
-similarity
 str_tolower
 strcmp
 strlen

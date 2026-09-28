@@ -227,7 +227,10 @@ ifeq ($(PORTNAME),wasi)
 override CPPFLAGS += -D__PGLITE_WASI_EXTENSION__
 override CPPFLAGS += -D_PG_init=$(pglite_wasi_extension_symbol_prefix)_PG_init
 override CPPFLAGS += -D_PG_fini=$(pglite_wasi_extension_symbol_prefix)_PG_fini
-override CPPFLAGS += -DPG_MAGIC_FUNCTION_NAME=$(pglite_wasi_extension_symbol_prefix)_Pg_magic_func
+# Every dynamic module has its own instance, so its magic function must retain
+# PostgreSQL's canonical ABI name.  Hosts resolve Pg_magic_func directly; a
+# build-specific prefixed export is not a valid dlopen/dlsym substitute.
+override CPPFLAGS += -DPG_MAGIC_FUNCTION_NAME=Pg_magic_func
 endif
 
 ifeq ($(with_llvm), yes)

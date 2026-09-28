@@ -99,7 +99,8 @@ class PgjdbcInspiredResultSetMetaDataTest {
             assertEquals(3, metadata.getPrecision(9));
             assertEquals(3, metadata.getColumnDisplaySize(9));
             assertEquals(Types.OTHER, metadata.getColumnType(10));
-            assertEquals(String.class.getName(), metadata.getColumnClassName(10));
+            // pgjdbc 42.7.13 registers jsonb as a core PGobject type.
+            assertEquals(org.postgresql.util.PGobject.class.getName(), metadata.getColumnClassName(10));
         }
     }
 

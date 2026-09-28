@@ -10,10 +10,6 @@ appendStringInfoChar
 appendStringInfoString
 array_contains_nulls
 clearerr
-cube_distance
-cube_inter
-distance_chebyshev
-distance_taxicab
 enlargeStringInfo
 errcode
 errdetail

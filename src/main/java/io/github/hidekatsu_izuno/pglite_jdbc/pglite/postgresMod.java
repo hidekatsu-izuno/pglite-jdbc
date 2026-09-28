@@ -1,7 +1,7 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pglite;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
-import io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.EndivePostgresMod;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.WasmRuntimeFactory;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
 import java.net.URL;
 import java.util.Map;
@@ -31,6 +31,10 @@ public final class postgresMod {
         int _ProcessStartupPacket(int myProcPort, boolean sslDone, boolean gssDone);
         void _pgl_sendConnData();
         int callMain(String[] args);
+        /** Invoke the initdb entry point statically linked into pglite.wasm. */
+        default int callInitdbMain(String[] args) {
+            throw new UnsupportedOperationException("Postgres module does not expose pglite_initdb_main");
+        }
         default void _queue_message(byte[] message) {}
         void _set_read_write_cbs(int read_cb, int write_cb);
         int addFunction(ReadWriteCallback cb, String signature);
@@ -42,6 +46,9 @@ public final class postgresMod {
         }
         EmscriptenRuntime runtime();
         extensionUtils.EmscriptenFS FS();
+        default Object __pgliteEhProvider() {
+            return null;
+        }
     }
 
     public interface EmscriptenRuntime {
@@ -89,6 +96,8 @@ public final class postgresMod {
         public String __wasiDataRoot;
         public Map<String, String> ENV;
         public Map<String, String> PGLITE_ENV;
+        /** Internal Wasmer EH provider exported by pglite.wasm. */
+        public Object __pgliteEhProvider;
         public Runnable onRuntimeInitialized;
     }
 
@@ -97,7 +106,7 @@ public final class postgresMod {
         PartialPostgresMod moduleOverrides,
         URL moduleUrl
     ) {
-        return Promise.resolve((T) new EndivePostgresMod(moduleOverrides, moduleUrl));
+        return Promise.resolve((T) WasmRuntimeFactory.createInitdb(moduleOverrides, moduleUrl));
     }
 
     private postgresMod() {

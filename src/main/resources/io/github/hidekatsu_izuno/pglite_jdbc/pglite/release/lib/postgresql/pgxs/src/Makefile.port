@@ -10,7 +10,7 @@ pglite_wasi_shared_ldflags_sl = $(filter-out $(wasi_export_flags),$(LDFLAGS_SL))
 # Rule for building a PostgreSQL extension module.  Keep DLSUFFIX as ".so" for
 # extension archive compatibility while producing a wasm dynamic module.
 %.so: %.o
-	$(CC) $(CFLAGS) $< $(pglite_wasi_shared_ldflags) $(pglite_wasi_shared_ldflags_sl) -shared -o $@
+	$(CC) $(CFLAGS) $< $(pglite_wasi_shared_ldflags) $(pglite_wasi_shared_ldflags_sl) -shared -Wl,-Bsymbolic -Wl,--import-memory -Wl,--import-table -o $@
 
 pglite_wasm_include_dir := $(pkgincludedir)/wasi
 pglite_wasm_base_dir := $(pglite_wasm_include_dir)/base

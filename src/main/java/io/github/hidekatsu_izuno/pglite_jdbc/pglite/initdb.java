@@ -1,6 +1,7 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pglite;
 
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.WasmerPostgresMod;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.postgresMod.ReadWriteCallback;
 import java.util.ArrayList;
@@ -46,6 +47,14 @@ public class initdb {
                 return null;
             }
 
+            default Object __pgliteEhProvider() {
+                return null;
+            }
+
+            default Integer INITIAL_MEMORY() {
+                return null;
+            }
+
             default Integer _pgl_chdir(int path) {
                 return null;
             }
@@ -74,6 +83,10 @@ public class initdb {
         Module Module();
 
         int callMain(String[] args);
+
+        int callInitdbMain(String[] args);
+
+        initdbModFactory.InitdbMod initdbMod();
     }
 
     public record ExecResult(int exitCode, String stderr, String stdout, String dataFolder) {}
@@ -155,6 +168,10 @@ public class initdb {
         var callPgMainHolder = new java.util.concurrent.atomic.AtomicReference<java.util.function.Function<String[], Integer>>();
 
         var origHeapU8 = new byte[][] {null};
+        // Wasmer's WASI descriptor table is native state and cannot be rolled
+        // back by restoring linear memory. Endive's in-process WASI has no
+        // such state, so retain the full memory-swap lifecycle there.
+        var memorySwap = isWasi(pg.Module().__wasi()) && pg.Module().__pgliteEhProvider() == null;
 
         reopenPgStreams[0] = () -> {
             var pgliteStdinPath = pg.Module().stringToUTF8OnStack(PGSTDIN_PATH);
@@ -174,8 +191,34 @@ public class initdb {
                 "trying to execute " + firstArg
             );
 
+            if (pg.initdbMod() instanceof WasmerPostgresMod nativeMod) {
+                try (var child = nativeMod.createProcess(POSTGRES_EXE_PATH)) {
+                    child._pgl_chdir(child.stringToUTF8OnStack(PGDATA));
+                    child._pgl_freopen(child.stringToUTF8OnStack(PGSTDIN_PATH), child.stringToUTF8OnStack("r"), 0);
+                    child._pgl_freopen(child.stringToUTF8OnStack(PGSTDOUT_PATH), child.stringToUTF8OnStack("w"), 1);
+                    child._pgl_freopen(child.stringToUTF8OnStack("/pglite/pgstderr"), child.stringToUTF8OnStack("w"), 2);
+                    var status = child.callMain(argsList.toArray(String[]::new));
+                    var error = new String(child.FS().readFile("/pglite/pgstderr"), java.nio.charset.StandardCharsets.UTF_8);
+                    stderrOutput.append(error);
+                    log(debug, "child status", status, "stderr", error);
+                    return status;
+                }
+            }
+
+            // initdb and the backend now live in one linear memory.  Preserve
+            // initdb's state while its child postgres process uses the pristine
+            // main-module state.
+            var initdbHeap = memorySwap
+                ? pg.Module().HEAPU8().toByteArray()
+                : null;
             if (origHeapU8[0] != null) {
                 pg.Module().HEAPU8().set(origHeapU8[0]);
+                // These callback pointers are C globals in linear memory, so
+                // re-install them after restoring the backend baseline.
+                var backend = pg.initdbMod();
+                backend._pgl_set_system_fn(systemFn[0]);
+                backend._pgl_set_popen_fn(popenFn[0]);
+                backend._pgl_set_pclose_fn(pcloseFn[0]);
             }
             if (isWasi(pg.Module().__wasi())) {
                 var chdirResult = pg.Module()._pgl_chdir(pg.Module().stringToUTF8OnStack(PGDATA));
@@ -202,6 +245,7 @@ public class initdb {
                 }
                 result = wasiExitCode;
             }
+            if (initdbHeap != null) pg.Module().HEAPU8().set(initdbHeap);
             log(debug, "pg main result", result);
 
             postgresArgs.clear();
@@ -209,43 +253,16 @@ public class initdb {
             return result;
         });
 
-        var runtimeInitialized = new Runnable[1];
-
-        var runtimeOpts = new postgresMod.PartialPostgresMod();
-        runtimeOpts.arguments = args;
-        runtimeOpts.noExitRuntime = false;
-        runtimeOpts.thisProgram = INITDB_EXE_PATH;
-        runtimeOpts.print = printArgs -> {
-            var text = printArgs.length > 0 ? String.valueOf(printArgs[0]) : "";
-            stdoutOutput.append(text);
-            log(debug, "initdbout", text);
-        };
-        runtimeOpts.printErr = printArgs -> {
-            var text = printArgs.length > 0 ? String.valueOf(printArgs[0]) : "";
-            stderrOutput.append(text);
-            log(debug, "initdberr", text);
-        };
-        runtimeOpts.__wasiRoot = pg.Module().FS().__root();
-        runtimeOpts.__wasiDataRoot = pg.Module().__wasiDataRoot();
-        runtimeOpts.wasmModule = wasmModule;
-        runtimeOpts.onRuntimeInitialized = () -> {
-            if (runtimeInitialized[0] != null) {
-                runtimeInitialized[0].run();
-            }
-        };
-
-        runtimeOpts.preRun = List.of(
-            mod -> {
-                var env = modEnv(mod);
-                env.put("PGDATA", PGDATA);
-                env.put("HOME", "/home/postgres");
-                env.put("USER", "postgres");
-                env.put("LOGNAME", "postgres");
-                env.put("ICU_DATA", ICU_DATA_PATH);
-            },
-            mod -> {
-                var initdbMod = (initdbModFactory.InitdbMod) mod;
-                runtimeInitialized[0] = () -> {
+        var initdbMod = pg.initdbMod() instanceof WasmerPostgresMod nativeMod
+            ? nativeMod.createProcess(INITDB_EXE_PATH) : pg.initdbMod();
+        try {
+        var env = modEnv(initdbMod);
+        env.put("PGDATA", PGDATA);
+        env.put("HOME", "/home/postgres");
+        env.put("USER", "postgres");
+        env.put("LOGNAME", "postgres");
+        env.put("ICU_DATA", ICU_DATA_PATH);
+        {
                     systemFn[0] = initdbMod.addFunction(
                         (ReadWriteCallback) (cmdPtr, ignored) -> {
                             if (cmdPtr == 0) {
@@ -272,6 +289,15 @@ public class initdb {
                             var smode = initdbMod.UTF8ToString(modePtr);
                             var command = initdbMod.UTF8ToString(cmdPtr);
                             log(debug, "popen raw", command, smode);
+                            if (isWasi(pg.Module().__wasi()) && "locale -a".equals(command) && "r".equals(smode)) {
+                                var localePath = "/pglite/locale-a";
+                                pg.Module().FS().writeFile(localePath,
+                                    "C\nC.UTF-8\nPOSIX\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                                var path = initdbMod.stringToUTF8OnStack(localePath);
+                                var rmode = initdbMod.stringToUTF8OnStack("r");
+                                pgLocaleAFd[0] = initdbMod._fopen(path, rmode);
+                                return pgLocaleAFd[0];
+                            }
                             postgresArgs.clear();
                             postgresArgs.addAll(getArgs(command));
                             log(debug, "popen", smode, postgresArgs);
@@ -315,11 +341,16 @@ public class initdb {
                                     "initdb_stdout_fd", initdbStdoutFd[0]
                                 )
                             );
+                            if (stream == pgLocaleAFd[0]) {
+                                pgLocaleAFd[0] = -1;
+                                return initdbMod._fclose(stream);
+                            }
                             if (stream == initdbStdinFd[0] || stream == initdbStdoutFd[0]) {
                                 if (isWasi(pg.Module().__wasi()) && stream == initdbStdoutFd[0]) {
                                     initdbMod._fflush(stream);
                                     initdbMod._fclose(stream);
                                     copyFile(initdbMod.FS(), pg.Module().FS(), PGSTDIN_PATH);
+                                    log(debug, "pgstdin bytes", pg.Module().FS().readFile(PGSTDIN_PATH).length);
                                     initdbStdoutFd[0] = -1;
                                 }
                                 if (needToCallPGmain[0]) {
@@ -333,40 +364,6 @@ public class initdb {
                         "pi"
                     );
                     initdbMod._pgl_set_pclose_fn(pcloseFn[0]);
-
-                    if (isWasi(pg.Module().__wasi())) {
-                        var pgPopenFn = pg.Module().addFunction(
-                            (ReadWriteCallback) (cmdPtr, modePtr) -> {
-                                var command = pg.Module().UTF8ToString(cmdPtr);
-                                var smode = pg.Module().UTF8ToString(modePtr);
-                                if ("locale -a".equals(command) && "r".equals(smode)) {
-                                    var localePath = "/pglite/locale-a";
-                                    pg.Module().FS().writeFile(
-                                        localePath,
-                                        "C\nC.UTF-8\nPOSIX\n".getBytes(java.nio.charset.StandardCharsets.UTF_8)
-                                    );
-                                    var path = pg.Module().stringToUTF8OnStack(localePath);
-                                    var rmode = pg.Module().stringToUTF8OnStack("r");
-                                    pgLocaleAFd[0] = pg.Module()._fopen(path, rmode);
-                                    return pgLocaleAFd[0];
-                                }
-                                return 0;
-                            },
-                            "ppi"
-                        );
-                        var pgPcloseFn = pg.Module().addFunction(
-                            (ReadWriteCallback) (stream, ignored) -> {
-                                if (stream == pgLocaleAFd[0]) {
-                                    pgLocaleAFd[0] = -1;
-                                    return pg.Module()._fclose(stream);
-                                }
-                                return -1;
-                            },
-                            "pi"
-                        );
-                        pg.Module()._pgl_set_popen_fn(pgPopenFn);
-                        pg.Module()._pgl_set_pclose_fn(pgPcloseFn);
-                    }
 
                     if (isWasi(pg.Module().__wasi())) {
                         pg.Module().FS().writeFile(PGSTDIN_PATH, new byte[0]);
@@ -386,39 +383,24 @@ public class initdb {
                         initdbStdoutFd[0] = initdbMod._fopen(path, wmode);
                     }
 
-                    if (isWasi(pg.Module().__wasi())) {
+                    if (memorySwap) {
                         origHeapU8[0] = pg.Module().HEAPU8().toByteArray();
                     }
-                };
-            },
-            mod -> {
-                var initdbMod = (initdbModFactory.InitdbMod) mod;
-                initdbMod.FS().mkdirTree(PG_ROOT);
-                initdbMod.FS().mount(
-                    initdbMod.PROXYFS(),
-                    Map.of(
-                        "root", PG_ROOT,
-                        "fs", pg.Module().FS()
-                    ),
-                    PG_ROOT
-                );
+        }
+        // Keep the initial backend image for initdb's child backend calls.
+        if (memorySwap) origHeapU8[0] = pg.Module().HEAPU8().toByteArray();
+        log(debug, "calling pglite_initdb_main with", Arrays.toString(args));
+        var result = initdbMod.callInitdbMain(args);
+        // initdb and its emulated children must not leave their allocator and
+        // process-exit globals behind for the long-lived backend.
+        if (memorySwap && origHeapU8[0] != null) pg.Module().HEAPU8().set(origHeapU8[0]);
+        initdbMod.resetAfterProcExit();
+        return Promise.resolve(new ExecResult(result, stderrOutput.toString(), stdoutOutput.toString(), PGDATA));
+        } finally {
+            if (initdbMod != pg.initdbMod() && initdbMod instanceof WasmerPostgresMod nativeMod) {
+                nativeMod.close();
             }
-        );
-
-        return initdbModFactory.create(runtimeOpts).then(initDbMod -> {
-            log(debug, "calling initdb.main with", Arrays.toString(args));
-            var result = initDbMod.callMain(args);
-            if (isWasi(pg.Module().__wasi()) && origHeapU8[0] != null) {
-                pg.Module().HEAPU8().set(origHeapU8[0]);
-            }
-
-            return new ExecResult(
-                result,
-                stderrOutput.toString(),
-                stdoutOutput.toString(),
-                PGDATA
-            );
-        });
+        }
     }
 
     private static Map<String, String> modEnv(postgresMod.PostgresMod mod) {

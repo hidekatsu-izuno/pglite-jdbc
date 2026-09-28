@@ -674,7 +674,7 @@ final class PgStatementHandler implements InvocationHandler {
         if (value instanceof java.sql.Array array) {
             return Arrays.asList((Object[]) array.getArray());
         }
-        if (value instanceof Object[] objects && value.getClass().getComponentType() == Object.class) {
+        if (value instanceof Object[] && value.getClass().getComponentType() == Object.class) {
             throw new SQLException("Cannot infer a PostgreSQL array type from Object[]");
         }
         if (value.getClass().isArray()) {

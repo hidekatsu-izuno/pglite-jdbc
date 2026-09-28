@@ -5,7 +5,7 @@
 
   <groupId>io.github.hidekatsu-izuno</groupId>
   <artifactId>pglite-jdbc</artifactId>
-  <version>0.1.2</version>
+  <version>0.2.0</version>
   <name>PGlite JDBC</name>
   <description>JDBC driver for pglite with pgjdbc-compatible APIs.</description>
   <url>https://github.com/hidekatsu-izuno/pglite-jdbc</url>
@@ -13,10 +13,13 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>21</maven.compiler.release>
-    <junit.version>6.1.0</junit.version>
-    <pgjdbc.version>42.7.7</pgjdbc.version>
-    <jackson.version>2.22.0</jackson.version>
-    <endive.version>1.0.0</endive.version>
+    <pglite.build.directory>${project.basedir}/target</pglite.build.directory>
+    <junit.version>6.1.3</junit.version>
+    <pgjdbc.version>42.7.13</pgjdbc.version>
+    <jackson.version>2.22.3</jackson.version>
+    <endive.version>1.1.0</endive.version>
+    <jna.version>5.19.1</jna.version>
+    <wasmer.version>7.4.2</wasmer.version>
   </properties>
 
   <licenses>
@@ -73,6 +76,11 @@
       <artifactId>wasi</artifactId>
       <version>${endive.version}</version>
     </dependency>
+    <dependency>
+      <groupId>net.java.dev.jna</groupId>
+      <artifactId>jna</artifactId>
+      <version>${jna.version}</version>
+    </dependency>
 
     <dependency>
       <groupId>org.junit.jupiter</groupId>
@@ -89,11 +97,12 @@
   </dependencies>
 
   <build>
+    <directory>${pglite.build.directory}</directory>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
-        <version>3.14.0</version>
+        <version>3.16.0</version>
         <configuration>
           <release>${maven.compiler.release}</release>
         </configuration>
@@ -101,7 +110,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
-        <version>3.5.3</version>
+        <version>3.6.0</version>
         <configuration>
           <useSystemClassLoader>false</useSystemClassLoader>
           <systemPropertyVariables>
@@ -112,7 +121,7 @@
 
       <plugin>
         <artifactId>maven-source-plugin</artifactId>
-        <version>3.3.1</version>
+        <version>3.4.0</version>
         <executions>
           <execution>
             <id>attach-sources</id>
@@ -125,7 +134,7 @@
 
       <plugin>
         <artifactId>maven-javadoc-plugin</artifactId>
-        <version>3.11.2</version>
+        <version>3.12.0</version>
         <configuration>
           <encoding>${project.build.sourceEncoding}</encoding>
           <docencoding>${project.build.sourceEncoding}</docencoding>
@@ -150,7 +159,7 @@
       <plugin>
         <groupId>org.sonatype.central</groupId>
         <artifactId>central-publishing-maven-plugin</artifactId>
-        <version>0.9.0</version>
+        <version>0.11.0</version>
         <extensions>true</extensions>
         <configuration>
           <publishingServerId>central-github</publishingServerId>
@@ -170,7 +179,7 @@
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-gpg-plugin</artifactId>
-            <version>3.2.7</version>
+            <version>3.2.8</version>
             <executions>
               <execution>
                 <id>sign-artifacts</id>

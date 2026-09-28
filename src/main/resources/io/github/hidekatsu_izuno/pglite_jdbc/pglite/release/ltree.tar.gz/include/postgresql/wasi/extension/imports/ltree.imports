@@ -10,11 +10,6 @@ __memory_base
 __stack_pointer
 __table_base
 __wasi_init_tp
-_lt_q_regex
-_ltq_regex
-_ltree_isparent
-_ltree_risparent
-_ltxtq_exec
 add_local_int_reloption
 array_contains_nulls
 atoi
@@ -34,12 +29,6 @@ has_fn_opclass_options
 hash_bytes
 hash_bytes_extended
 init_local_reloptions
-lt_q_regex
-ltq_regex
-ltree_in
-ltree_isparent
-ltree_risparent
-ltxtq_exec
 memchr
 memcmp
 memory

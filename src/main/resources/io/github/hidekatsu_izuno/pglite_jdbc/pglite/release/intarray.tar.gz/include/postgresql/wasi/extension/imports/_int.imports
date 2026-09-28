@@ -9,13 +9,10 @@ __memory_base
 __stack_pointer
 __table_base
 __wasi_init_tp
-_int_contains
-_int_same
 add_local_int_reloption
 array_contains_nulls
 arraycontjoinsel
 arraycontsel
-boolop
 bsearch
 check_stack_depth
 construct_empty_array
@@ -28,7 +25,6 @@ errsave_finish
 errsave_start
 errstart_cold
 free_attstatsslot
-g_int_same
 get_attstatsslot
 get_fn_opclass_options
 get_function_sibling_type

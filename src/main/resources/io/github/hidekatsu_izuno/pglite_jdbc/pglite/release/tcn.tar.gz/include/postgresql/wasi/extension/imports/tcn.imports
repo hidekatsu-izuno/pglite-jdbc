@@ -3,6 +3,7 @@ RelationGetIndexList
 ReleaseSysCache
 SPI_getvalue
 SearchSysCache1
+__indirect_function_table
 __memory_base
 __stack_pointer
 appendStringInfoChar

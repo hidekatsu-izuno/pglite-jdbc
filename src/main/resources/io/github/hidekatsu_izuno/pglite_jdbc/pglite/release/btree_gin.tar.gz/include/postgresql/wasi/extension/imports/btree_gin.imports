@@ -30,8 +30,6 @@ enum_cmp
 errfinish
 errmsg_internal
 errstart_cold
-gin_enum_cmp
-gin_numeric_cmp
 inet_in
 interval_cmp
 macaddr8_cmp

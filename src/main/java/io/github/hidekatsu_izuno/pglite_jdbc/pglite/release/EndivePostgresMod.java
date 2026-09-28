@@ -967,6 +967,108 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
         }
     }
 
+    /** Reads the extension's own active element segment.  The dynamic linker
+     * must use these indices; host code cannot insert another module's
+     * functions into the main instance table. */
+    private static final class WasmLinking {
+        static Map<String, Integer> exportedFunctionTableIndexes(byte[] wasm, int tableBase) {
+            var exported = exportedFunctions(wasm);
+            var indexes = functionTableIndexes(wasm, tableBase);
+            var result = new HashMap<String, Integer>();
+            for (var entry : exported.entrySet()) {
+                var index = indexes.get(entry.getValue());
+                if (index != null) result.put(entry.getKey(), index);
+            }
+            return result;
+        }
+
+        private static Map<String, Integer> exportedFunctions(byte[] wasm) {
+            var section = section(wasm, 7);
+            if (section == null) return Map.of();
+            var result = new HashMap<String, Integer>();
+            var reader = new Reader(section);
+            for (var count = reader.u32(); count > 0 && !reader.done(); count--) {
+                var name = reader.string();
+                var kind = reader.byte_();
+                var index = reader.u32();
+                if (kind == 0) result.put(name, index);
+            }
+            return result;
+        }
+
+        private static Map<Integer, Integer> functionTableIndexes(byte[] wasm, int tableBase) {
+            var section = section(wasm, 9);
+            if (section == null) return Map.of();
+            var result = new HashMap<Integer, Integer>();
+            var reader = new Reader(section);
+            for (var count = reader.u32(); count > 0 && !reader.done(); count--) {
+                var flags = reader.u32();
+                var active = flags == 0 || flags == 2;
+                var offset = 0;
+                if (active) {
+                    if (flags == 2) reader.u32();
+                    offset = reader.initExprOffset();
+                }
+                if (flags == 1 || flags == 2 || flags == 3) reader.byte_();
+                if (flags <= 3) {
+                    var functions = reader.u32();
+                    for (var i = 0; i < functions; i++) {
+                        result.put(reader.u32(), tableBase + offset + i);
+                    }
+                } else {
+                    var expressions = reader.u32();
+                    for (var i = 0; i < expressions; i++) reader.skipExpr();
+                }
+            }
+            return result;
+        }
+
+        private static byte[] section(byte[] wasm, int wanted) {
+            var reader = new Reader(wasm);
+            reader.position = 8;
+            while (!reader.done()) {
+                var id = reader.byte_();
+                var length = reader.u32();
+                var end = Math.min(wasm.length, reader.position + length);
+                if (id == wanted) return java.util.Arrays.copyOfRange(wasm, reader.position, end);
+                reader.position = end;
+            }
+            return null;
+        }
+
+        private static final class Reader {
+            private final byte[] data;
+            private int position;
+            Reader(byte[] data) { this.data = data; }
+            boolean done() { return position >= data.length; }
+            int byte_() { return done() ? 0 : data[position++] & 0xff; }
+            int u32() {
+                var result = 0;
+                for (var shift = 0; shift < 35 && !done(); shift += 7) {
+                    var value = byte_(); result |= (value & 127) << shift;
+                    if ((value & 128) == 0) break;
+                }
+                return result;
+            }
+            String string() {
+                var length = u32(); var end = Math.min(data.length, position + length);
+                var result = new String(data, position, end - position, StandardCharsets.UTF_8);
+                position = end; return result;
+            }
+            int initExprOffset() {
+                var result = 0;
+                while (!done()) {
+                    var opcode = byte_();
+                    if (opcode == 0x0b) return result;
+                    if (opcode == 0x41) result = u32();
+                    else if (opcode == 0x23) u32();
+                }
+                return result;
+            }
+            void skipExpr() { while (!done() && byte_() != 0x0b) { } }
+        }
+    }
+
     private record DylinkMetadata(
         int memorySize,
         int memoryAlign,
@@ -1229,6 +1331,19 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
 
     @Override
     public void _pgl_shutdown() {
+        call("pgl_setPGliteActive", 0);
+        try {
+            // The owner supplies the protocol Terminate packet to socket_read.
+            call("PostgresMainLoopOnce");
+        } catch (ExitStatus exit) {
+            if (exit.status != 0) {
+                throw exit;
+            }
+        } catch (run.endive.wasi.WasiExitException exit) {
+            if (exit.exitCode() != 0) {
+                throw exit;
+            }
+        }
         callIfExists("pgl_run_atexit_funcs");
     }
 
@@ -1376,8 +1491,22 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
 
     @Override
     public int callMain(String[] args) {
+        return callArgv("__main_argc_argv", overrides.thisProgram != null ? overrides.thisProgram : "/pglite/bin/postgres", args);
+    }
+
+    @Override
+    public int callInitdbMain(String[] args) {
+        return callArgv("pglite_initdb_main", "/pglite/bin/initdb", args);
+    }
+
+    @Override
+    public void resetAfterProcExit() {
+        callIfExists("pglite_reset_after_proc_exit");
+    }
+
+    private int callArgv(String entryPoint, String program, String[] args) {
         var argvWithProgram = new ArrayList<String>();
-        argvWithProgram.add(overrides.thisProgram != null ? overrides.thisProgram : "/pglite/bin/postgres");
+        argvWithProgram.add(program);
         if (args != null) {
             argvWithProgram.addAll(java.util.Arrays.asList(args));
         }
@@ -1395,7 +1524,7 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
             }
             memory.writeI32(argv + ptrs.size() * 4, 0);
             try {
-                return (int) call("__main_argc_argv", argvWithProgram.size(), argv);
+                return (int) call(entryPoint, argvWithProgram.size(), argv);
             } catch (run.endive.wasi.WasiExitException exit) {
                 return exit.exitCode();
             } catch (ExitStatus exit) {
@@ -1731,9 +1860,18 @@ public final class EndivePostgresMod implements initdbModFactory.InitdbMod {
             if (opts instanceof Map<?, ?> map) {
                 var rootOpt = map.get("root");
                 var fsOpt = map.get("fs");
-                if (rootOpt != null && fsOpt instanceof SimpleFS otherFs) {
-                    mounts.put(normalize(mountpoint), otherFs.resolve(String.valueOf(rootOpt)));
-                    return;
+                if (rootOpt != null && fsOpt instanceof extensionUtils.EmscriptenFS otherFs) {
+                    var otherRoot = otherFs.__root();
+                    if (otherRoot != null) {
+                        var guestRoot = String.valueOf(rootOpt);
+                        var resolved = Path.of(otherRoot);
+                        if (!"/".equals(guestRoot) && !guestRoot.isBlank()) {
+                            var relative = guestRoot.startsWith("/") ? guestRoot.substring(1) : guestRoot;
+                            resolved = resolved.resolve(relative).normalize();
+                        }
+                        mounts.put(normalize(mountpoint), resolved);
+                        return;
+                    }
                 }
                 if (rootOpt != null) {
                     mounts.put(normalize(mountpoint), Path.of(String.valueOf(rootOpt)).toAbsolutePath().normalize());

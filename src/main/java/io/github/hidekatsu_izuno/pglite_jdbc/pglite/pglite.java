@@ -6,7 +6,6 @@ import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.serializer;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Uint8Array;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.fs.base.Filesystem;
-import io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.EndivePostgresMod;
 import io.github.hidekatsu_izuno.pglite_jdbc.pglite.release.pglite.PostgresModFactory;
 
 import java.nio.file.Files;
@@ -325,6 +324,13 @@ public class pglite extends base implements interface_.PGliteInterface {
     }
 
     private void startInSingleMode(PGliteOptions options) {
+        // The initial standalone backend must reach EOF before protocol mode.
+        // Do not inherit the JVM console or replay initdb's bootstrap SQL.
+        var runtime = (initdbModFactory.InitdbMod) this.mod;
+        var inputPath = "/pglite/backend-stdin";
+        runtime.FS().writeFile(inputPath, new byte[0]);
+        runtime._pgl_freopen(runtime.stringToUTF8OnStack(inputPath),
+            runtime.stringToUTF8OnStack("r"), 0);
         var args = new ArrayList<String>();
         args.addAll(Arrays.asList(DEFAULT_START_PARAMS));
         if (this.debug > 0) {
@@ -381,6 +387,19 @@ public class pglite extends base implements interface_.PGliteInterface {
             }
             throw new UnsupportedOperationException("Postgres module does not expose callMain");
         }
+
+        @Override
+        public int callInitdbMain(String[] args) {
+            return mod.callInitdbMain(args);
+        }
+
+        @Override
+        public initdbModFactory.InitdbMod initdbMod() {
+            if (mod instanceof initdbModFactory.InitdbMod initdbMod) {
+                return initdbMod;
+            }
+            throw new UnsupportedOperationException("Postgres module does not expose initdb helpers");
+        }
     }
 
     private static final class ModuleAdapter implements initdb.PGliteForInitdb.Module {
@@ -402,12 +421,12 @@ public class pglite extends base implements interface_.PGliteInterface {
 
         @Override
         public void _pgl_freopen(int path, int mode, int fd) {
-            asEndive()._pgl_freopen(path, mode, fd);
+            asInitdbMod()._pgl_freopen(path, mode, fd);
         }
 
         @Override
         public Integer _close(int fd) {
-            return asEndive()._close(fd);
+            return asInitdbMod()._close(fd);
         }
 
         @Override
@@ -422,12 +441,22 @@ public class pglite extends base implements interface_.PGliteInterface {
 
         @Override
         public String __wasiDataRoot() {
-            return asEndive().__wasiDataRoot();
+            return asInitdbMod().__wasiDataRoot();
+        }
+
+        @Override
+        public Object __pgliteEhProvider() {
+            return mod.__pgliteEhProvider();
+        }
+
+        @Override
+        public Integer INITIAL_MEMORY() {
+            return mod.INITIAL_MEMORY();
         }
 
         @Override
         public Integer _pgl_chdir(int path) {
-            return asEndive()._pgl_chdir(path);
+            return asInitdbMod()._pgl_chdir(path);
         }
 
         @Override
@@ -465,13 +494,6 @@ public class pglite extends base implements interface_.PGliteInterface {
                 return initdbMod;
             }
             throw new UnsupportedOperationException("Postgres module does not expose initdb helpers");
-        }
-
-        private EndivePostgresMod asEndive() {
-            if (mod instanceof EndivePostgresMod endive) {
-                return endive;
-            }
-            throw new UnsupportedOperationException("Postgres module does not expose Endive helpers");
         }
     }
 
@@ -533,7 +555,16 @@ public class pglite extends base implements interface_.PGliteInterface {
                 await(closer.get());
             }
             if (this.mod != null) {
-                this.mod._pgl_shutdown();
+                // TypeScript: disable PGlite's keep-alive mode, then send Terminate
+                // before running atexit callbacks so PostgreSQL checkpoints the DB.
+                this.readOffset = 0;
+                this.writeOffset = 0;
+                this.outputData = serializer.serialize.end().toByteArray();
+                try {
+                    this.mod._pgl_shutdown();
+                } finally {
+                    this.outputData = new byte[0];
+                }
             }
             if (this.mod != null && this.pgliteRead >= 0) {
                 this.mod.removeFunction(this.pgliteRead);
@@ -545,6 +576,13 @@ public class pglite extends base implements interface_.PGliteInterface {
             }
             if (fs != null) {
                 await(fs.closeFs());
+            }
+            if (this.mod instanceof AutoCloseable closeable) {
+                try {
+                    closeable.close();
+                } catch (Exception e) {
+                    throw new RuntimeException("Unable to close the WASM runtime", e);
+                }
             }
             closed = true;
             ready = false;

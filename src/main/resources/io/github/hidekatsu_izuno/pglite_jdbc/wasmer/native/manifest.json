@@ -1,0 +1,25 @@
+{
+  "version": "7.4.2",
+  "libraries": {
+    "linux-amd64": {
+      "file": "libwasmer-headless.so",
+      "source": "https://github.com/wasmerio/wasmer/releases/download/v7.4.2/wasmer-linux-amd64.tar.gz",
+      "sha256": "c64984850dd28cb42c2cad60adce950ecf48850d4c44351aadb43782e8c17a03"
+    },
+    "linux-aarch64": {
+      "file": "libwasmer-headless.so",
+      "source": "https://github.com/wasmerio/wasmer/releases/download/v7.4.2/wasmer-linux-aarch64.tar.gz",
+      "sha256": "83f1bc2d4b5e306fec5634446205d1bd7c20b8d4d593a282ea179a61d05dd9fa"
+    },
+    "darwin-arm64": {
+      "file": "libwasmer-headless.dylib",
+      "source": "https://github.com/wasmerio/wasmer/releases/download/v7.4.2/wasmer-darwin-arm64.tar.gz",
+      "sha256": "463c111dad073ad2936b5ff92faf8d4f1d7c59de49417855cc7f794f87a2566f"
+    },
+    "windows-amd64": {
+      "file": "wasmer-headless.dll",
+      "source": "https://github.com/wasmerio/wasmer/releases/download/v7.4.2/wasmer-windows-gnu64.tar.gz",
+      "sha256": "9ec08b130b90327ef8a0ea6f7cf70970f71aaf7584d78c868d76953e60edf0c5"
+    }
+  }
+}

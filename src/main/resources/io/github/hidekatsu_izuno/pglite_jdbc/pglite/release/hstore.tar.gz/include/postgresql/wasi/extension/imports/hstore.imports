@@ -45,14 +45,11 @@ getTypeOutputInfo
 get_call_result_type
 get_fn_expr_argtype
 get_fn_opclass_options
-gin_extract_hstore
 has_fn_opclass_options
 hash_bytes
 hash_bytes_extended
 heap_deform_tuple
 heap_form_tuple
-hstore_cmp
-hstore_contains
 initStringInfo
 init_MultiFuncCall
 init_local_reloptions

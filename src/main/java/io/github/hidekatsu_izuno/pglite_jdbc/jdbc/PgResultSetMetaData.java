@@ -28,7 +28,7 @@ final class PgResultSetMetaData {
             fields[i] = new org.postgresql.core.Field(
                 column.label(),
                 column.oid(),
-                0,
+                (short) 0,
                 column.typmod(),
                 column.tableOid(),
                 column.positionInTable()
