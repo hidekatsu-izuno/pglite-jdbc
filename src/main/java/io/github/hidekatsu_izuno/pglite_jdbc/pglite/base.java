@@ -1,8 +1,5 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pglite;
 
-import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages;
-import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.serializer;
-import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -11,6 +8,11 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Function;
+
+import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages;
+import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.serializer;
+import io.github.hidekatsu_izuno.pglite_jdbc.pglite.interface_.Results;
+import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
 
 public abstract class base {
     private static final boolean TRACE_PROTOCOL = Boolean.getBoolean("pglite.trace_protocol");
@@ -364,14 +366,12 @@ public abstract class base {
                 }
 
                 @Override
-                public <R> Promise<interface_.Results<R>> sql(List<String> strings, Object... params) {
+                public Promise<Results<Map<String, Object>>> sql(List<String> strings, Object... params) {
                     return asPromise(() -> {
                         checkClosed.run();
                         var templated = templating.query(strings, params);
-                        @SuppressWarnings("unchecked")
-                        var result = (interface_.Results<R>) (interface_.Results<?>) runQuerySync(
+                        return runQuerySync(
                             templated.query(), templated.params().toArray(), null);
-                        return result;
                     });
                 }
 

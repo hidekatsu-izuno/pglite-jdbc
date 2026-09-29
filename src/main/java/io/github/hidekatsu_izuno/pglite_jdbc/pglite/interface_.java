@@ -182,7 +182,7 @@ public class interface_ {
 
     public interface Transaction {
         <T> Promise<Results<T>> query(String query, Object[] params, QueryOptions options);
-        <T> Promise<Results<T>> sql(List<String> strings, Object... params);
+        Promise<Results<Map<String, Object>>> sql(List<String> strings, Object... params);
         Promise<List<Results<Map<String, Object>>>> exec(String query, QueryOptions options);
         Promise<Void> rollback();
         Promise<java.util.function.Function<Transaction, Promise<Void>>> listen(
