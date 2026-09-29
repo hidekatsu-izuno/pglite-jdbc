@@ -99,12 +99,18 @@ public final class parser {
                 var length = this.bufferView.getUint32(offset + CODE_LENGTH, false);
                 var fullMessageLength = CODE_LENGTH + length;
                 if (fullMessageLength + offset <= bufferFullLength && length > 0) {
-                    var message = this.handlePacket(
-                        offset + HEADER_LENGTH,
-                        code,
-                        length,
-                        this.bufferView.buffer
-                    );
+                    BackendMessage message;
+                    try {
+                        message = this.handlePacket(
+                            offset + HEADER_LENGTH,
+                            code,
+                            length,
+                            this.bufferView.buffer
+                        );
+                    } catch (RuntimeException error) {
+                        resetBuffer();
+                        throw error;
+                    }
                     callback.onMessage(message);
                     offset += fullMessageLength;
                 } else {
@@ -113,14 +119,18 @@ public final class parser {
             }
             if (offset == bufferFullLength) {
                 // No more use for the buffer
-                this.bufferView = new DataView(emptyBuffer);
-                this.bufferRemainingLength = 0;
-                this.bufferOffset = 0;
+                resetBuffer();
             } else {
                 // Adjust the cursors of remainingBuffer
                 this.bufferRemainingLength = bufferFullLength - offset;
                 this.bufferOffset = offset;
             }
+        }
+
+        private void resetBuffer() {
+            this.bufferView = new DataView(emptyBuffer);
+            this.bufferRemainingLength = 0;
+            this.bufferOffset = 0;
         }
 
         private void mergeBuffer(ArrayBuffer buffer) {

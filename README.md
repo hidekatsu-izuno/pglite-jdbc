@@ -9,7 +9,7 @@ pglite-jdbc is a library that enables calling pglite (https://github.com/electri
 
 ## Dependencies
 
-- Unmodified WASM and data from official `@electric-sql/pglite@0.5.3`, bundled in the application classpath.
+- Unmodified WASM and data from official `@electric-sql/pglite@0.5.8`, bundled in the application classpath.
 - Endive runtime/WASM/WASI modules for pure-Java execution of the official WASM.
 - Wasmer 7.4.2 headless C-API shared libraries, accessed through JNA's JNI bridge.
 - Precompiled Wasmer modules bundled alongside the original PGlite WASM resources.
@@ -120,6 +120,10 @@ RAYON_NUM_THREADS=1 python3 scripts/compile-wasmer.py --wasmer /path/to/wasmer
 
 Updating PGlite may require corresponding Emscripten ABI changes in the Java host.
 The runtime loads all resources from the classpath and makes no package downloads.
+
+JavaScript-side correctness fixes have been reviewed through PGlite 0.5.8; see
+[the compatibility audit](docs/upstream-js-sync.md) for the changes and tests.
+The WASM version remains independently pinned to 0.5.8.
 
 ## Updating Wasmer
 

@@ -39,7 +39,7 @@ public class types {
     public static final Map<Integer, Serializer> serializers = new HashMap<>();
 
     static {
-        serializers.put(0, v -> String.valueOf(v));
+        serializers.put(0, types::serializeString);
         registerString(TEXT);
         registerString(VARCHAR);
         registerNumber(INT2);
@@ -61,7 +61,13 @@ public class types {
 
     private static void registerString(int oid) {
         parsers.put(oid, (x, t) -> x);
-        serializers.put(oid, v -> String.valueOf(v));
+        serializers.put(oid, types::serializeString);
+    }
+
+    private static String serializeString(Object value) {
+        if (value instanceof Instant instant) return formatInstant(instant);
+        if (value instanceof java.util.Date date) return formatInstant(Instant.ofEpochMilli(date.getTime()));
+        return String.valueOf(value);
     }
 
     private static void registerNumber(int oid) {
@@ -222,60 +228,67 @@ public class types {
     }
 
     public static List<Object> arrayParser(String text, Parser parser, int typarray) {
-        var delimiter = typarray == 1020 ? ';' : ',';
-        var out = new ArrayList<Object>();
-        if (text == null || text.length() < 2 || text.charAt(0) != '{') {
-            return out;
-        }
-        var current = new StringBuilder();
-        var quoted = false;
-        var escaped = false;
-        var depth = 0;
-        for (var i = 1; i < text.length() - 1; i++) {
-            var ch = text.charAt(i);
-            if (escaped) {
-                current.append(ch);
-                escaped = false;
-                continue;
-            }
-            if (quoted && ch == '\\') {
-                escaped = true;
-                continue;
-            }
-            if (ch == '"') {
-                quoted = !quoted;
-                continue;
-            }
-            if (!quoted && ch == '{') {
-                depth++;
-                current.append(ch);
-                continue;
-            }
-            if (!quoted && ch == '}') {
-                depth--;
-                current.append(ch);
-                continue;
-            }
-            if (!quoted && depth == 0 && ch == delimiter) {
-                out.add(arrayItem(current.toString(), parser, typarray));
-                current.setLength(0);
-                continue;
-            }
-            current.append(ch);
-        }
-        if (!current.isEmpty()) {
-            out.add(arrayItem(current.toString(), parser, typarray));
-        }
-        return out;
+        if (text == null || text.length() < 2) return new ArrayList<>();
+        var state = new ArrayParserState();
+        var arrays = arrayParserLoop(state, text, parser, typarray);
+        if (arrays.isEmpty() || !(arrays.getFirst() instanceof List<?>)) return new ArrayList<>();
+        @SuppressWarnings("unchecked")
+        var result = (List<Object>) arrays.getFirst();
+        return result;
     }
 
-    private static Object arrayItem(String raw, Parser parser, int typarray) {
-        if (raw.startsWith("{") && raw.endsWith("}")) {
-            return arrayParser(raw, parser, typarray);
+    // Upstream keeps this state globally; Java parses may run on different threads.
+    private static final class ArrayParserState {
+        int i;
+        int last;
+        char current;
+        char previous;
+        boolean quoted;
+        final StringBuilder string = new StringBuilder();
+    }
+
+    private static List<Object> arrayParserLoop(ArrayParserState s, String text, Parser parser, int typarray) {
+        var values = new ArrayList<Object>();
+        var delimiter = typarray == 1020 ? ';' : ',';
+        for (; s.i < text.length(); s.i++) {
+            s.current = text.charAt(s.i);
+            if (s.quoted) {
+                if (s.current == '\\') {
+                    s.string.append(text.charAt(++s.i));
+                } else if (s.current == '"') {
+                    var value = s.string.toString();
+                    values.add(parser != null ? parser.parse(value, null) : value);
+                    s.string.setLength(0);
+                    s.quoted = s.i + 1 < text.length() && text.charAt(s.i + 1) == '"';
+                    s.last = s.i + 2;
+                } else {
+                    s.string.append(s.current);
+                }
+            } else if (s.current == '"') {
+                s.quoted = true;
+            } else if (s.current == '{') {
+                s.last = ++s.i;
+                values.add(arrayParserLoop(s, text, parser, typarray));
+            } else if (s.current == '}') {
+                if (s.last < s.i) values.add(arrayItem(text.substring(s.last, s.i), parser));
+                s.quoted = false;
+                s.last = s.i + 1;
+                break;
+            } else if (s.current == delimiter && s.previous != '}' && s.previous != '"') {
+                values.add(arrayItem(text.substring(s.last, s.i), parser));
+                s.last = s.i + 1;
+            }
+            s.previous = s.current;
         }
-        if ("NULL".equals(raw)) {
-            return null;
+        if (s.last < s.i) {
+            var value = text.substring(s.last, Math.min(s.i + 1, text.length()));
+            values.add(parser != null ? parser.parse(value, null) : value);
         }
-        return parser != null ? parser.parse(raw, null) : raw;
+        return values;
+    }
+
+    private static Object arrayItem(String value, Parser parser) {
+        if ("NULL".equals(value)) return null;
+        return parser != null ? parser.parse(value, null) : value;
     }
 }

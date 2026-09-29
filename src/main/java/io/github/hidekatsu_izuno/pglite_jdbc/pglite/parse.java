@@ -109,11 +109,7 @@ public class parse {
         if (parts.length == 0) {
             return 0;
         }
-        return switch (parts[0]) {
-            case "INSERT" -> parts.length > 2 ? parseInt(parts[2]) : 0;
-            case "SELECT", "UPDATE", "DELETE", "COPY", "MERGE" -> parts.length > 1 ? parseInt(parts[1]) : 0;
-            default -> 0;
-        };
+        return parseInt(parts[parts.length - 1]);
     }
 
     private static int parseInt(String text) {

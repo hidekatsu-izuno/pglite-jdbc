@@ -1097,7 +1097,6 @@ public class pglite extends base implements interface_.PGliteInterface {
                 ensureInputCapacity(length);
                 System.arraycopy(bytes, 0, this.inputData, this.writeOffset, length);
                 this.writeOffset += length;
-                return this.inputData.length;
             }
             return length;
         }, "iii");

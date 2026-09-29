@@ -74,9 +74,9 @@
       "artifact_sha256": "cbaf4f389b7943368bb35a011976c8104027be0b20aaf76a639dd7d265bd3dbc"
     },
     "pglite/release/host/emscripten.wasm": {
-      "wasm_sha256": "d50659f978c5aa8403f829b684984ad2b12209ffdb1324a05c7cc42847c4804d",
-      "artifact": "d50659f978c5aa8403f829b684984ad2b12209ffdb1324a05c7cc42847c4804d.wasmu.gz",
-      "artifact_sha256": "0d33451bc525924eebcb94042726d3baf70a0a7ffdcdbd9e2f3e635b9896e605"
+      "wasm_sha256": "0f932fadf3366cf3fb132826c33d5942e2380f42255eab5303bd72aff6fbcc8e",
+      "artifact": "0f932fadf3366cf3fb132826c33d5942e2380f42255eab5303bd72aff6fbcc8e.wasmu.gz",
+      "artifact_sha256": "dfeae6fe94cafe84b3ca3d5a59496e43040ae78b93cce33f948bd72909b5d98e"
     },
     "pglite/release/hstore.tar.gz/lib/postgresql/hstore.so": {
       "wasm_sha256": "07062f325eee73fc661bb95224190e714ffbf50480f0d260fa2bb60d913b5c87",
@@ -84,9 +84,9 @@
       "artifact_sha256": "2b542089a6650b8f9968e8e16fd499eb46e4e7bd913275ae6abdae81683bb4f4"
     },
     "pglite/release/initdb.wasm": {
-      "wasm_sha256": "aa134fde5c96733ff9ab9644f409d9337ae7b3f42a66914a4dad2beec03824df",
-      "artifact": "aa134fde5c96733ff9ab9644f409d9337ae7b3f42a66914a4dad2beec03824df.wasmu.gz",
-      "artifact_sha256": "d7058719ad5447e1eda8034f21777ad072061be3fa280701c6a3ca6e5449f4a5"
+      "wasm_sha256": "4c8988dca3b2f0bbfd23a0714023e4822a2909ead01804f37acffd9ff3ca9f8a",
+      "artifact": "4c8988dca3b2f0bbfd23a0714023e4822a2909ead01804f37acffd9ff3ca9f8a.wasmu.gz",
+      "artifact_sha256": "800243287f54168fb7399d04821c1f952ef043512292bae391d03b5fa31850db"
     },
     "pglite/release/intarray.tar.gz/lib/postgresql/_int.so": {
       "wasm_sha256": "a484d8e3a22436dfc12ddd207a43b57fcf4ff77ed1c719ceeb0d7ff68b60fd90",
@@ -309,14 +309,34 @@
       "artifact_sha256": "99912c91354ff463586ad7a520d98e357fbf902200200f1dca812177074dba6f"
     },
     "pglite/release/pglite.wasm": {
-      "wasm_sha256": "84952dc7438a763b33949e5d7b6260c4a9f9e47968cede04fcd7bb755d001a5a",
-      "artifact": "84952dc7438a763b33949e5d7b6260c4a9f9e47968cede04fcd7bb755d001a5a.wasmu.gz",
-      "artifact_sha256": "f3f9d628ccdff1ca89c5db8f3e6ba9c27f389eae99f0354977b2a60225c29eb5"
+      "wasm_sha256": "356b89f6fcb2ab3a397bec4128327b67b7137ec2a900b13251dade81bcbc0ef0",
+      "artifact": "356b89f6fcb2ab3a397bec4128327b67b7137ec2a900b13251dade81bcbc0ef0.wasmu.gz",
+      "artifact_sha256": "f5029ec7ce910b56ffcfb82b73e7fddcadebcf7c18e505856e1f180a13fd850c"
     },
     "pglite/release/seg.tar.gz/lib/postgresql/seg.so": {
       "wasm_sha256": "29363ecaf8a255907ce7daeb9ffa9af8b0e1d6a31ee584168e66be7af221b077",
       "artifact": "29363ecaf8a255907ce7daeb9ffa9af8b0e1d6a31ee584168e66be7af221b077.wasmu.gz",
       "artifact_sha256": "38b3d8a56d9fc4f1b3e86b3c3378cf84ce6375bbc31c93ea6a856cc7879a3ba4"
+    },
+    "pglite/release/spi.tar.gz/lib/postgresql/autoinc.so": {
+      "wasm_sha256": "f2446a88f1ee8f15a0c78473e8097eac577e4e2018ca2b5edea2ae5b51b0fca9",
+      "artifact": "f2446a88f1ee8f15a0c78473e8097eac577e4e2018ca2b5edea2ae5b51b0fca9.wasmu.gz",
+      "artifact_sha256": "3d386146978f70e0afaf0991b79a1377c8cb2a27e5ae53b04784f835699f8440"
+    },
+    "pglite/release/spi.tar.gz/lib/postgresql/insert_username.so": {
+      "wasm_sha256": "2560b56131c3ea2addea06b604368809f3c3466c00b490fd7ac324bc48f295d7",
+      "artifact": "2560b56131c3ea2addea06b604368809f3c3466c00b490fd7ac324bc48f295d7.wasmu.gz",
+      "artifact_sha256": "7227a4c5befff2021904d5e8c09659b8ac30e5cbed4580dce87a3f856d361806"
+    },
+    "pglite/release/spi.tar.gz/lib/postgresql/moddatetime.so": {
+      "wasm_sha256": "c19c301f9f06fbb09d1c1f333925b0f55b104a51cb89a4bdcdd01cbd0a7e2162",
+      "artifact": "c19c301f9f06fbb09d1c1f333925b0f55b104a51cb89a4bdcdd01cbd0a7e2162.wasmu.gz",
+      "artifact_sha256": "f1f10c4e02ba7b3b949cbf9344f33476132e06c81819f3252244f99a66eb69ac"
+    },
+    "pglite/release/spi.tar.gz/lib/postgresql/refint.so": {
+      "wasm_sha256": "1ab137d794ea5c0b046412d1c93a5489da1a0a82714baaa7b56f959a93376955",
+      "artifact": "1ab137d794ea5c0b046412d1c93a5489da1a0a82714baaa7b56f959a93376955.wasmu.gz",
+      "artifact_sha256": "a8370aca750b60c324749c5d75104ae276d0911e5a8e765f7ddda2144f97119b"
     },
     "pglite/release/tablefunc.tar.gz/lib/postgresql/tablefunc.so": {
       "wasm_sha256": "9dea4943d9eb5c929acab4daa8de26b405f4d3b741ee4d45039419481a63cb3c",

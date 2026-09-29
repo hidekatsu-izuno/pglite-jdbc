@@ -85,7 +85,8 @@ class PGliteSmokeTest {
     @Test
     void bundledExtensionResourcesAreMapped() {
         var descriptors = extensionCatalog.descriptors();
-        assertEquals(33, descriptors.size());
+        assertEquals(34, descriptors.size());
+        assertEquals("spi.tar.gz", descriptors.get("spi").bundle());
         assertEquals(descriptors.keySet(), index.extensions().keySet());
 
         for (var descriptor : descriptors.values()) {

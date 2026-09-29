@@ -18,7 +18,7 @@ class UpstreamWasmTest {
             assertNotNull(input);
             var manifest = new ObjectMapper().readTree(input);
             assertEquals("@electric-sql/pglite", manifest.path("package").asText());
-            assertEquals("0.5.3", manifest.path("version").asText());
+            assertEquals("0.5.8", manifest.path("version").asText());
             assertTrue(manifest.path("integrity").asText().startsWith("sha512-"));
             var entries = manifest.path("files").properties();
             assertTrue(entries.size() > 100);
@@ -29,6 +29,9 @@ class UpstreamWasmTest {
                     assertEquals(entry.getValue().asText(), digest, entry.getKey());
                 }
             }
+            // Minified glue uses an exponent (5705e3) for the shared boundary.
+            assertTrue(manifest.path("files").has("share/postgresql/timezone/America/Santarem"));
+            assertTrue(manifest.path("files").has("share/postgresql/timezone/America/Santiago"));
             assertNotNull(loader.getResource(root + "initdb.wasm"));
             assertNotNull(loader.getResource(root + "hstore.tar.gz/lib/postgresql/hstore.so"));
             assertNull(loader.getResource(root + "hstore.tar.gz/lib/postgresql/hstore.so.wasm"));

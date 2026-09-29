@@ -112,6 +112,21 @@ public class interface_ {
         public Results(List<T> rows, Integer affectedRows, List<Field> fields, byte[] blob) {
             this(rows, affectedRows, fields, blob, affectedRows, null);
         }
+
+        /** Command name from CommandComplete, as exposed by upstream PGlite. */
+        public String command() {
+            if (commandTag == null) return null;
+            var separator = commandTag.indexOf(' ');
+            return separator < 0 ? commandTag : commandTag.substring(0, separator);
+        }
+
+        /** Per-statement count; null when the command tag has no row count. */
+        public Integer rowCount() {
+            if (commandTag == null) return null;
+            var lastPart = commandTag.substring(commandTag.lastIndexOf(' ') + 1);
+            try { return Integer.valueOf(lastPart); }
+            catch (NumberFormatException ignored) { return null; }
+        }
     }
 
     public record ExecProtocolResult(

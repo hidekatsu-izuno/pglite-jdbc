@@ -367,7 +367,11 @@ public abstract class base {
                 public <R> Promise<interface_.Results<R>> sql(List<String> strings, Object... params) {
                     return asPromise(() -> {
                         checkClosed.run();
-                        return sqlSync(strings, params);
+                        var templated = templating.query(strings, params);
+                        @SuppressWarnings("unchecked")
+                        var result = (interface_.Results<R>) (interface_.Results<?>) runQuerySync(
+                            templated.query(), templated.params().toArray(), null);
+                        return result;
                     });
                 }
 
@@ -426,6 +430,7 @@ public abstract class base {
             } catch (Throwable callbackError) {
                 var cause = unwrap(callbackError);
                 if (!closed.get()) {
+                    closed.set(true);
                     try {
                         runExecSync("ROLLBACK", null);
                     } catch (Throwable ignored) {

@@ -326,7 +326,7 @@ else
 endif
 LDFLAGS = $(LDFLAGS_INTERNAL) -sWASM_BIGINT -sUSE_PTHREADS=0  -L/install/libs/lib
 
-LDFLAGS_EX = -sINITIAL_MEMORY=64MB -sWASM_BIGINT -sSUPPORT_LONGJMP=emscripten -sFORCE_FILESYSTEM=1 -sUSE_PTHREADS=0 -sEXIT_RUNTIME=1 -sENVIRONMENT=node,web,worker -sMAIN_MODULE=2 -sMODULARIZE=1 -sEXPORT_ES6=1 -sEXPORT_NAME=Module -sALLOW_TABLE_GROWTH -sALLOW_MEMORY_GROWTH -sERROR_ON_UNDEFINED_SYMBOLS=0 -sEXPORTED_RUNTIME_METHODS=addFunction,removeFunction,FS,MEMFS,PROXYFS,callMain,ENV,UTF8ToString,stringToNewUTF8,stringToUTF8OnStack -sINVOKE_RUN=0 -sEXPORTED_FUNCTIONS=_main,_fgets,_fputs,_pclose,_fopen,_fclose,_fflush,___errno_location,_strerror /home/runner/_work/pglite/pglite/postgres-pglite/pglite/src/pglitec/pglitec.o -lproxyfs.js
+LDFLAGS_EX = -sINITIAL_MEMORY=64MB -sWASM_BIGINT -sSUPPORT_LONGJMP=emscripten -sFORCE_FILESYSTEM=1 -sUSE_PTHREADS=0 -sEXIT_RUNTIME=1 -sENVIRONMENT=node,web,worker -sMAIN_MODULE=2 -sMODULARIZE=1 -sEXPORT_ES6=1 -sEXPORT_NAME=Module -sALLOW_TABLE_GROWTH -sALLOW_MEMORY_GROWTH -sERROR_ON_UNDEFINED_SYMBOLS=0 -sEXPORTED_RUNTIME_METHODS=addFunction,removeFunction,FS,MEMFS,PROXYFS,callMain,ENV,UTF8ToString,stringToNewUTF8,stringToUTF8OnStack -sINVOKE_RUN=0 -sEXPORTED_FUNCTIONS=_main,_fgets,_fputs,_pclose,_fopen,_fclose,_fflush,___errno_location,_strerror /home/runner/_work/pglite/pglite/postgres-pglite/pglite/src/pglitec/pglitec.o -lproxyfs.js --post-js /home/runner/_work/pglite/pglite/postgres-pglite/pglite/scripts/doNotSetExitCode.js
 LDFLAGS_EX_BE =  -Wl,--export-dynamic
 # LDFLAGS_SL might have already been assigned by calling makefile
 LDFLAGS_SL += -shared -sSIDE_MODULE=1 -Wno-unused-function
@@ -561,8 +561,8 @@ PORTNAME= emscripten
 
 build_os = linux-gnu
 
-host_tuple = wasm32-unknown-linux-gnu
-host_os = linux-gnu
+host_tuple = wasm32-unknown-emscripten
+host_os = emscripten
 host_cpu = wasm32
 
 # Backend stack size limit has to be hard-wired on Windows (it's in bytes)

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Install unmodified official PGlite WASM and data from a pinned npm release."""
 import base64
+from decimal import Decimal
 import hashlib
 import io
 import json
@@ -14,7 +15,7 @@ import tempfile
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-VERSION = '0.5.3'
+VERSION = '0.5.8'
 DEST = ROOT / 'src/main/resources/io/github/hidekatsu_izuno/pglite_jdbc/pglite/release'
 
 
@@ -44,7 +45,7 @@ def main():
             unpack(bundle.read_bytes(), output / bundle.name)
         # Emscripten embeds byte offsets for the unmodified pglite.data package.
         glue = (source / 'pglite.js').read_text()
-        entries = re.findall(r'\{filename:"([^"]+)",start:(\d+),end:(\d+)\}', glue)
+        entries = re.findall(r'\{filename:"([^"]+)",start:([^,}]+),end:([^,}]+)\}', glue)
         if not entries:
             raise ValueError('No Emscripten data manifest found')
         data = (source / 'pglite.data').read_bytes()
@@ -55,6 +56,9 @@ def main():
             if not path.resolve().is_relative_to(output.resolve()):
                 raise ValueError(f'Unsafe data path: {name}')
             path.parent.mkdir(parents=True, exist_ok=True)
+            start, end = Decimal(start), Decimal(end)
+            if start != int(start) or end != int(end) or not 0 <= start <= end <= len(data):
+                raise ValueError(f'Invalid data offsets: {name}: {start}, {end}')
             path.write_bytes(data[int(start):int(end)])
         manifest = {'package': metadata['name'], 'version': VERSION,
                     'tarball': metadata['dist']['tarball'], 'integrity': integrity,

@@ -12,7 +12,7 @@ import java.util.function.Function;
 
 /**
  * Host ABI used by the unmodified Emscripten builds shipped by PGlite.
- * Layouts and return conventions follow @electric-sql/pglite@0.5.3/dist/pglite.js.
+ * Layouts and return conventions follow @electric-sql/pglite@0.5.8/dist/pglite.js.
  */
 final class EmscriptenHost implements AutoCloseable {
     interface Heap {
@@ -183,10 +183,30 @@ final class EmscriptenHost implements AutoCloseable {
 
     private long env(String name, long[] a) throws IOException {
         return switch (name) {
+            case "report_invalid_encoding" -> {
+                reportEncodingError("22021", "invalid byte sequence for encoding \""
+                    + ENCODING_NAMES[(int) a[0]] + "\": " + encodingBytes((int) a[0], (int) a[1], (int) a[2]));
+                yield 0;
+            }
+            case "report_untranslatable_char" -> {
+                reportEncodingError("22P05", "character with byte sequence "
+                    + encodingBytes((int) a[0], (int) a[2], (int) a[3]) + " in encoding \""
+                    + ENCODING_NAMES[(int) a[0]] + "\" has no equivalent in encoding \""
+                    + ENCODING_NAMES[(int) a[1]] + "\"");
+                yield 0;
+            }
+            case "pg_utf8_islegal" -> pgUtf8Islegal((int) a[0], (int) a[1]) ? 1 : 0;
             case "_emscripten_throw_longjmp" -> throw new Longjmp();
             case "getTempRet0" -> mod.emCall("_emscripten_tempret_get");
             case "setTempRet0" -> { mod.emCall("_emscripten_tempret_set", a[0]); yield 0; }
             case "exit" -> { mod.emExit((int) a[0]); yield 0; }
+            case "emscripten_exit_with_live_runtime" -> {
+                // Upstream throws "unwind"; PGlite stores 99 (ready) or 100
+                // (query longjmp) in WASM. Reuse the status-carrying Java unwind;
+                // emExit only throws and leaves the Java-owned instance alive.
+                mod.emExit((int) mod.emCall("pgl_getPGliteExitStatus"));
+                yield 0;
+            }
             case "_abort_js" -> throw new IllegalStateException("PGlite aborted");
             case "__assert_fail" -> throw new IllegalStateException(string(a[0]) + " at " + string(a[1]) + ":" + a[2]);
             case "emscripten_date_now" -> Double.doubleToRawLongBits(System.currentTimeMillis());
@@ -293,6 +313,118 @@ final class EmscriptenHost implements AutoCloseable {
             case "getnameinfo" -> getnameinfo(a);
             default -> throw new UnsupportedOperationException("Unsupported Emscripten import: " + name);
         };
+    }
+
+    // pg_enc2name_tbl from PostgreSQL src/common/encnames.c (0.5.8).
+    private static final String[] ENCODING_NAMES = {
+        "SQL_ASCII", "EUC_JP", "EUC_CN", "EUC_KR", "EUC_TW", "EUC_JIS_2004", "UTF8",
+        "MULE_INTERNAL", "LATIN1", "LATIN2", "LATIN3", "LATIN4", "LATIN5", "LATIN6",
+        "LATIN7", "LATIN8", "LATIN9", "LATIN10", "WIN1256", "WIN1258", "WIN866",
+        "WIN874", "KOI8R", "WIN1251", "WIN1252", "ISO_8859_5", "ISO_8859_6", "ISO_8859_7",
+        "ISO_8859_8", "WIN1250", "WIN1253", "WIN1254", "WIN1255", "WIN1257", "KOI8U",
+        "SJIS", "BIG5", "GBK", "UHC", "GB18030", "JOHAB", "SHIFT_JIS_2004"
+    };
+
+    // src/backend/utils/mb/mbutils.c: report_invalid_encoding and
+    // report_untranslatable_char also lack exports in the official WASM.
+    // Raise the error inside PostgreSQL so its transaction/portal cleanup and
+    // longjmp machinery run exactly as for errors raised by the guest itself.
+    private void reportEncodingError(String code, String message) {
+        var bytes = (message + "\0").getBytes(StandardCharsets.UTF_8);
+        var pointer = (int) mod.emCall("malloc", bytes.length);
+        try {
+            mod.emWrite(pointer, bytes);
+            if (mod.emCall("errstart", 21, 0) != 0) { // ERROR
+                var sqlstate = 0;
+                for (var i = 0; i < 5; i++) sqlstate |= ((code.charAt(i) - '0') & 0x3f) << (6 * i);
+                mod.emCall("errcode", sqlstate);
+                // The message contains only encoding names and hex bytes;
+                // there are no printf substitutions or varargs.
+                mod.emCall("errmsg", pointer, 0);
+                mod.emCall("errfinish", 0, 0, 0);
+            }
+        } finally {
+            mod.emCall("free", pointer);
+        }
+    }
+
+    private String encodingBytes(int encoding, int pointer, int remaining) {
+        var bytes = mod.emRead(pointer, Math.min(remaining, 8));
+        var length = encodingCharacterLength(ENCODING_NAMES[encoding], bytes);
+        var result = new StringJoiner(" ");
+        for (var i = 0; i < Math.min(length, bytes.length); i++) {
+            result.add("0x" + HexFormat.of().toHexDigits(bytes[i]));
+        }
+        return result.toString();
+    }
+
+    // pg_encoding_mblen_or_incomplete and the pg_wchar_table mblen functions
+    // from src/common/wchar.c. Only the first character is shown in an error.
+    private static int encodingCharacterLength(String encoding, byte[] bytes) {
+        if (bytes.length == 0) return Integer.MAX_VALUE;
+        var first = Byte.toUnsignedInt(bytes[0]);
+        return switch (encoding) {
+            case "EUC_JP", "EUC_KR", "EUC_JIS_2004", "JOHAB" -> first == 0x8f ? 3 : first >= 0x80 ? 2 : 1;
+            case "EUC_CN" -> first == 0x8e || first == 0x8f ? 3 : first >= 0x80 ? 2 : 1;
+            case "EUC_TW" -> first == 0x8e ? 4 : first == 0x8f ? 3 : first >= 0x80 ? 2 : 1;
+            case "UTF8" -> (first & 0xe0) == 0xc0 ? 2 : (first & 0xf0) == 0xe0 ? 3 : (first & 0xf8) == 0xf0 ? 4 : 1;
+            case "MULE_INTERNAL" -> first >= 0x81 && first <= 0x8d ? 2
+                : (first >= 0x90 && first <= 0x9b) ? 3 : first == 0x9c || first == 0x9d ? 4 : 1;
+            case "SJIS", "SHIFT_JIS_2004" -> first >= 0xa1 && first <= 0xdf ? 1 : first >= 0x80 ? 2 : 1;
+            case "BIG5", "GBK", "UHC" -> first >= 0x80 ? 2 : 1;
+            case "GB18030" -> first < 0x80 ? 1 : bytes.length < 2 ? Integer.MAX_VALUE
+                : bytes[1] >= 0x30 && bytes[1] <= 0x39 ? 4 : 2;
+            default -> 1; // All remaining PostgreSQL encodings are single-byte.
+        };
+    }
+
+    // postgres-pglite/src/common/wchar.c, pg_utf8_islegal (PGlite 0.5.8).
+    // utf8_and_iso8859_1.so imports this function, but the official main WASM
+    // does not export it. Preserve PostgreSQL's validation, including its
+    // overlong-sequence, surrogate and Unicode upper-bound checks.
+    @SuppressWarnings("fallthrough")
+    private boolean pgUtf8Islegal(int source, int length) {
+        if (length < 1 || length > 4) return false;
+        var bytes = mod.emRead(source, length);
+        var a = 0;
+        switch (length) {
+            default:
+                return false;
+            case 4:
+                a = Byte.toUnsignedInt(bytes[3]);
+                if (a < 0x80 || a > 0xBF) return false;
+                // fall through
+            case 3:
+                a = Byte.toUnsignedInt(bytes[2]);
+                if (a < 0x80 || a > 0xBF) return false;
+                // fall through
+            case 2:
+                a = Byte.toUnsignedInt(bytes[1]);
+                switch (Byte.toUnsignedInt(bytes[0])) {
+                    case 0xE0:
+                        if (a < 0xA0 || a > 0xBF) return false;
+                        break;
+                    case 0xED:
+                        if (a < 0x80 || a > 0x9F) return false;
+                        break;
+                    case 0xF0:
+                        if (a < 0x90 || a > 0xBF) return false;
+                        break;
+                    case 0xF4:
+                        if (a < 0x80 || a > 0x8F) return false;
+                        break;
+                    default:
+                        if (a < 0x80 || a > 0xBF) return false;
+                        break;
+                }
+                // fall through
+            case 1:
+                a = Byte.toUnsignedInt(bytes[0]);
+                if (a >= 0x80 && a < 0xC2) return false;
+                if (a > 0xF4) return false;
+                break;
+        }
+        return true;
     }
 
     private long getaddrinfo(long[] a) {

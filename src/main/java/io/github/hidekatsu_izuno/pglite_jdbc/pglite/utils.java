@@ -1,12 +1,16 @@
 package io.github.hidekatsu_izuno.pglite_jdbc.pglite;
 
+import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.messages;
+import io.github.hidekatsu_izuno.pglite_jdbc.pg_protocol.serializer;
 import io.github.hidekatsu_izuno.pglite_jdbc.polyfills.Promise;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
@@ -126,15 +130,43 @@ public class utils {
         if (params == null || params.length == 0) {
             return Promise.resolve(query);
         }
-        var out = new StringBuffer();
-        Matcher matcher = PARAM_PATTERN.matcher(query);
-        while (matcher.find()) {
-            var index = Integer.parseInt(matcher.group(1)) - 1;
-            var value = index >= 0 && index < params.length ? params[index] : null;
-            matcher.appendReplacement(out, Matcher.quoteReplacement(toSqlLiteral(value)));
-        }
-        matcher.appendTail(out);
-        return Promise.resolve(out.toString());
+        return base.asPromise(() -> {
+            var received = new ArrayList<messages.BackendMessage>();
+            var protocolOptions = new interface_.ExecProtocolOptions(false, true, null);
+            try {
+                var parseOptions = new serializer.ParseOpts();
+                parseOptions.text = query;
+                pg.execProtocol(serializer.serialize.parse(parseOptions).toByteArray(), protocolOptions).join();
+                var describeOptions = new serializer.PortalOpts();
+                describeOptions.type = "S";
+                received.addAll(pg.execProtocol(
+                    serializer.serialize.describe(describeOptions).toByteArray(), protocolOptions).join().messages());
+            } finally {
+                received.addAll(pg.execProtocol(
+                    serializer.serialize.sync().toByteArray(), protocolOptions).join().messages());
+            }
+            var dataTypeIDs = parse.parseDescribeStatementResults(received);
+            var substituted = new StringBuffer();
+            var matcher = PARAM_PATTERN.matcher(query);
+            while (matcher.find()) {
+                matcher.appendReplacement(substituted, Matcher.quoteReplacement("%" + matcher.group(1) + "$L"));
+            }
+            matcher.appendTail(substituted);
+            var placeholders = new ArrayList<String>();
+            var values = new Object[params.length + 1];
+            values[0] = substituted.toString();
+            System.arraycopy(params, 0, values, 1, params.length);
+            for (var i = 0; i < params.length; i++) placeholders.add("$" + (i + 2));
+            var parameterTypes = new int[dataTypeIDs.length + 1];
+            parameterTypes[0] = types.TEXT;
+            System.arraycopy(dataTypeIDs, 0, parameterTypes, 1, dataTypeIDs.length);
+            var options = new interface_.QueryOptions(null, null, null, null, null, parameterTypes);
+            var formatSql = "SELECT format($1, " + String.join(", ", placeholders) + ") AS query";
+            var result = tx != null
+                ? tx.<Map<String, Object>>query(formatSql, values, options).join()
+                : pg.<Map<String, Object>>query(formatSql, values, options).join();
+            return (String) result.rows().getFirst().get("query");
+        });
     }
 
     @FunctionalInterface
@@ -196,14 +228,4 @@ public class utils {
         Promise.Reject reject
     ) {}
 
-    private static String toSqlLiteral(Object value) {
-        if (value == null) {
-            return "NULL";
-        }
-        if (value instanceof Number || value instanceof Boolean) {
-            return String.valueOf(value);
-        }
-        var text = String.valueOf(value).replace("'", "''");
-        return "'" + text + "'";
-    }
 }
